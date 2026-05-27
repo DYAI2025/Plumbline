@@ -82,3 +82,8 @@ PY
   the next time Claude Code scans agents (reload the session if needed).
 - This is a nested git repo inside `~/.claude/`; the parent home repo ignores
   `.claude/`, so this repo is independent.
+
+## License
+
+[MIT](LICENSE) © 2026 DYAI2025. Portions derived from
+[claude-flow](https://github.com/ruvnet/claude-flow) (MIT, © ruvnet).
