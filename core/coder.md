@@ -67,6 +67,8 @@ try {
 }
 ```
 
+**Return types (learned):** Annotate the return type of exported/public functions explicitly; reuse an existing interface/type when one already matches the shape, rather than relying on inference for a public contract.
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes

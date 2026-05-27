@@ -165,6 +165,8 @@ describe('Edge Cases', () => {
 });
 ```
 
+**Default/fallback branches (learned):** When testing a default or fallback branch, verify your inputs actually reach it. If it is logically unreachable for real domain values, pin it with explicit out-of-domain inputs plus a comment explaining why — never assert against an input that silently lands in a different branch.
+
 ## Test Quality Metrics
 
 ### 1. Coverage Requirements
