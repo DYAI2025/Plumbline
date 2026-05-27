@@ -169,6 +169,8 @@ describe('Edge Cases', () => {
 
 **Round-trip / reversibility contracts (learned):** When a component promises lossless round-trip or reversible serialization, the DoD and tests must cover adversarial content — delimiter-/structural-token-shaped lines, multiple consecutive blanks, control characters — and require a property/fuzz test, not just happy-path + empty + unicode. Lossless means lossless for arbitrary content.
 
+**Browser-E2E of drag/reorder libs (learned):** Pointer-based libraries (SortableJS et al.) listen to native pointer/mouse events, NOT HTML5 drag-and-drop — Playwright's `drag_to`/DnD won't fire their `onEnd`. Drive a real `mouse.down → move(steps) → up` sequence instead. Empty drop targets need a `min-height` (layout) to be hit-testable. Keep such e2e marked + skippable so the core suite stays hermetic.
+
 ## Test Quality Metrics
 
 ### 1. Coverage Requirements

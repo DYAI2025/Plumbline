@@ -75,6 +75,8 @@ try {
 
 **Untrusted string→int (learned):** When converting an untrusted/parsed string to a number, guard against `ValueError` (e.g. wrap `int(...)` in try/except). A regex-matched digit run is NOT guaranteed convertible — on CPython 3.11+ `int()` rejects strings with >4300 digits. Don't assume "it matched `\d+`, so int() is safe".
 
+**Exception→HTTP mapping (learned):** Map to error responses with the NARROWEST exception type — catch `FileNotFoundError` for 404, never a broad `except OSError`. A broad catch masks real faults (`PermissionError`, disk/I-O errors) as a misleading "not found"; let those surface as 500. Guard inputs (id length, etc.) before the I/O call so a pathological input can't reach it.
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes
