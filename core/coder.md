@@ -73,6 +73,8 @@ try {
 
 **Programmatic git commits (learned):** Handle the no-op case idempotently — after staging, check for an empty staged diff (`git diff --cached --quiet`) and skip the commit instead of letting `git commit` fail with a raw error.
 
+**Untrusted string→int (learned):** When converting an untrusted/parsed string to a number, guard against `ValueError` (e.g. wrap `int(...)` in try/except). A regex-matched digit run is NOT guaranteed convertible — on CPython 3.11+ `int()` rejects strings with >4300 digits. Don't assume "it matched `\d+`, so int() is safe".
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes
