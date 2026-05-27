@@ -1,0 +1,60 @@
+{
+  "name": "agent-learning-loop",
+  "version": "1.0.0",
+  "description": "Declarative spec for the evolutionary learning loop run at the end of an /agileteam session (or any substantial workspace session). This is a PROTOCOL document, not a self-executing hook: Claude Code does not auto-run skills on session end. It is executed by the assistant when working in this workspace and at the end of Phase 4 of the /agileteam command, per the rules mirrored in CLAUDE.md.",
+  "enforcement": {
+    "type": "protocol-doc",
+    "auto_trigger": false,
+    "note": "For a hard, harness-enforced trigger, add a Stop/SessionEnd hook in settings.json (see the `update-config` skill). Without that, this loop runs because CLAUDE.md instructs the assistant to run it."
+  },
+  "trigger": {
+    "when": [
+      "After the /agileteam DoD gate is cleared (Phase 4).",
+      "Before ending a session in which substantial implementation/review work happened."
+    ]
+  },
+  "analysis": {
+    "inputs": [
+      "git diff of the session (staged + committed changes)",
+      "test failures and QA run output",
+      "findings returned by the code-reviewer subagent (recurring smells, rejected diffs)",
+      "error patterns from logs / failed commands",
+      "refactor loops (tasks that needed multiple coder<->reviewer iterations)"
+    ],
+    "output": "A short list of concrete, recurring failure patterns with a proposed process rule for each."
+  },
+  "interactive_gate": {
+    "must_not_write_blindly": true,
+    "description": "Modifications to skills, agent prompts, or CLAUDE.md are NEVER written automatically. The assistant must present a structured preview and get explicit per-item approval.",
+    "preview_format": [
+      "Gefundenes Fehlermuster: <e.g. Fehlende TypeScript-Typen vor Implementierung>",
+      "Vorgeschlagene permanente Optimierung in <Ziel: CLAUDE.md | Agent-Prompt | neuer Skill>: <konkreter Regel-Vorschlag>",
+      "Möchtest du diese Verbesserung permanent für zukünftige Sessions implementieren? (y/n)"
+    ],
+    "approval": "per-item (y/n); 'n' discards that item, nothing is written"
+  },
+  "persistence_writer": {
+    "tool": "skill-creator (with writing-skills for quality)",
+    "on_yes_levels": {
+      "A_local": {
+        "target": "the project's CLAUDE.md",
+        "use_for": "project-specific coding guidelines / conventions learned this session"
+      },
+      "B_global_agents": {
+        "target": "~/.claude/agents/<agent>.md system prompt (e.g. coder.md, tester.md, code-review/analyze-code-quality.md)",
+        "use_for": "cross-session improvements so the dev/QA subagents act smarter next time",
+        "caution": "Edits global shared config; always show the exact diff before writing. Re-run ./build-explorer.sh afterwards to refresh agent-explorer.html."
+      },
+      "C_new_skill": {
+        "target": "~/.claude/skills/<name>/SKILL.md",
+        "use_for": "a genuinely new, reusable capability that does not fit an existing agent or CLAUDE.md rule"
+      }
+    }
+  },
+  "safety": [
+    "Never write to shared/global config (~/.claude/agents, ~/.claude/skills) without explicit per-item 'y'.",
+    "Show the exact diff/content before writing.",
+    "Prefer the narrowest level that fits (A before B before C).",
+    "Report honestly what was and was not applied."
+  ]
+}
