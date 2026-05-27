@@ -32,6 +32,13 @@ Spec: **`config/claude/skills/agent-learning-loop.json`**. Run this loop at the 
 of an `/agileteam` session (after the DoD gate) or before ending any session with
 substantial implementation/review work.
 
+**Trigger (real):** a **Stop hook** (`config/claude/hooks/stop-learning-loop.sh`,
+registered in `~/.claude/settings.json`) fires when the session tries to end. It is
+**sentinel-gated**: it only acts when `~/.claude/.agileteam-reflection-pending` exists
+(created by `/agileteam` Phase 3 after the DoD clear), so normal sessions are never
+interrupted. When armed it returns `decision: block` so the agent runs the loop below,
+then removes the sentinel. The hook honours `stop_hook_active` (no infinite loops).
+
 1. **Analyse** the session: the git diff, test/QA failures, recurring `code-reviewer`
    findings, error patterns in logs, and tasks that needed multiple coder↔reviewer
    iterations.

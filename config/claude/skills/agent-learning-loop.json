@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "description": "Declarative spec for the evolutionary learning loop run at the end of an /agileteam session (or any substantial workspace session). This is a PROTOCOL document, not a self-executing hook: Claude Code does not auto-run skills on session end. It is executed by the assistant when working in this workspace and at the end of Phase 4 of the /agileteam command, per the rules mirrored in CLAUDE.md.",
   "enforcement": {
-    "type": "protocol-doc",
-    "auto_trigger": false,
-    "note": "For a hard, harness-enforced trigger, add a Stop/SessionEnd hook in settings.json (see the `update-config` skill). Without that, this loop runs because CLAUDE.md instructs the assistant to run it."
+    "type": "stop-hook + protocol-doc",
+    "auto_trigger": true,
+    "mechanism": "A Stop hook (config/claude/hooks/stop-learning-loop.sh, registered in ~/.claude/settings.json) fires on session end. It is sentinel-gated on ~/.claude/.agileteam-reflection-pending (created by /agileteam Phase 3 after the DoD clear, removed by Phase 4), so it only triggers after an agileteam DoD clear and never interrupts normal sessions. It returns decision:block to make the agent run this loop, and honours stop_hook_active to avoid infinite loops.",
+    "note": "Outside an /agileteam run (no sentinel) the loop is not auto-triggered; run it manually when a session had substantial implementation/review work."
   },
   "trigger": {
     "when": [

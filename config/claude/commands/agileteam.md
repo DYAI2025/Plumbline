@@ -61,6 +61,9 @@ the effective unit for meaningful review.
    acceptance criterion.
 3. Only declare done when **all tests pass** and the validator approves. On failure,
    return to Phase 2 (use `systematic-debugging`).
+4. Once approved, **arm the learning-loop**: `touch ~/.claude/.agileteam-reflection-pending`.
+   The Stop hook (`config/claude/hooks/stop-learning-loop.sh`) uses this sentinel to
+   make sure Phase 4 runs before the session ends.
 
 ### Phase 4 — Retrospective & persistent evolution
 1. Review this session: which review findings recurred, which tests failed first,
@@ -70,6 +73,8 @@ the effective unit for meaningful review.
    editing shared config**: either append a rule to the relevant `CLAUDE.md`, or
    refine the affected agent's system prompt in `~/.claude/agents/`. Summarise what
    changed.
+4. **Disarm the learning-loop**: `rm -f ~/.claude/.agileteam-reflection-pending` so the
+   Stop hook lets the session end.
 
 ## Operating rules
 - Autonomous by default; ask the user only on unforeseeable blockers or before
