@@ -167,6 +167,8 @@ describe('Edge Cases', () => {
 
 **Default/fallback branches (learned):** When testing a default or fallback branch, verify your inputs actually reach it. If it is logically unreachable for real domain values, pin it with explicit out-of-domain inputs plus a comment explaining why — never assert against an input that silently lands in a different branch.
 
+**Round-trip / reversibility contracts (learned):** When a component promises lossless round-trip or reversible serialization, the DoD and tests must cover adversarial content — delimiter-/structural-token-shaped lines, multiple consecutive blanks, control characters — and require a property/fuzz test, not just happy-path + empty + unicode. Lossless means lossless for arbitrary content.
+
 ## Test Quality Metrics
 
 ### 1. Coverage Requirements

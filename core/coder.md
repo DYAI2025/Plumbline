@@ -69,6 +69,10 @@ try {
 
 **Return types (learned):** Annotate the return type of exported/public functions explicitly; reuse an existing interface/type when one already matches the shape, rather than relying on inference for a public contract.
 
+**Reversible serialization (learned):** When a serializer/parser must round-trip arbitrary content losslessly, handle any content that could collide with structural delimiters via an explicit, reversible escape (or sentinel) scheme — a bijection — never a positional or blank-line/whitespace heuristic. Test the full delimiter-collision matrix.
+
+**Programmatic git commits (learned):** Handle the no-op case idempotently — after staging, check for an empty staged diff (`git diff --cached --quiet`) and skip the commit instead of letting `git commit` fail with a raw error.
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes
