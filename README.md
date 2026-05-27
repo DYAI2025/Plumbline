@@ -83,6 +83,44 @@ PY
 - This is a nested git repo inside `~/.claude/`; the parent home repo ignores
   `.claude/`, so this repo is independent.
 
+## Agile team & learning loop
+
+`config/claude/` vendors the `/agileteam` orchestrator command and an evolutionary
+learning loop (see `CLAUDE.md`). Activate them on a machine with:
+
+```bash
+./config/claude/install.sh    # transfers the command + registers the Stop hook (needs jq)
+```
+
+The learning loop is driven by a **sentinel-gated Stop hook**
+(`config/claude/hooks/stop-learning-loop.sh`): `/agileteam` creates
+`~/.claude/.agileteam-reflection-pending` after its DoD gate, and the hook then blocks
+session-end so the retrospective runs. Normal sessions (no sentinel) are never touched.
+
+### Testing the Stop hook
+
+**Deterministic** (no session needed) — invoke the script the way the harness does:
+
+```bash
+H=config/claude/hooks/stop-learning-loop.sh
+echo '{"stop_hook_active":false}' | bash "$H"                                   # → nothing (no sentinel)
+touch ~/.claude/.agileteam-reflection-pending
+echo '{"stop_hook_active":false}' | bash "$H"                                   # → {"decision":"block",...}
+echo '{"stop_hook_active":true}'  | bash "$H"                                   # → nothing (loop guard)
+rm -f ~/.claude/.agileteam-reflection-pending
+```
+
+**Live-fire** — `touch ~/.claude/.agileteam-reflection-pending`, then end your turn:
+if the hook is active, Claude is auto-continued into the retrospective. Remember to
+`rm -f` the sentinel afterwards (the retrospective does this automatically).
+
+### Disabling
+
+- Remove the sentinel: `rm -f ~/.claude/.agileteam-reflection-pending` (disarms the next stop).
+- Permanently: delete the learning-loop entry from `hooks.Stop` in `~/.claude/settings.json`
+  (review/edit hooks via the `/hooks` menu), or set `"disableAllHooks": true` to turn off
+  all hooks.
+
 ## License
 
 [MIT](LICENSE) © 2026 DYAI2025. Portions derived from
