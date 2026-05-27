@@ -22,6 +22,10 @@ versioned source lives at **`config/claude/commands/agileteam.md`**.
 # or: ./config/claude/install.sh --copy
 ```
 
+`install.sh` also idempotently registers the learning-loop **Stop hook** in
+`~/.claude/settings.json` (needs `jq`), preserving any existing hooks — so the real
+trigger is reproducible on a fresh machine.
+
 When working in this repo, if `~/.claude/commands/agileteam.md` is absent, offer to
 run `install.sh`. Keep the global copy and the vendored copy in sync — after editing
 one, mirror to the other (or use the symlink so there is a single source of truth).
