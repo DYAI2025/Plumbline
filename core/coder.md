@@ -77,6 +77,8 @@ try {
 
 **Exception→HTTP mapping (learned):** Map to error responses with the NARROWEST exception type — catch `FileNotFoundError` for 404, never a broad `except OSError`. A broad catch masks real faults (`PermissionError`, disk/I-O errors) as a misleading "not found"; let those surface as 500. Guard inputs (id length, etc.) before the I/O call so a pathological input can't reach it.
 
+**Clamping parsed floats (learned):** A comparison-based clamp (`max(lo, min(hi, x))` or `if x < lo / if x > hi`) silently lets `NaN` through — every comparison with `NaN` is `False`, so it's neither clamped nor rejected, then corrupts sorts (NaN compares False both ways) and renders as `"nan"`. Reject non-finite values explicitly (`math.isfinite(x)`) when coercing/clamping untrusted floats; don't rely on the range comparison.
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes
