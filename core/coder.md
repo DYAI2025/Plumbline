@@ -83,6 +83,8 @@ try {
 
 **Validate planned HTML against HTML5 nesting (learned):** When implementing a UI plan, check the prescribed markup against HTML5 content-model rules — `<p>` cannot be a child of `<ul>`/`<ol>` (use `<li>`); `<a>` cannot nest inside `<a>`; only phrasing content inside `<p>`; `<button>` cannot contain interactive content. If the plan prescribes invalid nesting, correct it to valid markup that preserves the same behaviour (e.g. drop-target, filter selector) and report the change as a "justified deviation" — don't mechanically implement invalid HTML.
 
+**Multi-step state-transition ordering (learned):** When a single route/handler emits MULTIPLE sequential commits (clear + move, narrow + broaden, revoke + re-issue), LOCK the order in a test (literal substring on `git log --oneline -N` or commit-message regex) AND justify the chosen order via the worst-case interleaving observer — what a daemon tick / concurrent reader / second writer would see if it ran between the two commits. Default-safe order: clear/narrow/revoke FIRST (so any mid-transition observer sees a strictly less-permissive state), then broaden/move/re-issue. Document the locked order in the route docstring with the race it prevents — without that pin, a future "tidy" refactor can swap the order and reintroduce the race silently.
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes

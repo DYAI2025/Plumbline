@@ -173,6 +173,12 @@ describe('Edge Cases', () => {
 
 **Guarding concurrency fixes (learned):** A probabilistic timing-race test (spawn threads, hope the interleave happens) makes a poor regression guard — it can pass most runs even when the bug is back (a real read-race reproduced only ~25% pre-fix). Guard the fix with a DETERMINISTIC invariant instead: assert the structural property (e.g. write goes via temp + `os.replace`, no partial ever observable), or force the interleave with a barrier/spy. Keep a probabilistic stress test too if useful, but never as the sole guard.
 
+**Nullable-numeric template guards (learned):** Templates rendering nullable numeric fields must check `is not none` (Jinja) / `is not None` (Python), NOT truthy/falsy. `0`, `0.0`, `""`, `False` all coerce false and the rendered chip/pill/badge silently disappears for the zero-value case. Pin against the regression with an EXPLICIT zero-value test (`score=0.0` → pill renders), not only the unset (`score=None` → pill absent) and the typical-value (`score=0.85` → pill renders) cases. A future refactor to `{% if card.score %}` would otherwise pass every existing test while dropping the zero-pill.
+
+**Idempotency test priming (learned):** When asserting "0 commits / no write on no-op re-submit", FIRST prime with one real call so the seeded `updated`/timestamp aligns with the fixture's `FIXED_NOW`. The naive shape "seed card → POST same value → assert 0 commits" is a false-positive: the first POST always commits (the seeded `updated` differs from `FIXED_NOW`), so the test asserts `1` when it should assert `0`. Correct shape: prime → reset commit-count → POST → assert 0. Document the priming step in the test so the next reader understands the two-call shape isn't accidental.
+
+**Canonical-enum lookup before scenario tests (learned):** Before writing a test that uses a domain value like `column="done"` / `state="closed"` / `priority="urgent"`, READ the codebase's canonical enum (`COLUMNS`, `STATES`, …) — don't guess from domain intuition. A mismatch surfaces as `ValidationError` at seed time mid-test, wasting a dispatch and forcing a halt-and-clarify round-trip with the orchestrator. If the brief uses a non-canonical value, halt and report the divergence with the canonical set — do NOT silently substitute, do NOT add the value to the enum.
+
 ## Test Quality Metrics
 
 ### 1. Coverage Requirements
