@@ -179,6 +179,8 @@ describe('Edge Cases', () => {
 
 **Canonical-enum lookup before scenario tests (learned):** Before writing a test that uses a domain value like `column="done"` / `state="closed"` / `priority="urgent"`, READ the codebase's canonical enum (`COLUMNS`, `STATES`, …) — don't guess from domain intuition. A mismatch surfaces as `ValidationError` at seed time mid-test, wasting a dispatch and forcing a halt-and-clarify round-trip with the orchestrator. If the brief uses a non-canonical value, halt and report the divergence with the canonical set — do NOT silently substitute, do NOT add the value to the enum.
 
+**Slug-collision check after enum-rename (learned):** When renaming or expanding an enum, sweep tests for "deliberately invalid" placeholder values that might collide with new valid members. A test like `move_column(slug, "done")` may have used `"done"` AS a known-invalid sentinel; after a rename that ADDS `"done"` as a valid column, the negative-assertion silently becomes a positive — test passes, the regression guard is gone. Substitute a fresh known-invalid sentinel (`"nope"`, `"__not_a_real_column__"`, etc.) and document the collision in the commit message. Don't trust that "this string was invalid yesterday" is still true after a schema change.
+
 ## Test Quality Metrics
 
 ### 1. Coverage Requirements
