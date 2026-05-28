@@ -171,6 +171,8 @@ describe('Edge Cases', () => {
 
 **Browser-E2E of drag/reorder libs (learned):** Pointer-based libraries (SortableJS et al.) listen to native pointer/mouse events, NOT HTML5 drag-and-drop — Playwright's `drag_to`/DnD won't fire their `onEnd`. Drive a real `mouse.down → move(steps) → up` sequence instead. Empty drop targets need a `min-height` (layout) to be hit-testable. Keep such e2e marked + skippable so the core suite stays hermetic.
 
+**Guarding concurrency fixes (learned):** A probabilistic timing-race test (spawn threads, hope the interleave happens) makes a poor regression guard — it can pass most runs even when the bug is back (a real read-race reproduced only ~25% pre-fix). Guard the fix with a DETERMINISTIC invariant instead: assert the structural property (e.g. write goes via temp + `os.replace`, no partial ever observable), or force the interleave with a barrier/spy. Keep a probabilistic stress test too if useful, but never as the sole guard.
+
 ## Test Quality Metrics
 
 ### 1. Coverage Requirements

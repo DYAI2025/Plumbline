@@ -79,6 +79,8 @@ try {
 
 **Clamping parsed floats (learned):** A comparison-based clamp (`max(lo, min(hi, x))` or `if x < lo / if x > hi`) silently lets `NaN` through — every comparison with `NaN` is `False`, so it's neither clamped nor rejected, then corrupts sorts (NaN compares False both ways) and renders as `"nan"`. Reject non-finite values explicitly (`math.isfinite(x)`) when coercing/clamping untrusted floats; don't rely on the range comparison.
 
+**Atomic writes for concurrently-read files (learned):** A file that may be read concurrently (esp. lock-free) must be written ATOMICALLY — write a temp file in the same directory, then `os.replace(tmp, path)` (atomic rename). A plain `write_text`/truncate-then-write lets a concurrent reader observe a half-written file. And a writer-only lock does NOT make lock-free reads safe against an in-progress write — either lock reads too or make the write atomic. (Code correct under single-threaded use can still be unsafe the moment a second reader/writer appears.)
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes
