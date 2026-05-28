@@ -81,6 +81,8 @@ try {
 
 **Atomic writes for concurrently-read files (learned):** A file that may be read concurrently (esp. lock-free) must be written ATOMICALLY — write a temp file in the same directory, then `os.replace(tmp, path)` (atomic rename). A plain `write_text`/truncate-then-write lets a concurrent reader observe a half-written file. And a writer-only lock does NOT make lock-free reads safe against an in-progress write — either lock reads too or make the write atomic. (Code correct under single-threaded use can still be unsafe the moment a second reader/writer appears.)
 
+**Validate planned HTML against HTML5 nesting (learned):** When implementing a UI plan, check the prescribed markup against HTML5 content-model rules — `<p>` cannot be a child of `<ul>`/`<ol>` (use `<li>`); `<a>` cannot nest inside `<a>`; only phrasing content inside `<p>`; `<button>` cannot contain interactive content. If the plan prescribes invalid nesting, correct it to valid markup that preserves the same behaviour (e.g. drop-target, filter selector) and report the change as a "justified deviation" — don't mechanically implement invalid HTML.
+
 ### 2. Design Patterns
 
 - **SOLID Principles**: Always apply when designing classes
