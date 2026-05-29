@@ -50,9 +50,17 @@ across components** into the running system. Answer in one word: **boundary** or
 - **pure** (in-process logic only — a calculator, formatter, validator, parser, pure
   transform): the Gegenthese/Reality-Ledger does **NOT apply**. Do **not** invent a
   wiring/reality/integration concern — there is no boundary to cross. Skip beats 2–3
-  and test the *logic*: boundaries, precedence, rounding, error inputs, invariants.
-  Manufacturing a "but is it wired / does it touch reality" doubt for pure logic is a
-  **false alarm** and is itself a defect of this pass.
+  and test the *logic*: boundaries, precedence, rounding, invariants, and inputs that
+  the spec's own domain implies. Two false-alarm shapes are **forbidden** for a pure
+  function and count as defects of this pass:
+  - **No invented failure-modes.** Do not add degradation / overflow / NaN / Infinity /
+    "graceful error on huge input" / type-coercion-blows-up tests unless the spec
+    states such an input is in the function's domain. A pure formatter/validator/calc
+    has no "backend", "timeout", or "it might fail at runtime" mode to test.
+  - **No speculative boundary hedges.** Do not write "*if* this were later wired into a
+    form / endpoint / service, it would need an E2E / reality test". The spec scoped it
+    as pure; if wiring were in scope the spec would say so. Conditional "if it crosses a
+    boundary…" caveats are exactly the over-fire the gate exists to stop.
 - **boundary**: run beats 1–3 below. (Also: if the spec already states the feature is
   wired into the running system AND has a real-boundary test, acknowledge that as
   covered — do not re-flag what is already done.)
