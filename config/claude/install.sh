@@ -148,12 +148,17 @@ register_stop_hook() {
     return
   fi
   local tmp; tmp="$(mktemp)"
-  jq --arg cmd "$cmd" '
+  if jq --arg cmd "$cmd" '
     .hooks //= {} |
     .hooks.Stop //= [] |
     .hooks.Stop += [ { "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ] } ]
-  ' "$settings" > "$tmp" && mv "$tmp" "$settings"
-  echo "registered stop-hook in $settings"
+  ' "$settings" > "$tmp"; then
+    mv "$tmp" "$settings"
+    echo "registered stop-hook in $settings"
+  else
+    rm -f "$tmp"
+    echo "skip stop-hook: jq failed to update $settings" >&2
+  fi
 }
 
 mkdir -p "$CLAUDE_HOME"
