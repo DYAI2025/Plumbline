@@ -1,4 +1,4 @@
-"""Audit service: records actions via a Store boundary."""
+"""Audit service: records actions via a Store."""
 from __future__ import annotations
 
 from src.store import Store

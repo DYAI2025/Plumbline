@@ -1,4 +1,4 @@
-"""Persistence boundary for audit records."""
+"""Storage for audit records."""
 from __future__ import annotations
 
 from typing import Protocol
@@ -10,11 +10,7 @@ class Store(Protocol):
 
 
 class FileStore:
-    """Real boundary: persists records to a file, one per line.
-
-    This is what production uses. A test that only exercises an in-memory fake
-    of `Store` never proves THIS code works -- "tests green != it works".
-    """
+    """Persists records to a file, one per line."""
 
     def __init__(self, path: str) -> None:
         self.path = path

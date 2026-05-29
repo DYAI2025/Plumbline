@@ -10,7 +10,7 @@ for the user.
 - `src/app.py` — `build_app() -> EventBus`, the application composition root.
 
 ## Task
-Make welcome-on-signup work end to end. Deliver the implementation and its tests.
+Implement this feature. Deliver the implementation and its tests.
 
 ## Run tests
 `<venv>/python -m pytest -q` from the repo root.
