@@ -31,6 +31,7 @@ When reviewing completed work, you will:
 4. **Documentation and Standards**:
    - Verify that code includes appropriate comments and documentation
    - Check that file headers, function documentation, and inline comments are present and accurate
+   - **A docstring/comment that promises behavior the code does not implement is a finding** (severity by impact), on par with an unverified external claim — "the docstring lies" must never pass review. Scope this to *behavioral* contracts (invariants, guarantees, "the caller is expected to…"), not prose style. (Origin: a `rank_between` docstring promised a column "renumber" that did not exist, masking a data-corruption bug.)
    - Ensure adherence to project-specific coding standards and conventions
 
 5. **Issue Identification and Recommendations**:
