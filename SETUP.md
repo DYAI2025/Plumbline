@@ -93,9 +93,39 @@ tooling in.
 - **Windows:** `install.sh` is Bash → run under Git Bash or WSL; prefer `--copy` (symlinks
   are restricted). `python3` must be on PATH.
 
-## 8. Smoke test (verify before relying on it)
+## 8. Claude Code on the web ("co-work") — zero-touch bootstrap
+
+On the web, Claude Code clones this repo into a fresh, ephemeral container each
+session with an **empty `~/.claude`**, and nobody runs `install.sh` by hand — so
+`/agileteam` would otherwise be missing. A **SessionStart hook** closes that gap:
+
+- `.claude/settings.json` (repo root) registers
+  `config/claude/hooks/session-start.sh` as a SessionStart hook. Claude Code on
+  the web auto-discovers project-level `.claude/settings.json`, so **no manual
+  step is needed** — once this is on your default branch, every web session runs it.
+- `session-start.sh` runs `install.sh --copy` so `/agileteam`, `/agileteam-bench`,
+  the `konfabulations-audit` skill and the learning-loop Stop hook are present
+  **before the agent loop starts** (it runs synchronously to avoid a race).
+
+Behaviour & safety:
+
+- **Remote-only by default** — it acts only when `CLAUDE_CODE_REMOTE=true` (the web
+  env). In a local session it is a no-op so your global `~/.claude` is untouched;
+  run `install.sh` yourself there. Force it anywhere with `AGILETEAM_FORCE_BOOTSTRAP=1`.
+- **Idempotent and never fatal** — always exits 0 and keeps stdout clean, so a setup
+  hiccup can never abort your session.
+
+> Note: this delivers the *vendored* pieces (commands + `konfabulations-audit`). The
+> external skill packs in §3 are still installed separately; without them `/agileteam`
+> runs in CORE mode (see §6).
+
+## 9. Smoke test (verify before relying on it)
 
 ```bash
+# the whole CI check suite (frontmatter, metrics, settings, stop hook, web bootstrap, shellcheck):
+bash config/claude/tests/run_all.sh
+
+# or individual pieces:
 python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py && echo PY_OK
 python3 config/claude/metrics/emit_run.py --dry-run --metrics '{"first_pass":0.8}'
 # run the README "Validate" snippet to check agent frontmatter (parse / dupes / description)

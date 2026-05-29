@@ -101,6 +101,11 @@ governance in `docs/agileteam-governance.md`. Activate on a machine with:
 > optional integrations (kanban-md, claude-reflect), per-project gate tooling, and
 > Windows notes.
 
+> **Claude Code on the web ("co-work")?** No manual install needed. A SessionStart
+> hook (`config/claude/hooks/session-start.sh`, registered in `.claude/settings.json`)
+> runs `install.sh` automatically on session start so `/agileteam` + the vendored skill
+> are ready. It is remote-only by default and never fatal — see `SETUP.md` §8.
+
 What ships with v3:
 
 - **6 workflow agents** in `agileteam/` (above) + the existing core/testing agents.
