@@ -4,7 +4,9 @@
 # ~/.claude. Idempotent — only acts when a target is missing (or with --force).
 #
 # Currently:
-#   - transfers  config/claude/commands/agileteam.md -> ~/.claude/commands/agileteam.md
+#   - transfers  config/claude/commands/agileteam.md       -> ~/.claude/commands/agileteam.md
+#   - transfers  config/claude/commands/agileteam-bench.md -> ~/.claude/commands/agileteam-bench.md
+#   - transfers  config/claude/skills/konfabulations-audit -> ~/.claude/skills/konfabulations-audit
 #   - registers  the learning-loop Stop hook in ~/.claude/settings.json (needs jq)
 #
 # By default it SYMLINKS the command (so repo edits stay live); pass --copy to copy.
@@ -34,7 +36,7 @@ transfer() {
   fi
   rm -f "$dst"
   if [ "$MODE" = "copy" ]; then
-    cp "$src" "$dst"; echo "copied:   $dst"
+    cp -R "$src" "$dst"; echo "copied:   $dst"
   else
     ln -s "$src" "$dst"; echo "symlinked: $dst -> $src"
   fi
@@ -71,6 +73,8 @@ register_stop_hook() {
 }
 
 transfer "$REPO_DIR/config/claude/commands/agileteam.md" "$CLAUDE_HOME/commands/agileteam.md"
+transfer "$REPO_DIR/config/claude/commands/agileteam-bench.md" "$CLAUDE_HOME/commands/agileteam-bench.md"
+transfer "$REPO_DIR/config/claude/skills/konfabulations-audit" "$CLAUDE_HOME/skills/konfabulations-audit"
 register_stop_hook
 
 echo "done. Open /hooks once (or restart Claude Code) so /agileteam and the Stop hook are picked up."

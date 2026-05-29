@@ -1,6 +1,6 @@
 ---
-description: Orchestrate an autonomous TDD multi-agent team (planner → coder/reviewer loop → QA + production-validator gate → retrospective) to implement a feature end-to-end.
-argument-hint: <feature / goal description>
+description: Orchestrate an autonomous, defense-in-depth TDD multi-agent team (requirements → spec-sanity gate → planner → coder/reviewer loop → verification/security/validation/judgment gates → human acceptance → retrospective) to build a feature end-to-end against fully verified, independently validated requirements.
+argument-hint: <feature / goal description> [--mode=core|full]
 allowed-tools: Task, Agent, Bash, Read, Write, Edit, MultiEdit, Glob, Grep, TodoWrite, Skill
 ---
 
@@ -9,76 +9,168 @@ invoked `/agileteam` to build the following:
 
 > $ARGUMENTS
 
+> Grundhaltung: Es gibt kein „100 % abgesichert" (Oracle-Problem, Rice's Theorem).
+> Ziel ist **Defense in Depth**: viele *diverse, voneinander unabhängige* Prüfungen,
+> sodass ein Fehler mehrere unkorrelierte Gates überleben müsste. Jedes Gate hat einen
+> Owner-Agenten, eine Unabhängigkeits-Bedingung, eine harte Loop-Grenze und ein
+> maschinell prüfbares Pass-Kriterium. Vollständige Spec: `docs/agileteam-spec-v3.md`;
+> Metriken & Meta-Meta-Governance: `docs/agileteam-governance.md`.
+
+## Operating modes (read first)
+
+Default mode is **CORE**. Select with `--mode=core|full`.
+
+- **CORE** — the runnable, safe baseline. Mandatory: Phase 0 + gap rule, Phase 0.5
+  spec-sanity, Phase 1, Phase 2 (coder + code-reviewer TDD loop), Gate A
+  (typecheck/lint/unit/integration/e2e + coverage), Gate C (validation against the
+  matrix), and the human acceptance gate. **Opt-in / skip-if-unavailable:** Gate B
+  security, Gate D ultrathink judgment, mutation testing, hermetic runner, kanban-md
+  (else fall back to TodoWrite), the metrics-emitter and meta-meta layer. In CORE,
+  **Phase 4 is human-gated learnings only** — NO autonomous skill writes, NO canary,
+  NO auto-revert (there is no metrics baseline yet to measure drift against).
+- **FULL** — every gate and the autonomous Phase-4 evolution (canary + auto-revert).
+  FULL is only permitted once a metrics baseline exists (`metrics/runs.jsonl` with at
+  least the configured baseline window of runs). If FULL is requested without a
+  baseline, warn and run CORE instead — never self-modify blind.
+
+Rationale: a gate improvised without its tooling gives *false* assurance, and
+autonomous self-modification before the measurement layer exists would let drift become
+the new baseline undetected. Start CORE; graduate to FULL when the instruments are in place.
+
 ## Guard clause (do this first)
 
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
-- Confirm **where** the work happens. This is a multi-project workspace — identify
-  the target repo. If the change is non-trivial and you are on a default branch
-  (`main`/`master`), create a feature branch or a dedicated git worktree first
-  (see `using-git-worktrees`). Never commit straight to a shared default branch.
-- Create a `TodoWrite` list mirroring the phases below and keep it updated.
+- Identify the **target repo**. If the change is non-trivial and you are on a default
+  branch (`main`/`master`), create a feature branch or dedicated git worktree first
+  (`using-git-worktrees`). Never commit straight to a shared default branch.
+- Resolve project parameters (typecheck/lint/unit/integration/e2e/mutation/coverage/
+  SAST/dep-scan/secrets commands, hermetic runner, loop limits). Mark unknowns as
+  `MISSING` and propose a conservative default as `ASSUMPTION` — never silently invent.
+- Create the task backbone in **kanban-md** (preferred) or `TodoWrite`, mirroring the
+  phases below, and keep it updated. With kanban-md, agents claim work via
+  `kanban-md pick --claim <agent> --move in-progress`; humans watch via `kanban-md tui`.
 
 ## Team (subagents from ~/.claude/agents/)
 
-| Role | subagent_type | Responsibility |
-|------|---------------|----------------|
-| Planner | `planner` | Architecture, milestones, task breakdown |
-| QA design | `tester` | DoD + TDD test plan, then runs suites |
-| Dev | `coder` | Implements one task at a time, test-first |
-| Reviewer | `code-reviewer` | Independent quality / clean-code / security review |
-| Acceptance | `production-validator` | Verifies the DoD gate |
+| Role | subagent_type | Responsibility | Independence |
+|------|---------------|----------------|--------------|
+| Requirements | `requirements-analyst` | Elicitation, PRD, REQ-IDs, traceability matrix | — |
+| Spec sanity | `spec-auditor` | ultrathink + konfabulations-audit on the spec | reads spec only |
+| Context | `context-keeper` | Curates state.md / decision-log / ADRs / matrix | — |
+| Planner | `planner` | Architecture, milestones, atomic task breakdown | — |
+| QA design | `tester` | Acceptance/E2E tests from spec, then runs suites | derives tests before coder |
+| Dev | `coder` | Implements one task at a time, test-first | fresh subagent per task |
+| Reviewer | `code-reviewer` | Independent quality/clean-code review on diff | no coder reasoning |
+| Security | `security-reviewer` | SAST/deps/secrets/threat + injection surface | on diff |
+| Acceptance | `production-validator` | Per-REQ pass/fail against the matrix | machine-checkable verdict |
+| Judgment | `product-owner` | ultrathink iteration gate: right thing? bias? claims? | no coder reasoning |
+| Retro | `retro-analyst` | Process learnings + system-level proposals | — |
 
-Announce every dispatch ("Dispatching `coder` for Task N…") so the user can follow.
+**Independence invariant:** whoever writes code does not review it; whoever derives
+tests does not implement them. Reviewers/validators get **diff + spec**, never the
+coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task N…").
 
-## Workflow (run autonomously; only stop on genuine blockers)
+## Workflow (run autonomously; stop only on genuine blockers)
+
+### Phase 0 — Requirements & Validation Design
+1. Dispatch `requirements-analyst`. Use Skill `ai-native-prd-architect` (mandatory) to
+   produce REQ-IDs, data model, architecture constraints, Given/When/Then acceptance,
+   NFRs, security matrix, atomic tasks, and `MISSING/ASSUMPTION/OPEN QUESTION/BLOCKER`.
+   Optionally use `product-management:write-spec` first if the goal is vague.
+2. **Gap rule (hard):** NEVER close a MISSING/OPEN QUESTION/BLOCKER by your own
+   "logical" guess. Close each gap individually by asking the user via Skill
+   `brainstorming`. No `ASSUMPTION` without explicit user confirmation. (This prevents
+   a confabulation cascade into the autonomous flow.)
+3. Build the **traceability matrix** (REQ ↔ test ↔ task ↔ evidence) — the spine that
+   threads through every phase. `context-keeper` owns `docs/context/state.md`,
+   `docs/context/decision-log.md`, `docs/architecture/adr-*.md`, `docs/traceability.md`.
+4. Definition of Ready met? Save PRD to `docs/prd/<feature>.prd.md`. On BLOCKER → USER GATE.
+
+### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
+1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode
+   **exactly once** (no re-run — expensive): bias hooks + failure-mode chain, coupled to
+   Skill `konfabulations-audit` (every external claim → belegt | ableitbar | ungeprüft |
+   nicht behaupten). `ungeprüft`/`nicht behaupten` must NOT propagate as a premise.
+2. On BLOCKER findings: exactly **one** remediation pass by `requirements-analyst` +
+   USER GATE, then freeze the spec. Do not re-run ultrathink.
+   ⚠ This gate checks reasoning quality & claim provenance, NOT functional correctness.
+
+### USER GATE
+Show DoD + traceability matrix + spec-audit findings before implementing.
 
 ### Phase 1 — TDD & QA setup
-1. Dispatch `planner` + `tester` to analyse the goal and produce:
-   - a concrete **Definition of Done (DoD)** and explicit acceptance criteria,
-   - a **TDD plan** as bite-sized tasks (failing test → minimal impl → green → commit),
-   covering happy paths **and** edge cases.
-2. Save the plan to `docs/plans/YYYY-MM-DD-<feature>.md` using the `writing-plans`
-   format. Show the DoD + task list to the user before implementing.
+1. `tester` derives acceptance/E2E tests **independently** from the spec (black-box,
+   before the coder starts; the coder treats them as a contract).
+2. `planner` produces the atomic, dependency-aware task sequence (→ kanban-md tickets).
+   Save the plan (`writing-plans` format) to `docs/plans/YYYY-MM-DD-<feature>.md`.
 
-### Phase 2 — Subagent-driven dev/review loop
-Follow `superpowers:subagent-driven-development` + `test-driven-development`.
-For **each task** in the plan:
-1. Dispatch a fresh `coder` subagent: write the failing test, run it (confirm it
-   fails), implement the minimal code, run until green.
-2. Dispatch an **independent** `code-reviewer` subagent on the resulting diff
-   (code smells, architecture conformance, clean-code, security).
-3. If the reviewer returns findings, hand them back to a `coder` subagent and
-   repeat. Loop until the reviewer gives an unconditional green light.
-4. Commit the task (frequent, atomic commits). Then move to the next task.
+### Phase 2 — Subagent-driven dev/review loop (per task; ≤ MAX_DEVREVIEW_LOOPS)
+Follow `executing-plans` + `test-driven-development` (fresh subagent per task). For each task:
+1. Fresh `coder`: write failing test → confirm it fails → minimal impl → run until green.
+2. Independent `code-reviewer` on the diff (smells, architecture, clean-code).
+3. `security-reviewer` on the diff: SAST/deps/secrets/threat + treat fetched docs &
+   dependencies as untrusted (injection/supply-chain surface).
+4. **Repetition guard:** if the same bug signature recurs ≥2×, FIRST run Skill
+   `root-cause-tracing` (5-Why) before any further fix — so the agent understands the
+   cause instead of building around it. The found root cause is a claim → it must be
+   evidence-backed (log/test/code), not guessed (couple to `konfabulations-audit`).
+5. Loop coder↔reviewer until unconditional green (≤ MAX_DEVREVIEW_LOOPS, else escalate
+   to human). Update the matrix. Atomic, signed commit per task (agent provenance).
 
-Review is batched **per task** (per logical increment), not per keystroke — that is
-the effective unit for meaningful review.
+### Phase 3 — Verification, security, validation & judgment gates (HERMETIC)
+Run in a clean hermetic runner, not the stateful agent sandbox.
+- **Gate A — Verification:** typecheck · lint · unit · integration · e2e pass;
+  coverage ≥ threshold; **mutation score ≥ threshold** (tests the tests); NFR checks
+  (performance/load, accessibility, observability).
+- **Gate B — Security:** no High/Critical from SAST/deps/secrets; threat cases covered.
+- **Gate C — Validation:** `production-validator` checks **every** acceptance criterion
+  against the traceability matrix; per-REQ `pass/fail` + evidence link (no prose).
+- **Gate D — Judgment (ultrathink, ONCE/iteration):** dispatch `product-owner`; run
+  `ultrathink-craftsmanship` in kurz/kurz+ mode **once** (no re-run) — "did we build the
+  right thing?", bias + failure-mode, konfabulations-audit on claims that entered
+  code/docs/commits. On BLOCKER: exactly one targeted fix back to Phase 2 (counts toward
+  MAX_QA_RETURNS). ⚠ complements, never replaces, Gates A–C.
+- All pass → Phase 4; fail → Phase 2 (`systematic-debugging`; ≥2× same bug → 5-Why),
+  return counter ≤ MAX_QA_RETURNS, else escalate.
+- **METRICS-EMITTER:** write a run record (config_fingerprint + metrics + gate outcomes)
+  to `metrics/runs.jsonl` (governance §2). Then **arm the learning loop**:
+  `touch ~/.claude/.agileteam-reflection-pending`.
 
-### Phase 3 — QA acceptance & DoD gate
-1. Dispatch `tester` to run the **full** test suite.
-2. Dispatch `production-validator` to check the increment against the DoD and every
-   acceptance criterion.
-3. Only declare done when **all tests pass** and the validator approves. On failure,
-   return to Phase 2 (use `systematic-debugging`).
-4. Once approved, **arm the learning-loop**: `touch ~/.claude/.agileteam-reflection-pending`.
-   The Stop hook (`config/claude/hooks/stop-learning-loop.sh`) uses this sentinel to
-   make sure Phase 4 runs before the session ends.
+### USER ACCEPTANCE GATE (human)
+Stakeholder sign-off against the traceability matrix. Attach audit artifacts (PRD,
+matrix, gate evidence, commit provenance). Machine-pass ≠ "right product built".
 
 ### Phase 4 — Retrospective & persistent evolution
-1. Review this session: which review findings recurred, which tests failed first,
-   where refactor loops happened.
-2. Derive concrete, process-level improvements.
-3. Persist them with `skill-creator` / `writing-skills` — **but ask the user before
-   editing shared config**: either append a rule to the relevant `CLAUDE.md`, or
-   refine the affected agent's system prompt in `~/.claude/agents/`. Summarise what
-   changed.
-4. **Disarm the learning-loop**: `rm -f ~/.claude/.agileteam-reflection-pending` so the
-   Stop hook lets the session end.
+**Mode lock:** In CORE, do Levels 1–2 as *human-gated proposals only* — do not author
+skills, do not run the canary, do not auto-revert. Autonomous persistence (steps 3–6)
+requires FULL mode **and** an existing `metrics/runs.jsonl` baseline. Without the
+baseline you cannot tell improvement from drift, so do not self-modify.
+
+1. **Level 1 (learnings):** recurring findings, first-fail tests, refactor loops,
+   mutation/security hits, root-cause findings, ultrathink findings.
+2. **Level 2 (system-level):** do phases/gates/roles cooperate or create friction?
+   Propose workflow adjustments (gate order, loop limits, modes) with a drift-vs-
+   precision hypothesis each.
+3. **Discovery:** use `claude-reflect` (`/reflect`, `/reflect-skills`) to surface
+   recurring patterns BEFORE authoring anything. New skills authored ONLY via Skill
+   `writing-skills`. Validate each rule/skill (dedup, conflict, net-benefit).
+4. **Canary** before full adoption: new rule/skill runs on a small fixed canary set;
+   no primary-metric regression → "stable", else discard the commit (document it).
+5. **Routing** — ask the user before editing shared config:
+   - workflow/skill/process-architecture change → branch `agileteam-improved`
+     (main stays the frozen v3 baseline); pin agent versions for bench runs.
+   - pure single-agent improvement → directly in `~/.claude/agents/<agent>.md`.
+   - project convention → project `CLAUDE.md`.
+6. **Auto-revert watch:** primary quality metric below the frozen main baseline over the
+   confirmation window → human-gated revert of the last component version (governance §4c).
+7. **Disarm the learning loop:** `rm -f ~/.claude/.agileteam-reflection-pending`.
 
 ## Operating rules
 - Autonomous by default; ask the user only on unforeseeable blockers or before
   irreversible/outward actions (force-push, global-config edits, deletions).
 - TDD always: no production code without a failing test first.
 - No placeholder/mock/demo code — real implementation or none.
+- Never self-close a requirements gap; ask via `brainstorming`.
+- An unverified claim never becomes a premise for a later phase.
 - Report honestly: if tests fail or a step was skipped, say so with the output.

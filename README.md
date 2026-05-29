@@ -5,14 +5,15 @@ from `~/.claude/agents/`. Each `.md` file defines one agent via YAML frontmatter
 plus a Markdown system prompt; Claude Code discovers them by name and can delegate
 tasks to them.
 
-**76 agents** across 20 categories (this is largely a [claude-flow](https://github.com/ruvnet/claude-flow)
-agent pack, extended with standalone agents).
+**82 agents** across 21 categories (largely a [claude-flow](https://github.com/ruvnet/claude-flow)
+agent pack, extended with standalone agents and the 6 `/agileteam` workflow roles).
 
 ## Layout
 
 | Directory | Count | Purpose |
 |-----------|------:|---------|
 | `core/` | 5 | Foundational roles: coder, planner, researcher, reviewer, tester |
+| `agileteam/` | 6 | `/agileteam` v3 roles: requirements-analyst, spec-auditor, product-owner, security-reviewer, retro-analyst, context-keeper |
 | `github/` | 13 | PR / issue / repo / release / workflow automation |
 | `flow-nexus/` | 9 | Flow Nexus platform agents (sandboxes, swarms, neural, payments…) |
 | `templates/` | 9 | Reusable scaffold/template variants of other agents |
@@ -85,12 +86,33 @@ PY
 
 ## Agile team & learning loop
 
-`config/claude/` vendors the `/agileteam` orchestrator command and an evolutionary
-learning loop (see `CLAUDE.md`). Activate them on a machine with:
+`config/claude/` vendors the **`/agileteam` v3** orchestrator (a defense-in-depth,
+spec-driven multi-agent build workflow) and an evolutionary learning loop (see
+`CLAUDE.md`). The full design is in `docs/agileteam-spec-v3.md`; metrics & meta-meta
+governance in `docs/agileteam-governance.md`. Activate on a machine with:
 
 ```bash
-./config/claude/install.sh    # transfers the command + registers the Stop hook (needs jq)
+./config/claude/install.sh    # transfers /agileteam + /agileteam-bench commands,
+                              # the konfabulations-audit skill, and registers the Stop hook (needs jq)
 ```
+
+> **New machine?** See **`SETUP.md`** for the full portability checklist: required
+> toolchain (`jq`, `python3`, `git`), the expected skill plugins (and namespace caveat),
+> optional integrations (kanban-md, claude-reflect), per-project gate tooling, and
+> Windows notes.
+
+What ships with v3:
+
+- **6 workflow agents** in `agileteam/` (above) + the existing core/testing agents.
+- **`config/claude/skills/konfabulations-audit/`** — claim-provenance gate, companion to
+  the `ultrathink-craftsmanship` skill.
+- **`config/claude/commands/agileteam-bench.md`** — the drift-vs-precision comparison.
+- **`config/claude/metrics/`** — `emit_run.py` (run records → `metrics/runs.jsonl`) and
+  `process_health.py` (SPC + component attribution → `metrics/process-health.md`). Pure
+  stdlib, no dependencies.
+- **Operating modes:** `/agileteam` defaults to **CORE** (runnable, safe baseline;
+  Phase-4 self-modification locked). **FULL** unlocks autonomous evolution and is only
+  permitted once a `metrics/runs.jsonl` baseline exists.
 
 The learning loop is driven by a **sentinel-gated Stop hook**
 (`config/claude/hooks/stop-learning-loop.sh`): `/agileteam` creates
