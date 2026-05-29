@@ -1,171 +1,171 @@
 # Claude Agents: Advanced Multi-Agent Systems for Claude Code
 
-**82 Claude-Code-Subagents · 16 vendored Skills · `/agileteam` v3 · Swarm-/Hive-Mind-Patterns · kontrollierte Self-Developing-Agent-Loops**
+**82 Claude Code subagents · 16 vendored skills · `/agileteam` v3 · AI agent automation · swarm and hive-mind patterns · controlled self-developing agent loops**
 
-> **Ein Advanced-Agent-Engineering-Lab für Claude Code:** 82 spezialisierte Subagents, vendored Skills, Slash Commands, Hooks und Metriken für Menschen, die komplexe Multi-Agent-Systeme, autonome Software-Automation, TDD-Agent-Teams, Swarm-Koordination und kontrollierte Self-Improvement-Loops bauen oder erforschen wollen.
+> **An advanced AI agent engineering lab for Claude Code.** This repository packages 82 specialized subagents, portable skills, slash commands, lifecycle hooks, metrics, governance docs, and a defense-in-depth `/agileteam` workflow for builders who want to design, test, automate, and evolve complex multi-agent systems instead of relying on one-shot prompts.
 
-**Hashtags / Discovery:**  
-`#AIAgents` `#AgenticAI` `#ClaudeCode` `#MultiAgentSystems` `#AgentSwarm` `#HiveMind` `#SelfDevelopingAgents` `#SelfImprovingAI` `#Automation` `#AutonomousCoding` `#TDD` `#DevOpsAutomation` `#AIWorkflow` `#SPARC` `#GOAP` `#ConsensusAgents` `#AdvancedAgentSystems` `#AIAgentBubble` `#AgentEngineering`
-
----
-
-## Was ist dieses Repo?
-
-Dieses Repository ist die versionierte Quelle für eine umfangreiche Sammlung von **Claude Code Agent Definitions**. Jede Agent-Datei ist eine Markdown-Datei mit YAML-Frontmatter und einem System-Prompt. Claude Code entdeckt diese Dateien über `~/.claude/agents/` und kann Aufgaben an die Agenten delegieren.
-
-Das Repo ist mehr als eine lose Prompt-Sammlung:
-
-- **82 Agenten** in 23 Verzeichnissen: Core-Rollen, GitHub-Automation, Swarm-/Hive-Mind-Koordinatoren, Consensus-Protokolle, SPARC-Phasen, Optimierungsagenten, Flow-Nexus-Agenten und Domänenspezialisten.
-- **16 vendored Skills** unter `config/claude/skills/`, damit wichtige Workflows auch ohne externe Skill-Packs portabel bleiben.
-- **`/agileteam` v3**: ein spec-getriebener Multi-Agent-Orchestrator, der Requirements, Spec-Audit, TDD, Review, Security, Validation, Product-Judgment und Retrospektive verbindet.
-- **Learning Loop**: ein sentinel-gesteuerter Stop-Hook kann nach einem abgeschlossenen `/agileteam`-Run eine Retro erzwingen und human-gated Prozessverbesserungen vorschlagen.
-- **Explorer UI**: `agent-explorer.html` ist ein statischer Snapshot, mit dem die Agenten durchsuchbar und filterbar werden.
-
-Kurz: Dieses Repo ist der Maschinenraum für die Advanced-AI-Agent-Bubble: keine lose Prompt-Liste, sondern konkrete, versionierte Bausteine für agentische Workflows, automatisierte Softwareentwicklung, Swarm-Experimente und kontrollierte Agenten-Evolution.
+**Discovery tags:**  
+`#AIAgents` `#AgenticAI` `#ClaudeCode` `#ClaudeAgents` `#MultiAgentSystems` `#AgentSwarm` `#HiveMind` `#SelfDevelopingAgents` `#SelfImprovingAI` `#AutonomousAgents` `#AutonomousCoding` `#AgentAutomation` `#AIAutomation` `#AgentEngineering` `#PromptEngineering` `#LLMOps` `#TDD` `#DevOpsAutomation` `#SPARC` `#GOAP` `#ConsensusAgents` `#AdvancedAgentSystems`
 
 ---
 
-## Warum dieses Repo interessant ist
+## What is this repository?
 
-### 1. Multi-Agent statt One-Shot-Prompt
+This repository is a versioned collection of **Claude Code agent definitions**. Each agent is a Markdown file with YAML frontmatter and a role-specific system prompt. Claude Code discovers these files from `~/.claude/agents/` and can delegate work to the right subagent by name and description.
 
-Die Agenten sind bewusst in Rollen getrennt: Planner plant, Coder implementiert, Reviewer prüft unabhängig, Tester formuliert Akzeptanztests, Security sucht Risiken, Product Owner beurteilt Produktfit. Dadurch entstehen Workflows, in denen unterschiedliche Agenten unterschiedliche Perspektiven und Kontexte haben.
+It is more than a prompt dump:
 
-### 2. Defense in Depth statt „Tests grün, alles gut“
+- **82 agents across 23 agent directories** for coding, planning, research, review, testing, GitHub automation, swarm coordination, hive-mind coordination, distributed consensus, SPARC workflows, optimization, Flow Nexus platform tasks, and domain-specific engineering.
+- **16 vendored skills** in `config/claude/skills/` so important agent workflows remain portable even when external skill packs are unavailable.
+- **`/agileteam` v3**, a spec-driven multi-agent software delivery workflow that connects requirements, spec auditing, TDD, implementation, independent review, security review, production validation, product judgment, human acceptance, and retrospective learning.
+- **Controlled self-improvement loops** through metrics, governance, a sentinel-gated Stop hook, and human-gated persistence rules.
+- **A searchable static explorer** in `agent-explorer.html` for browsing the agent catalog.
 
-Der `/agileteam`-Workflow unterscheidet zwischen interner Korrektheit, Sicherheitslage, Requirement-Abdeckung, Produktnutzen und menschlicher Abnahme. Ziel ist nicht die Illusion absoluter Sicherheit, sondern mehrere unabhängige Gates, sodass ein Fehler mehrere Prüfungen überleben müsste.
-
-### 3. Self-Developing Agents — aber mit Guardrails
-
-Das Repo enthält einen Learning Loop, der aus wiederkehrenden Fehlern Prozessverbesserungen ableitet. In CORE-Mode bleiben diese Vorschläge human-gated. FULL-Mode ist für autonomere Evolution vorgesehen, setzt aber Metrik-Baselines, Canary und Auto-Revert voraus. Das ist bewusst konservativer als „Agent schreibt einfach seine eigene Zukunft um“.
-
-### 4. Agent Engineering als Repo, nicht als Bauchgefühl
-
-Agenten, Skills, Commands, Hook-Skripte, Metriken und Governance-Dokumente liegen versioniert vor. Dadurch können Änderungen reviewed, getestet, gebenchmarkt und zurückgerollt werden.
+In short: this is an advanced agentic software engineering toolkit for people building complex AI agent systems, autonomous coding workflows, swarm experiments, and auditable self-improving agent processes.
 
 ---
 
-## Inhalt auf einen Blick
+## Why this project matters
 
-| Bereich | Anzahl | Zweck |
+### 1. Multi-agent workflows instead of one-shot prompting
+
+The collection separates responsibilities across specialized roles: planners plan, coders implement, testers design acceptance tests, reviewers critique diffs, security agents inspect risk, production validators map evidence to requirements, and product-owner agents judge whether the right thing was built. That separation creates richer, more reliable agentic workflows than a single general-purpose prompt.
+
+### 2. Defense in depth for agentic software delivery
+
+The `/agileteam` workflow distinguishes internal correctness, security posture, requirement coverage, user value, and human approval. The goal is not a false promise of perfect safety; the goal is to stack independent gates so a defect must survive several unrelated checks before it ships.
+
+### 3. Self-developing agents with guardrails
+
+The repository supports process learning from recurring failures, but it does not blindly let agents rewrite their own future. In CORE mode, learnings stay human-gated. FULL mode can unlock autonomous evolution only after metrics baselines, canaries, and auto-revert protections exist.
+
+### 4. Agent engineering as versioned infrastructure
+
+Agents, skills, commands, hooks, metrics scripts, governance docs, and installer behavior all live in git. That means your agent system can be reviewed, tested, benchmarked, forked, reverted, and improved like software.
+
+---
+
+## Repository contents at a glance
+
+| Area | Count | Purpose |
 |---|---:|---|
-| `core/` | 5 | Basisrollen: `coder`, `planner`, `researcher`, `reviewer`, `tester` |
-| `agileteam/` | 6 | Workflow-Rollen für `/agileteam` v3: Requirements, Spec Audit, PO, Security, Retro, Context |
-| `github/` | 13 | PR-, Issue-, Release-, Repo-, Workflow- und Multi-Repo-Automation |
-| `flow-nexus/` | 9 | Flow-Nexus-Plattformagenten: Sandbox, Swarm, Workflow, Auth, Payments, Neural usw. |
-| `templates/` | 9 | Wiederverwendbare Agenten-Templates und Scaffold-Varianten |
-| `consensus/` | 7 | Distributed-Systems-Patterns: Byzantine, Raft, Gossip, CRDT, Quorum, Security, Benchmarking |
-| `hive-mind/` | 5 | Queen-/Worker-/Scout-/Memory-Patterns für kollektive Intelligenz |
-| `optimization/` | 5 | Performance, Topology, Ressourcen, Load Balancing, Benchmarking |
-| `sparc/` | 4 | SPARC-Phasen: Specification, Pseudocode, Architecture, Refinement |
-| `swarm/` | 3 | Swarm-Topologien: adaptive, hierarchical, mesh |
-| `goal/` | 2 | Goal-Oriented Action Planning für Aufgaben- und Code-Ziele |
-| `reasoning/` | 2 | Reasoning-/Goal-Planning-Varianten |
-| `testing/` | 2 | TDD-London-Swarm und Production Validation |
-| `analysis/`, `architecture/`, `data/`, `development/`, `devops/`, `documentation/`, `neural/`, `specialized/` | 8 | Domänenspezialisten für Analyse, Architektur, ML, Backend, CI/CD, API-Doku, Neural, Mobile |
-| Repo-Root | 2 | `base-template-generator` und `code-reviewer` |
-| `config/claude/skills/` | 16 | Vendored Skills/Fallbacks für portables Arbeiten |
-| `config/claude/commands/` | 4 | Slash Commands: `/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills` |
+| `core/` | 5 | Foundational roles: `coder`, `planner`, `researcher`, `reviewer`, `tester` |
+| `agileteam/` | 6 | `/agileteam` v3 workflow roles: requirements, spec audit, product owner, security, retrospective, context |
+| `github/` | 13 | Pull request, issue, release, repository, workflow, and multi-repo automation |
+| `flow-nexus/` | 9 | Flow Nexus platform agents for sandboxes, swarms, workflows, auth, payments, neural features, and user tooling |
+| `templates/` | 9 | Reusable scaffolds and template variants for agent creation |
+| `consensus/` | 7 | Distributed-systems patterns: Byzantine, Raft, Gossip, CRDT, Quorum, security, benchmarking |
+| `hive-mind/` | 5 | Queen, worker, scout, memory, and collective-intelligence coordination patterns |
+| `optimization/` | 5 | Performance monitoring, topology optimization, load balancing, resource allocation, benchmarks |
+| `sparc/` | 4 | SPARC phases: specification, pseudocode, architecture, refinement |
+| `swarm/` | 3 | Adaptive, hierarchical, and mesh swarm coordinators |
+| `goal/` | 2 | Goal-oriented action planning for product and code goals |
+| `reasoning/` | 2 | Reasoning and goal-planning variants |
+| `testing/` | 2 | London-school TDD swarm and production validation |
+| `analysis/`, `architecture/`, `data/`, `development/`, `devops/`, `documentation/`, `neural/`, `specialized/` | 8 | Domain specialists for code analysis, architecture, ML, backend, CI/CD, API docs, neural systems, and mobile |
+| Repository root | 2 | `base-template-generator` and `code-reviewer` |
+| `config/claude/skills/` | 16 | Vendored skills and fallbacks for portable agent workflows |
+| `config/claude/commands/` | 4 | Slash commands: `/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills` |
 
 ---
 
-## Wichtige Konzepte
+## Core concepts
 
-### Agent Definition
+### Agent definition
 
-Eine Agent-Datei beginnt mit YAML-Frontmatter und enthält anschließend den eigentlichen Prompt. Minimal erforderlich:
+An agent file starts with YAML frontmatter and then contains the prompt. Minimal example:
 
 ```yaml
 ---
 name: my-agent
-# Claude Code nutzt diese Beschreibung zur Auswahl des passenden Agenten.
+# Claude Code uses this description to decide when the agent is relevant.
 description: "One line on what it does and when to use it"
 ---
 ```
 
-Regeln:
+Rules:
 
-- `name` muss über die gesamte Sammlung eindeutig sein.
-- `description` muss auf Top-Level stehen und aussagekräftig sein.
-- Enthält eine Beschreibung `: `, sollte sie komplett gequotet werden, damit YAML korrekt parsebar bleibt.
-- Zwei Frontmatter-Stile koexistieren:
-  - **Standard Template** mit `triggers`, `capabilities`, `constraints`, `behavior`, `examples`.
-  - **claude-flow Style** mit `tools`, `priority` und optionalen `npx claude-flow@alpha hooks`.
+- `name` must be unique across the entire collection.
+- `description` must exist at the top level and should clearly state when to use the agent.
+- If a `description` contains a colon followed by a space, quote the whole value so YAML parses correctly.
+- Two frontmatter styles coexist:
+  - **Standard template:** richer `triggers`, `capabilities`, `constraints`, `behavior`, and `examples` blocks.
+  - **claude-flow style:** leaner `tools`, `priority`, and optional `npx claude-flow@alpha hooks` usage.
 
 ### Skill
 
-Skills unter `config/claude/skills/` sind portable Fallbacks für Fähigkeiten, die der `/agileteam`-Workflow referenziert. Beispiele: TDD, Root-Cause-Tracing, Skill-Erstellung, Ultra-Think-Craftsmanship, Konfabulations-Audit und Claude-Reflect-Fallbacks.
+Skills in `config/claude/skills/` are portable fallbacks for capabilities referenced by `/agileteam`. Examples include TDD, root-cause tracing, skill creation, ultrathink craftsmanship, confabulation auditing, and local Claude Reflect fallbacks.
 
 ### Command
 
-Commands unter `config/claude/commands/` werden nach `~/.claude/commands/` installiert. Besonders wichtig ist `/agileteam`, der eine vollständige agentische Delivery-Pipeline orchestriert.
+Commands in `config/claude/commands/` are installed into `~/.claude/commands/`. The most important command is `/agileteam`, which orchestrates the full multi-agent software delivery pipeline.
 
 ### Hook
 
-Hooks unter `config/claude/hooks/` automatisieren Bootstrap und Learning Loop:
+Hooks in `config/claude/hooks/` automate bootstrap and learning-loop behavior:
 
-- `session-start.sh`: kann in Claude Code Web Sessions automatisch Setup durchführen.
-- `stop-learning-loop.sh`: blockiert Session-Ende nur dann, wenn eine Agile-Team-Retro per Sentinel ansteht.
+- `session-start.sh` can bootstrap Claude Code web sessions automatically.
+- `stop-learning-loop.sh` only blocks session end when a retrospective sentinel is present.
 
 ---
 
-## `/agileteam` v3: autonomes TDD-Team mit Gates
+## `/agileteam` v3: autonomous TDD team with verification gates
 
-`/agileteam` ist der anspruchsvollste Teil des Repos. Der Command orchestriert eine Softwareentwicklungskette mit klaren Rollen:
+`/agileteam` is the most advanced workflow in this repository. It orchestrates a role-separated software delivery pipeline:
 
-1. **Requirements**: Anforderungen, PRD, Akzeptanzkriterien, Traceability.
-2. **Spec sanity**: Spec-Audit, Konfabulationsprüfung, Bias-/Failure-Mode-Check.
-3. **Planning**: Architektur, Tasks, Sequenz, Kontextartefakte.
-4. **TDD/Implementation**: Coder schreibt erst Tests, dann minimale Implementierung.
-5. **Independent Review**: Reviewer bewertet Diff ohne Coder-Gedankengang.
-6. **Security Review**: SAST/Dependencies/Secrets/Threat-Surface, sofern Tooling vorhanden ist.
-7. **Validation**: Production Validator prüft jedes Requirement gegen Evidenz.
-8. **Judgment Gate**: Product Owner prüft, ob wirklich das richtige Produkt gebaut wurde.
-9. **Human Acceptance**: Menschliche Abnahme bleibt explizit Teil des Prozesses.
-10. **Retrospective / Learning Loop**: Prozessverbesserungen werden gesammelt und nur kontrolliert persistiert.
+1. **Requirements:** PRD, acceptance criteria, requirement IDs, and traceability.
+2. **Spec sanity:** spec audit, confabulation checks, bias review, failure-mode review.
+3. **Planning:** architecture, milestones, atomic tasks, and context artifacts.
+4. **TDD implementation:** coder writes a failing test first, then the smallest implementation needed to pass.
+5. **Independent code review:** reviewer inspects the diff without relying on the coder's reasoning.
+6. **Security review:** SAST, dependency risk, secrets, threat cases, and supply-chain concerns when tooling exists.
+7. **Production validation:** production-validator checks every acceptance criterion against evidence.
+8. **Judgment gate:** product-owner checks whether the implementation solves the right problem.
+9. **Human acceptance:** machine-pass is not treated as product approval.
+10. **Retrospective and learning loop:** recurring failures become controlled improvement proposals.
 
-### CORE vs. FULL
+### CORE vs FULL mode
 
-| Mode | Ziel | Self-Modification |
+| Mode | Purpose | Self-modification behavior |
 |---|---|---|
-| `core` | Sicherer, lauffähiger Standardmodus | Keine autonomen Skill-Writes; Learnings bleiben human-gated |
-| `full` | Vollständige Evolution mit Metriken, Canary und Auto-Revert | Nur erlaubt, wenn eine Baseline in `metrics/runs.jsonl` existiert |
+| `core` | Safe, runnable baseline for normal use | No autonomous skill writes; learnings remain human-gated |
+| `full` | Full evolution with metrics, canary, and auto-revert | Allowed only after a `metrics/runs.jsonl` baseline exists |
 
-Empfehlung: Starte mit CORE, sammle Metriken, aktiviere FULL erst, wenn du Drift und Regressionen messen kannst.
+Recommended path: start in CORE, gather metrics, then graduate to FULL only when you can measure drift, regression, and improvement.
 
 ---
 
-## Schnellstart
+## Quickstart
 
-### Voraussetzungen
+### Requirements
 
-Minimal:
+Minimum:
 
 - `git`
 - `bash`
 - `python3`
-- `jq` für Hook-Registrierung und JSON-Checks
+- `jq` for hook registration and JSON checks
 
-Für vollständige lokale Checks zusätzlich empfohlen:
+Recommended for full local checks:
 
 - `PyYAML`
 - `shellcheck`
-- optional `pnpm`/`node` plus `artifacts-builder` für den Explorer-Build
+- optional `node`/`pnpm` plus the `artifacts-builder` skill for rebuilding the explorer
 
-### Installation in Claude Code
+### Install into Claude Code
 
 ```bash
 ./config/claude/install.sh
 ```
 
-Der Installer:
+The installer:
 
-- verlinkt dieses Repo als `~/.claude/agents` oder kopiert es mit `--copy`,
-- installiert vendored Commands nach `~/.claude/commands/`,
-- installiert vendored Skills nach `~/.claude/skills/`,
-- registriert den sentinel-gesteuerten Stop-Hook, sofern `jq` verfügbar ist.
+- symlinks this repository as `~/.claude/agents`, or copies it when `--copy` is used;
+- installs vendored commands into `~/.claude/commands/`;
+- installs vendored skills into `~/.claude/skills/`;
+- registers the sentinel-gated Stop hook when `jq` is available.
 
-Nützliche Varianten:
+Useful variants:
 
 ```bash
 ./config/claude/install.sh --dry-run
@@ -174,51 +174,51 @@ Nützliche Varianten:
 ./config/claude/install.sh --no-hook
 ```
 
-Für neue Maschinen, externe Integrationen und Windows-Hinweise siehe `SETUP.md`.
+For new machines, optional integrations, and Windows notes, see `SETUP.md`.
 
 ---
 
-## Typische Use Cases
+## SEO-focused use cases
 
-### Advanced Agent Playground
+### Advanced AI agent engineering
 
-Nutze die Agentendefinitionen als Pattern-Bibliothek für eigene Subagents: Core-Team, Swarm-Koordination, Consensus, SPARC, GitHub-Automation oder Domänenspezialisten.
+Use this repository as a pattern library for Claude Code subagents, multi-agent orchestration, agent roles, agent prompts, and production-oriented agent workflows.
 
-### Agentic Software Delivery
+### Agentic software development
 
-Starte `/agileteam <feature>` in einem Zielprojekt, um Requirements, TDD, Reviews und Gates als Agentenpipeline abzubilden.
+Run `/agileteam <feature>` in a target project to turn requirements, TDD, review, validation, and retrospectives into a coordinated AI software engineering pipeline.
 
-### AI Automation Lab
+### Autonomous coding and automation lab
 
-Kombiniere GitHub-Agenten, DevOps-Agenten, Flow-Nexus-Agenten und Optimierungsrollen, um End-to-End-Automation rund um Issues, PRs, Releases, Workflows und Benchmarks zu entwerfen.
+Combine GitHub agents, DevOps agents, Flow Nexus agents, optimization agents, and swarm coordinators to prototype end-to-end AI automation for issues, pull requests, releases, workflows, and benchmarks.
 
-### Self-Improving Process Experiments
+### Self-improving agent process research
 
-Nutze Metrics, Stop-Hook und Retro-Agenten, um Prozessregeln kontrolliert weiterzuentwickeln. Wichtig: Das Repo priorisiert auditierbare, human-gated Verbesserung gegenüber unkontrollierter Selbstmodifikation.
+Use the metrics emitter, Stop hook, governance docs, and retrospective agents to study how agent workflows can improve safely over time. The design favors auditable, human-gated improvement over uncontrolled self-modification.
 
-### Prompt-/Agent-Engineering Research
+### Prompt engineering and LLMOps research
 
-Vergleiche verschiedene Agentenstile: Standard-Template, claude-flow-nahe Agents, Rollen mit enger Tool-Auswahl, Koordinatoren, Worker, Validatoren, Kritiker und Security-Rollen.
+Compare standard-template agents, claude-flow-style agents, coordinators, workers, validators, critics, security roles, and specialized domain experts.
 
 ---
 
 ## Explorer UI
 
-Das Repo enthält `agent-explorer.html`, einen statischen Snapshot der Agentensammlung. Nach Änderungen an Agenten kannst du ihn neu generieren:
+The repository includes `agent-explorer.html`, a static searchable snapshot of the agent collection. Rebuild it after changing agents:
 
 ```bash
 ./build-explorer.sh
 ```
 
-Hinweis: Der Build benötigt Python mit PyYAML, Node/pnpm und den `artifacts-builder` Skill. Wenn du nur Agenten editierst, ist der Explorer-Build hilfreich, aber nicht zwingend für die Frontmatter-Validierung.
+The explorer build requires Python with PyYAML, Node/pnpm, and the `artifacts-builder` skill. If you only edit agent Markdown files, rebuilding the explorer is useful but not required for frontmatter validation.
 
 ---
 
-## Qualitätssicherung
+## Validation and quality checks
 
-### Frontmatter validieren
+### Validate agent frontmatter
 
-Vor jedem Commit solltest du mindestens Frontmatter, fehlende Beschreibungen und doppelte Agentennamen prüfen:
+Before committing, check for YAML parse errors, missing descriptions, and duplicate names:
 
 ```bash
 python3 - <<'PY'
@@ -260,37 +260,37 @@ if bad or nodesc or dupes:
 PY
 ```
 
-### Vollständige Checks
+### Run the full check suite
 
 ```bash
 bash config/claude/tests/run_all.sh
 ```
 
-Der Check-Suite-Entry-Point prüft Frontmatter, Metrics-Skripte, Settings-JSON, Stop-Hook, Web-Bootstrap und — falls installiert — Shell-Skripte via `shellcheck`.
+The suite validates agent frontmatter, metrics scripts, `.claude/settings.json`, Stop-hook behavior, web-session bootstrap behavior, and shell scripts when `shellcheck` is installed.
 
 ---
 
-## Repository-Struktur
+## Repository structure
 
 ```text
 .
-├── agileteam/                 # Rollen für den /agileteam Workflow
+├── agileteam/                 # /agileteam workflow roles
 ├── core/                      # Coder, Planner, Researcher, Reviewer, Tester
-├── github/                    # GitHub-/PR-/Issue-/Release-Automation
-├── swarm/                     # Swarm-Koordinatoren
-├── hive-mind/                 # Queen/Worker/Scout/Memory Rollen
-├── consensus/                 # Raft/Gossip/CRDT/Byzantine/Quorum Agenten
-├── sparc/                     # SPARC Phasen
-├── optimization/              # Performance, Ressourcen, Topologie
-├── flow-nexus/                # Plattform- und Workflow-Agenten
-├── templates/                 # Agenten-Templates
-├── config/claude/commands/    # Slash Commands
-├── config/claude/skills/      # Vendored Skills/Fallbacks
-├── config/claude/hooks/       # SessionStart und Stop-Hook
-├── config/claude/metrics/     # Run-Metriken und Health-Auswertung
-├── docs/                      # Agile-Team-Spec und Governance
-├── explorer/                  # Source für agent-explorer.html
-├── tests/                     # Python-Setup-Tests
+├── github/                    # GitHub, PR, issue, release, and workflow automation
+├── swarm/                     # Swarm coordinators
+├── hive-mind/                 # Queen, worker, scout, and memory roles
+├── consensus/                 # Raft, Gossip, CRDT, Byzantine, and Quorum agents
+├── sparc/                     # SPARC phases
+├── optimization/              # Performance, resource, and topology agents
+├── flow-nexus/                # Platform and workflow agents
+├── templates/                 # Agent templates
+├── config/claude/commands/    # Slash commands
+├── config/claude/skills/      # Vendored skills and fallbacks
+├── config/claude/hooks/       # SessionStart and Stop hooks
+├── config/claude/metrics/     # Run metrics and process-health reporting
+├── docs/                      # Agile-team spec and governance docs
+├── explorer/                  # Source for agent-explorer.html
+├── tests/                     # Python setup tests
 ├── README.md
 ├── SETUP.md
 └── CLAUDE.md
@@ -298,17 +298,17 @@ Der Check-Suite-Entry-Point prüft Frontmatter, Metrics-Skripte, Settings-JSON, 
 
 ---
 
-## Wie du neue Agenten hinzufügst
+## Add a new agent
 
-1. Wähle ein passendes Verzeichnis oder lege ein neues Domänenverzeichnis an.
-2. Erstelle eine `.md`-Datei mit gültigem YAML-Frontmatter.
-3. Vergib einen eindeutigen `name`.
-4. Schreibe eine konkrete `description`, die sagt, wann Claude Code den Agenten einsetzen soll.
-5. Definiere Tools, Verhalten, Grenzen und Beispiele so konkret wie möglich.
-6. Führe die Frontmatter-Validierung aus.
-7. Optional: `./build-explorer.sh`, um `agent-explorer.html` zu aktualisieren.
+1. Choose an existing directory or create a new domain directory.
+2. Create a `.md` file with valid YAML frontmatter.
+3. Pick a globally unique `name`.
+4. Write a concrete `description` that tells Claude Code when to use the agent.
+5. Define tools, behavior, limits, and examples as explicitly as possible.
+6. Run the frontmatter validator.
+7. Optionally run `./build-explorer.sh` to refresh `agent-explorer.html`.
 
-Beispiel:
+Example:
 
 ```markdown
 ---
@@ -322,55 +322,55 @@ You are a reliability sentinel...
 
 ---
 
-## Design-Prinzipien
+## Design principles
 
-- **Rollen klar trennen:** Ein guter Agent hat eine scharfe Aufgabe, keine generische „mach alles“-Identität.
-- **Independence matters:** Review, Test, Security und Product Judgment sollen nicht einfach dieselbe Coder-Perspektive wiederholen.
-- **Evidence over vibes:** Claims sollen durch Code, Tests, Logs, Dokumente oder explizite Annahmen belegbar sein.
-- **Human gates bleiben wichtig:** Besonders bei Anforderungen, Produktentscheidungen und persistenter Selbstverbesserung.
-- **Versioniere Prompts wie Code:** Agentenänderungen brauchen Diff, Review und Validierung.
-- **Automatisiere ohne falsche Sicherheit:** Fehlendes Tooling wird als `MISSING` markiert, nicht als bestanden fantasiert.
-
----
-
-## Weiterführende Dateien
-
-- `SETUP.md` — ausführliche Installations- und Portabilitätsnotizen.
-- `CLAUDE.md` — Arbeitsprotokoll für dieses Repo und Learning-Loop-Regeln.
-- `docs/agileteam-spec-v3.md` — kanonische Spezifikation des `/agileteam` v3 Workflows.
-- `docs/agileteam-governance.md` — Metriken, Governance und Meta-Meta-Layer.
-- `config/claude/commands/agileteam.md` — der eigentliche Slash-Command.
-- `config/claude/install.sh` — Bootstrapper für Agents, Commands, Skills und Hook.
-- `explorer/README.md` — Hinweise zum Explorer-Build.
+- **Separate roles clearly:** a strong agent has a sharp responsibility, not a vague "do everything" identity.
+- **Preserve independence:** review, testing, security, and product judgment should not simply repeat the coder's perspective.
+- **Prefer evidence over vibes:** claims should be backed by code, tests, logs, documentation, or explicit assumptions.
+- **Keep human gates where they matter:** especially for requirements, product decisions, and persistent self-improvement.
+- **Version prompts like code:** agent changes should be diffed, reviewed, validated, and reversible.
+- **Do not automate false confidence:** missing tooling is marked `MISSING`, not silently treated as passing.
 
 ---
 
-## Für wen ist das?
+## Important files
 
-Dieses Repo passt besonders gut, wenn du dich für Folgendes interessierst:
-
-- Advanced AI Agents und Agent Engineering
-- Claude Code Subagents und Slash Commands
-- Multi-Agent Software Development
-- Autonomous Coding Workflows
-- Self-Improving / Self-Developing Agents
-- Agent Swarms, Hive Minds und Koordinator/Worker-Architekturen
-- TDD mit LLM-Agenten
-- DevOps-, GitHub- und Release-Automation
-- Spec-driven Development und Defense-in-Depth QA
-- Research rund um agentische Systeme und Prozess-Governance
-
-Wenn du einfach nur einen kleinen Prompt suchst, ist dieses Repo wahrscheinlich Overkill. Wenn du aber mit komplexen, auditierbaren Agentensystemen spielen, bauen und lernen willst: willkommen im Maschinenraum.
+- `SETUP.md` — detailed installation, portability, optional integrations, and Windows notes.
+- `CLAUDE.md` — repository working protocol and learning-loop rules.
+- `docs/agileteam-spec-v3.md` — canonical specification for `/agileteam` v3.
+- `docs/agileteam-governance.md` — metrics, governance, and meta-governance layer.
+- `config/claude/commands/agileteam.md` — the actual `/agileteam` slash command.
+- `config/claude/install.sh` — bootstrapper for agents, commands, skills, and hooks.
+- `explorer/README.md` — explorer build notes.
 
 ---
 
-## Lizenz & Attribution
+## Who is this for?
 
-Ja: Weil die Agentenbasis auf **Claude Flow** aus dem GitHub-Account [`ruvnet`](https://github.com/ruvnet/) aufgebaut wurde, wird die Herkunft hier und in `LICENSE` ausdrücklich genannt. Claude Flow ist bzw. war unter MIT-Lizenz veröffentlicht; der ursprüngliche Projektpfad [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow) verweist inzwischen auf [`ruvnet/ruflo`](https://github.com/ruvnet/ruflo).
+This repository is useful if you care about:
 
-Dieses Repository steht unter [MIT](LICENSE) © 2026 DYAI2025. Teile dieser Agentensammlung sind von **Claude Flow / Ruflo** abgeleitet: Copyright © ruvnet, ebenfalls MIT. Bei Weitergabe, Forks oder größeren Rewrites bitte diese Attribution und den MIT-Lizenzhinweis beibehalten.
+- advanced AI agents and agent engineering;
+- Claude Code subagents and slash commands;
+- multi-agent software development;
+- autonomous coding workflows;
+- self-improving and self-developing agents;
+- agent swarms, hive minds, coordinators, and worker architectures;
+- TDD with LLM agents;
+- DevOps, GitHub, and release automation;
+- spec-driven development and defense-in-depth QA;
+- research into agentic systems, prompt engineering, LLMOps, and process governance.
+
+If you only need a tiny prompt, this repository may be overkill. If you want to build, inspect, and evolve complex auditable agent systems, welcome to the machine room.
 
 ---
 
-**More discovery tags:**  
-`#AIEngineering` `#AgentOrchestration` `#PromptEngineering` `#LLMOps` `#AutonomousAgents` `#CodingAgents` `#SoftwareAgents` `#CollectiveIntelligence` `#WorkflowAutomation` `#AgenticWorkflow` `#ClaudeAgents` `#FutureOfSoftwareDevelopment`
+## License and attribution
+
+This repository is licensed under [MIT](LICENSE) © 2026 DYAI2025.
+
+The agent base is derived in part from **Claude Flow** by [`ruvnet`](https://github.com/ruvnet/). The original repository path [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow) currently points to [`ruvnet/ruflo`](https://github.com/ruvnet/ruflo). Claude Flow / Ruflo is MIT-licensed; portions of this collection derived from it remain attributed to Copyright © ruvnet, also under MIT. Keep this attribution and the MIT license notice when redistributing forks or major rewrites.
+
+---
+
+**More discovery keywords:**  
+`AI agents` · `Claude Code agents` · `Claude subagents` · `agentic AI` · `multi-agent systems` · `autonomous coding agents` · `AI software engineering` · `self-improving agents` · `self-developing agents` · `agent swarm` · `hive mind AI` · `AI workflow automation` · `LLMOps` · `prompt engineering` · `TDD agents` · `SPARC agents` · `GOAP agents` · `consensus agents`
