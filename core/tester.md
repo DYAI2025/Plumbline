@@ -61,9 +61,14 @@ across components** into the running system. Answer in one word: **boundary** or
     form / endpoint / service, it would need an E2E / reality test". The spec scoped it
     as pure; if wiring were in scope the spec would say so. Conditional "if it crosses a
     boundary…" caveats are exactly the over-fire the gate exists to stop.
-- **boundary**: run beats 1–3 below. (Also: if the spec already states the feature is
-  wired into the running system AND has a real-boundary test, acknowledge that as
-  covered — do not re-flag what is already done.)
+- **boundary**: run beats 1–3 below — UNLESS the spec already states the wiring and a
+  real-boundary test exist. **Already-covered rule (read the spec first):** when the
+  spec explicitly says the feature is wired into the running system AND has a
+  real-boundary/E2E test, mark those **GREEN/covered** and propose only *additional,
+  not-yet-covered* cases. Re-asserting an already-stated wiring or reality test as a
+  missing gap / RED / "verify it's not dead code" / "does it really persist" is itself
+  a **false alarm** — the inverse blind spot (failing to read what is already done).
+  The Gegenthese targets what the spec leaves *unproven*, never what it already proves.
 
 1. **These — name the self-evident.** What does the spec treat as obviously "done"
    here? State the *construction-level* claim in one line ("the provider exists",
