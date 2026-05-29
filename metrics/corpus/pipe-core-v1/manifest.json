@@ -1,0 +1,23 @@
+{
+  "corpus_id": "pipe-core-v1",
+  "version": 1,
+  "created": "2026-05-29",
+  "purpose": "Full-pipeline bench harness: run the whole agileteam pipeline per task per arm, build real code, measure the BUILT increment with a deterministic mutation oracle. Faithful counterpart to bench-core-v1 (which probes single agents on test plans).",
+  "status": "INSTRUMENT BUILT — NOT YET EXECUTED. Full execution is millions of tokens; requires explicit go-ahead.",
+  "primary_metric": "escaped_defect_rate (mutation-not-caught by the arm's own tests on the built increment)",
+  "secondary_metrics": ["pipeline_false_positive_rate (control tasks)", "reviewer_non_wiring_recall (RDIFF tasks)", "build_success", "cost_tokens"],
+  "arms": {"baseline": "agents @ee77e4c (pre-DNA v3)", "dna": "agents @HEAD"},
+  "models": ["haiku", "opus"],
+  "runs_per_cell": 3,
+  "coder_note": "Coder prompt is IDENTICAL across arms — the only variable is the DNA-differing agents (tester, code-reviewer, production-validator, product-owner, requirements-analyst, spec-auditor).",
+  "tasks": [
+    {"id": "T08-account-deletion", "type": "gap-build", "dark_zone": "wiring + fake-only (un-cued)", "scaffold": "tasks/T08-account-deletion", "oracle": "oracles/T08-account-deletion.md"},
+    {"id": "T02-webhook", "type": "gap-build", "dark_zone": "fake-only reality", "scaffold": "tasks/T02-webhook", "oracle": "oracles/T02-webhook.md"},
+    {"id": "T03-cache", "type": "gap-build", "dark_zone": "named-failure-mode", "scaffold": "tasks/T03-cache", "oracle": "oracles/T03-cache.md"},
+    {"id": "CTRL-discount", "type": "control-build", "dark_zone": "none (pure logic)", "scaffold": "tasks/CTRL-discount", "oracle": "oracles/CTRL-discount.md"},
+    {"id": "RDIFF-A", "type": "review-diff", "dark_zone": "broad scrutiny (account-deletion, wired)", "diff": "review-diffs/RDIFF-A.md", "oracle": "oracles/RDIFF.md"},
+    {"id": "RDIFF-B", "type": "review-diff", "dark_zone": "broad scrutiny (password-reset, wired)", "diff": "review-diffs/RDIFF-B.md", "oracle": "oracles/RDIFF.md"},
+    {"id": "RDIFF-C", "type": "review-diff", "dark_zone": "broad scrutiny (csv-export, wired)", "diff": "review-diffs/RDIFF-C.md", "oracle": "oracles/RDIFF.md"}
+  ],
+  "test_runner": "/home/dyai/clawd/hive-backlog/.venv/bin/python -m pytest -q  (any pytest-capable interpreter; scaffolds are stdlib-only)"
+}
