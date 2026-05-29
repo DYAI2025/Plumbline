@@ -105,7 +105,10 @@ session with an **empty `~/.claude`**, and nobody runs `install.sh` by hand — 
   step is needed** — once this is on your default branch, every web session runs it.
 - `session-start.sh` runs `install.sh --copy` so `/agileteam`, `/agileteam-bench`,
   the `konfabulations-audit` skill and the learning-loop Stop hook are present
-  **before the agent loop starts** (it runs synchronously to avoid a race).
+  **before the agent loop starts** (it runs synchronously to avoid a race). On
+  success it emits the SessionStart `reloadSkills` output so the freshly-copied
+  skill and commands are usable in the **same** session (skill/command discovery
+  otherwise runs before the hook finishes, deferring them to the next session).
 
 Behaviour & safety:
 

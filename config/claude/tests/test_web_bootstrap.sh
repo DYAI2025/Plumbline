@@ -27,10 +27,16 @@ assert "hook script has valid bash syntax" "bash -n '$HOOK'"
 
 # --- behaviour: remote bootstrap into an isolated CLAUDE_HOME --------------
 CH="$(mktemp -d)"; trap 'rm -rf "$CH"' EXIT
-out="$(CLAUDE_CODE_REMOTE=true CLAUDE_HOME="$CH" HOME="$CH" bash "$HOOK" 2>/dev/null)"
+CLAUDE_CODE_REMOTE=true CLAUDE_HOME="$CH" HOME="$CH" bash "$HOOK" >"$CH/stdout" 2>/dev/null
 rc=$?
 assert_eq "hook exits 0 in remote mode" "0" "$rc"
-assert_eq "hook keeps stdout clean (sync SessionStart adds stdout to context)" "" "$out"
+# A SessionStart hook's stdout must be ONLY a JSON object (extra text would be
+# injected as raw context); jq -e . succeeds only if stdout is one valid JSON value.
+assert "remote stdout is a single valid JSON object (no log leakage)" "jq -e . '$CH/stdout'"
+assert "remote stdout sets hookEventName=SessionStart" \
+  "jq -e '.hookSpecificOutput.hookEventName == \"SessionStart\"' '$CH/stdout'"
+assert "remote stdout requests reloadSkills (skill/command rescan this session)" \
+  "jq -e '.hookSpecificOutput.reloadSkills == true' '$CH/stdout'"
 assert_file "agileteam command transferred"       "$CH/commands/agileteam.md"
 assert_file "agileteam-bench command transferred"  "$CH/commands/agileteam-bench.md"
 assert_file "konfabulations-audit skill transferred" "$CH/skills/konfabulations-audit/SKILL.md"
@@ -45,9 +51,10 @@ assert_eq "stop hook registered exactly once (no duplicate)" "1" "$count"
 
 # --- local safety: no-op when not remote (user runs install.sh manually) ---
 CH2="$(mktemp -d)"
-CLAUDE_CODE_REMOTE="" AGILETEAM_FORCE_BOOTSTRAP="" CLAUDE_HOME="$CH2" HOME="$CH2" bash "$HOOK" >/dev/null 2>&1
+local_out="$(CLAUDE_CODE_REMOTE="" AGILETEAM_FORCE_BOOTSTRAP="" CLAUDE_HOME="$CH2" HOME="$CH2" bash "$HOOK" 2>/dev/null)"
 rc2=$?
 assert_eq "hook exits 0 when not remote" "0" "$rc2"
+assert_eq "local no-op emits no stdout" "" "$local_out"
 assert "no commands installed in local (non-remote) mode" "[ ! -e '$CH2/commands/agileteam.md' ]"
 rm -rf "$CH2"
 

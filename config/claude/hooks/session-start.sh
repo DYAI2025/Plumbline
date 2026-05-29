@@ -11,15 +11,20 @@
 # start — restoring the commands, skill and hook before the agent loop begins.
 #
 # Contract (see ~/.claude/skills/session-start-hook):
-#   - Synchronous (no async JSON on stdout) so the commands exist before the
-#     session proceeds — avoids a race where /agileteam isn't yet discoverable.
+#   - Synchronous so the commands/skill exist before the session proceeds.
 #   - Idempotent: install.sh skips targets that already exist.
+#   - On success it prints ONLY a SessionStart JSON object asking Claude Code to
+#     reloadSkills — skill/command discovery runs *before* SessionStart hooks
+#     finish, so without this the freshly-copied konfabulations-audit skill (and
+#     the commands) would only appear next session. All human/installer log lines
+#     go to stderr so stdout stays a single parseable JSON value.
 #   - Non-interactive and NEVER fatal: a setup hiccup must not abort the session,
-#     so this always exits 0 and routes all output to stderr (stdout stays clean
-#     because a sync SessionStart hook's stdout is injected into the context).
+#     so this always exits 0. `set -u` is deliberately omitted (this runs in an
+#     environment we don't fully control; an unset var must never abort us — all
+#     expansions below already carry `:-` defaults).
 #   - Remote-only by default: locally you run install.sh yourself (see SETUP.md).
 #     Set AGILETEAM_FORCE_BOOTSTRAP=1 to force it anywhere (used by the tests).
-set -uo pipefail
+set -o pipefail
 
 # Repo root resolved from the hook's own location, so cwd does not matter.
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -38,10 +43,17 @@ fi
 
 # --copy (not symlink): the result must survive even if the repo path changes,
 # and symlinks are unreliable across some web/Windows containers.
+# 1>&2: keep installer chatter off stdout so stdout stays a single JSON object.
 if bash "$installer" --copy 1>&2; then
   echo "agileteam session-start: /agileteam + konfabulations-audit ready in ${CLAUDE_HOME:-$HOME/.claude}" >&2
 else
   echo "agileteam session-start: bootstrap reported an issue (non-fatal) — see SETUP.md" >&2
 fi
+
+# Ask Claude Code to rescan skills + commands now, so what we just copied is
+# usable in THIS session rather than only the next one. Prefer jq; fall back to
+# a literal so a missing jq can't suppress the rescan.
+jq -cn '{hookSpecificOutput:{hookEventName:"SessionStart",reloadSkills:true}}' 2>/dev/null \
+  || printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","reloadSkills":true}}\n'
 
 exit 0
