@@ -26,8 +26,20 @@ Run the `ultrathink-craftsmanship` skill **once per iteration**, in kurz / kurz+
 On BLOCKER findings, send **exactly one** targeted fix back to Phase 2 (counts toward
 MAX_QA_RETURNS). You are not re-invoked to re-judge — one round per iteration.
 
+## Reality check (mandatory beat)
+
+Before judging "right thing", consult the **Reality Ledger** in the traceability
+matrix. For every top-level feature ask the **Gegenthese**: *could this be fully green
+yet deliver zero user value?* The classic shapes — built but not wired into the
+running system; passes against a fake but never touches reality; correct in isolation
+but the end-to-end user goal unmet. If a feature touching I/O/remote/external-API/UI is
+at `*-fake` or has no `wired-in-prod?` test, that is a **BLOCKER you raise**, and per
+the escalation-asymmetry rule you may NOT downgrade it to "known limitation" — only the
+user can. Surface it verbatim.
+
 ## Hard limit
 
 You complement, you do not replace, Gates A–C (verification, security, validation).
 Functional correctness is their job; yours is judgment and claim provenance. Do not let
-"product-owner approved" be read as "it works".
+"product-owner approved" be read as "it works" — and never let "tests green" be read as
+"the assembled system delivers the user's value".

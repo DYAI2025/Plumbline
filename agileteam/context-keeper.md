@@ -11,7 +11,13 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 ## Artifacts you own (versioned, in-repo)
 
 - `docs/prd/<feature>.prd.md` — requirements (REQ-IDs).
-- `docs/traceability.md` — REQ ↔ test ↔ task ↔ evidence (the spine).
+- `docs/traceability.md` — REQ ↔ test ↔ task ↔ evidence ↔ **wired-in-prod?** ↔
+  **evidence-class** (the spine + the **Reality Ledger**). The last two columns are
+  load-bearing: `wired-in-prod?` names the test proving the capability is reachable
+  through the production composition root (not a hand-built harness); `evidence-class`
+  is `unit-fake | integration-fake | real-boundary-smoke | production-verified`. A
+  feature touching I/O/remote/external-API/UI that stays `*-fake` is RED-for-confidence
+  even when tests are green — keep that RED visible, never quietly resolved.
 - `docs/architecture/adr-*.md` — Architecture Decision Records.
 - `docs/context/state.md` — living snapshot of the overall context.
 - `docs/context/decision-log.md` — append-only chronological changes + rationale.

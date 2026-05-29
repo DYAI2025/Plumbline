@@ -82,9 +82,21 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    "logical" guess. Close each gap individually by asking the user via Skill
    `brainstorming`. No `ASSUMPTION` without explicit user confirmation. (This prevents
    a confabulation cascade into the autonomous flow.)
-3. Build the **traceability matrix** (REQ ↔ test ↔ task ↔ evidence) — the spine that
-   threads through every phase. `context-keeper` owns `docs/context/state.md`,
-   `docs/context/decision-log.md`, `docs/architecture/adr-*.md`, `docs/traceability.md`.
+3. Build the **traceability matrix** (REQ ↔ test ↔ task ↔ evidence ↔ **wired-in-prod?**
+   ↔ **evidence-class**) — the spine that threads through every phase. Two columns
+   exist to illuminate the framework's darkest, most load-bearing zones:
+   - **wired-in-prod?** — the test proving the capability is reachable through the
+     **production composition root** (the entrypoint that assembles units into the
+     running system), not just a hand-built test harness. A REQ whose feature has a
+     real implementation but no production-wiring test is **not satisfiable** — the
+     two costliest misses in practice ("exists in tests, never composed in prod")
+     die here.
+   - **evidence-class** (the **Reality Ledger**): one of `unit-fake | integration-fake
+     | real-boundary-smoke | production-verified`. Any feature touching I/O, remote,
+     external APIs or UI that stays at `*-fake` is **RED regardless of green tests**,
+     and that RED is surfaced in every report — see the escalation rule below.
+   `context-keeper` owns `docs/context/state.md`, `docs/context/decision-log.md`,
+   `docs/architecture/adr-*.md`, `docs/traceability.md`.
 4. Definition of Ready met? Save PRD to `docs/prd/<feature>.prd.md`. On BLOCKER → USER GATE.
 
 ### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
@@ -101,7 +113,15 @@ Show DoD + traceability matrix + spec-audit findings before implementing.
 
 ### Phase 1 — TDD & QA setup
 1. `tester` derives acceptance/E2E tests **independently** from the spec (black-box,
-   before the coder starts; the coder treats them as a contract).
+   before the coder starts; the coder treats them as a contract). For each top-level
+   REQ the tester FIRST runs its **kritische semantische Glättung** (the 3-beat
+   These → Gegenthese → Schärfung Min-Ultrathink in `core/tester.md`): every
+   acceptance criterion is born paired with a user-value counter-thesis and the one
+   reality-touching test that would kill it. **Any failure-mode chain named anywhere
+   (brief, spec-audit, pre-mortem) must become a falsifying test or an explicit
+   blocker — it may never remain prose.** (This sprint's headline miss was a
+   failure-mode that was *written down* and then shipped because it never became a
+   test.)
 2. `planner` produces the atomic, dependency-aware task sequence (→ kanban-md tickets).
    Save the plan (`writing-plans` format) to `docs/plans/YYYY-MM-DD-<feature>.md`.
 
@@ -125,7 +145,12 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
   (performance/load, accessibility, observability).
 - **Gate B — Security:** no High/Critical from SAST/deps/secrets; threat cases covered.
 - **Gate C — Validation:** `production-validator` checks **every** acceptance criterion
-  against the traceability matrix; per-REQ `pass/fail` + evidence link (no prose).
+  against the traceability matrix; per-REQ `pass/fail` + evidence link (no prose). It
+  ALSO publishes the **Reality Ledger**: the `evidence-class` of every feature and its
+  `wired-in-prod?` status. A green per-REQ verdict with an I/O/remote/UI feature still
+  at `*-fake` is reported as **PASS (tests) / RED (confidence)** — never as plain done.
+  "Tests green" certifies *internal correctness*, not *that the assembled system
+  delivers the user's value*; the ledger keeps that distinction in every reader's face.
 - **Gate D — Judgment (ultrathink, ONCE/iteration):** dispatch `product-owner`; run
   `ultrathink-craftsmanship` in kurz/kurz+ mode **once** (no re-run) — "did we build the
   right thing?", bias + failure-mode, konfabulations-audit on claims that entered
@@ -173,4 +198,16 @@ baseline you cannot tell improvement from drift, so do not self-modify.
 - No placeholder/mock/demo code — real implementation or none.
 - Never self-close a requirements gap; ask via `brainstorming`.
 - An unverified claim never becomes a premise for a later phase.
+- **Escalation asymmetry (no laundering):** a finding of the class *"not wired in
+  production / not real / fake-only / failure-mode-not-tested"* may NOT be
+  self-downgraded by the orchestrator or any agent to "by design / known limitation /
+  out of scope". Only the **user** may reclassify it. Surface it verbatim at the user
+  gate. (This sprint's core feature shipped non-functional precisely because a correct
+  reviewer finding was laundered into a "documented limitation" — detection without
+  forced escalation is theatre.)
+- **A disabled reality-test is itself RED**, not a footnote. If the only test that
+  touches the real boundary (e2e/browser/live) is excluded or flaky, that is a
+  surfaced risk, not acceptable noise.
 - Report honestly: if tests fail or a step was skipped, say so with the output.
+  "Tests green" ≠ "the assembled system delivers the user's value" — keep the two
+  propositions distinct in every status claim (see the Reality Ledger, Gate C).
