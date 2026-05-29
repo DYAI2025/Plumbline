@@ -364,7 +364,17 @@ Wenn du einfach nur einen kleinen Prompt suchst, ist dieses Repo wahrscheinlich 
 
 ---
 
-## License
+If you only need a tiny prompt, this repository may be overkill. If you want to build, inspect, and evolve complex auditable agent systems, welcome to the machine room.
+
+---
+
+## License and attribution
+
+This repository is licensed under [MIT](LICENSE) © 2026 DYAI2025.
+
+The agent base is derived in part from **Claude Flow** by [`ruvnet`](https://github.com/ruvnet/). The original repository path [`ruvnet/claude-flow`](https://github.com/ruvnet/claude-flow) currently points to [`ruvnet/ruflo`](https://github.com/ruvnet/ruflo). Claude Flow / Ruflo is MIT-licensed; portions of this collection derived from it remain attributed to Copyright © ruvnet, also under MIT. Keep this attribution and the MIT license notice when redistributing forks or major rewrites.
+
+---
 
 [MIT](LICENSE) © 2026 DYAI2025. Portions derived from [claude-flow](https://github.com/ruvnet/claude-flow) (MIT, © ruvnet).
 
