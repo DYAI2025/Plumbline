@@ -92,21 +92,23 @@ spec-driven multi-agent build workflow) and an evolutionary learning loop (see
 governance in `docs/agileteam-governance.md`. Activate on a machine with:
 
 ```bash
-./config/claude/install.sh    # transfers /agileteam + /agileteam-bench commands,
-                              # the konfabulations-audit skill, and registers the Stop hook (needs jq)
+./config/claude/install.sh    # installs agents, /agileteam + fallback commands,
+                              # all vendored skills, and the Stop hook (needs jq)
 ```
 
 > **New machine?** See **`SETUP.md`** for the full portability checklist: required
-> toolchain (`jq`, `python3`, `git`), the expected skill plugins (and namespace caveat),
-> optional integrations (kanban-md, claude-reflect), per-project gate tooling, and
+> toolchain (`jq`, `python3`, `git`), vendored skill fallbacks, optional richer external
+> integrations (kanban-md, claude-reflect), per-project gate tooling, and
 > Windows notes.
 
 What ships with v3:
 
 - **6 workflow agents** in `agileteam/` (above) + the existing core/testing agents.
-- **`config/claude/skills/konfabulations-audit/`** — claim-provenance gate, companion to
-  the `ultrathink-craftsmanship` skill.
+- **`config/claude/skills/`** — portable fallback implementations for every skill
+  referenced by `/agileteam`, including `konfabulations-audit`, `ultrathink-craftsmanship`,
+  TDD/debugging/planning skills, `skill-creator`, and the local `claude-reflect` fallback.
 - **`config/claude/commands/agileteam-bench.md`** — the drift-vs-precision comparison.
+- **`config/claude/commands/reflect*.md`** — local fallback CLIs for Phase-4 reflection when an external `claude-reflect` plugin is absent.
 - **`config/claude/metrics/`** — `emit_run.py` (run records → `metrics/runs.jsonl`) and
   `process_health.py` (SPC + component attribution → `metrics/process-health.md`). Pure
   stdlib, no dependencies.

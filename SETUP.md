@@ -4,27 +4,30 @@ This repo has two layers with very different portability:
 
 - **Agent definitions** (`*.md`) — plain Markdown, zero dependencies. Portable anywhere
   Claude Code can read `~/.claude/agents/`.
-- **The `/agileteam` v3 workflow** — portable, but it expects a small toolchain and a
-  set of skill plugins. Without them it still runs in **CORE** mode but degrades
-  (skill-backed gates lose depth). Nothing breaks; capability narrows.
+- **The `/agileteam` v3 workflow** — portable, with a small required toolchain and
+  vendored fallback skills/commands so a fresh co-worker install can run the complete
+  setup without hunting for external skill packs.
 
 ---
 
 ## 1. Install the agents + commands
 
 ```bash
-# Put this repo where Claude Code looks for agents:
-git clone <this-repo> ~/.claude/agents          # or symlink an existing checkout
+# From any checkout (recommended for co-workers):
+git clone <this-repo> claude-agents
+cd claude-agents
+./config/claude/install.sh                       # symlinks repo -> ~/.claude/agents
+                                                # add --copy on Windows / if you prefer copies
 
-# Transfer the commands + skill and register the Stop hook:
-cd ~/.claude/agents
-./config/claude/install.sh                       # add --copy on Windows / if you prefer copies
+# If you already cloned directly to ~/.claude/agents, run the same command there:
+# cd ~/.claude/agents && ./config/claude/install.sh
 ```
 
-`install.sh` transfers `/agileteam` and `/agileteam-bench` into `~/.claude/commands/`,
-copies the `konfabulations-audit` skill into `~/.claude/skills/`, and registers the
-learning-loop Stop hook in `~/.claude/settings.json`. Open `/hooks` once (or restart
-Claude Code) afterwards.
+`install.sh` makes the repository available as `~/.claude/agents`, transfers every
+vendored command (`/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills`) into
+`~/.claude/commands/`, installs every vendored skill from `config/claude/skills/` into
+`~/.claude/skills/`, and registers the learning-loop Stop hook in
+`~/.claude/settings.json`. Open `/hooks` once (or restart Claude Code) afterwards.
 
 ## 2. Required toolchain
 
@@ -37,32 +40,39 @@ Claude Code) afterwards.
 
 ## 3. Expected skills
 
-`/agileteam` references these skills by name. Install the plugin packs that provide
-them. **Note:** on some systems they are namespaced (e.g.
-`anthropic-skills:ultrathink-craftsmanship`, `superpowers:executing-plans`); if a bare
-name does not resolve, adjust the reference or install under the expected name.
+`/agileteam` references these skills by name. This repo now vendors portable fallback
+implementations for every referenced skill, and `install.sh` installs them automatically.
+If you prefer richer external plugin packs, install them over the fallback names. **Note:**
+on some systems external packs are namespaced (e.g.
+`anthropic-skills:ultrathink-craftsmanship`, `superpowers:executing-plans`); the vendored
+fallbacks keep the bare names resolvable for co-workers.
 
 | Skill | Phase | Required? | If absent |
 |-------|-------|-----------|-----------|
-| `ai-native-prd-architect` | 0 | **required** (PRD engine) | Phase 0 falls back to hand-written PRD; lose REQ-ID rigor |
-| `brainstorming` | 0 | **required** (gap closing) | gaps must be closed by manual Q&A |
-| `ultrathink-craftsmanship` | 0.5, Gate D | **required** (sanity/judgment gates) | those gates degrade to inline reasoning |
+| `ai-native-prd-architect` | 0 | **vendored required** (PRD engine) | fallback installed automatically |
+| `brainstorming` | 0 | **vendored required** (gap closing) | fallback installed automatically |
+| `ultrathink-craftsmanship` | 0.5, Gate D | **vendored required** (sanity/judgment gates) | fallback installed automatically |
 | `konfabulations-audit` | 0.5, Gate D | **shipped** (vendored here) | — installed by install.sh |
-| `root-cause-tracing` | 2 (≥2× bug) | recommended | use inline 5-Why manually |
-| `systematic-debugging` | 3 (on fail) | recommended | inline debugging |
-| `test-driven-development` | 2 | recommended | follow the inline TDD steps |
-| `executing-plans` | 2 | recommended | inline per-task loop |
-| `writing-plans` | 1 | recommended | plan format is described inline |
-| `writing-skills` | 4 | required for FULL | needed to author new skills safely |
-| `product-management:write-spec` | 0 (optional) | optional | skip; ai-native-prd-architect covers it |
-| `using-git-worktrees` | guard | optional | create branches manually |
+| `root-cause-tracing` | 2 (≥2× bug) | vendored recommended | fallback installed automatically |
+| `systematic-debugging` | 3 (on fail) | vendored recommended | fallback installed automatically |
+| `test-driven-development` | 2 | vendored recommended | fallback installed automatically |
+| `executing-plans` | 2 | vendored recommended | fallback installed automatically |
+| `writing-plans` | 1 | vendored recommended | fallback installed automatically |
+| `writing-skills` | 4 | vendored required for FULL | fallback installed automatically |
+| `skill-creator` | learning loop persistence | vendored required for approved skill writes | fallback installed automatically |
+| `product-management:write-spec` | 0 (optional) | vendored optional | fallback installed automatically |
+| `using-git-worktrees` | guard | vendored optional | fallback installed automatically |
+| `defense-in-depth` | verification design | vendored anchor | fallback installed automatically |
+| `testing-anti-patterns` | test review | vendored anchor | fallback installed automatically |
+| `claude-reflect` | 4 discovery | vendored fallback | `/reflect` and `/reflect-skills` commands installed automatically |
 
 ## 4. Optional integrations
 
 - **kanban-md** (`brew install antopolskiy/tap/kanban-md` or `go install`) — task
   backbone + terminal board. Without it, the orchestrator falls back to `TodoWrite`.
-- **claude-reflect** (plugin) — Phase-4 skill discovery (`/reflect`, `/reflect-skills`).
-  Without it, do retrospective discovery manually. Keep its human review gate on.
+- **claude-reflect** — Phase-4 skill discovery. This repo ships local fallback
+  `/reflect` and `/reflect-skills` commands plus a `claude-reflect` skill; richer
+  external plugins can still replace them. Keep the human review gate on.
 
 ## 5. Per-project gate tooling (resolved at run start)
 
@@ -98,5 +108,7 @@ tooling in.
 ```bash
 python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py && echo PY_OK
 python3 config/claude/metrics/emit_run.py --dry-run --metrics '{"first_pass":0.8}'
+python3 -m unittest tests/test_claude_setup.py
+./config/claude/install.sh --dry-run
 # run the README "Validate" snippet to check agent frontmatter (parse / dupes / description)
 ```
