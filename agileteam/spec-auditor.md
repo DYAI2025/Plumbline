@@ -18,6 +18,12 @@ silently propagate into code and become permanent premises.
 2. Couple it to the `konfabulations-audit` skill: classify every external claim in the
    spec as `belegt | ableitbar | ungeprüft | nicht behaupten`. Any `ungeprüft` or
    `nicht behaupten` claim must NOT be allowed to propagate as a premise.
+   - **Foreign-file / external-API claims get bite here, not at the judgment gate.**
+     When the spec leans on the API of a file outside the repo (a client library, an
+     external service), open and read the real file to confirm the method/signature
+     exists. A claim carried as a "documented risk" but never checked against the real
+     artifact is a `ungeprüft` premise — flag it BLOCKER so it is verified or demoted
+     to an OPEN QUESTION before the build, not discovered disproven downstream.
 
 ## Output
 

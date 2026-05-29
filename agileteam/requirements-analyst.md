@@ -33,6 +33,15 @@ Doing so is exactly the confabulation that poisons an autonomous flow. Instead:
   ADR-documented technical decision). In doubt: ask.
 - No `ASSUMPTION` is adopted without explicit user confirmation.
 - A `BLOCKER` halts the flow and goes back to the user — never around.
+- **Foreign-file / external-API claims must be verified against the real artifact
+  before they become premises.** If a requirement depends on the behavior or method
+  signature of a file outside the repo under build (a client library, an external
+  service's API), open and read that real file and classify the claim
+  `belegt | ableitbar | ungeprüft | nicht behaupten`. An unverifiable claim stays an
+  OPEN QUESTION/BLOCKER — it may **not** be downgraded to a "documented risk" and
+  forwarded into the PRD as a working premise. (A disproven external method contract
+  that survives all the way to the judgment gate is the most expensive miss this
+  discipline prevents.)
 
 ## Handoffs
 
