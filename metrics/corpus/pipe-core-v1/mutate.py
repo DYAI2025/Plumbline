@@ -36,6 +36,17 @@ def mutate(task_id, d):
         open(f, "w").write(new)
         applied = new != src
         return f, applied, "dropped webhook recording (FakeHttpClient.post no longer records)"
+    if task_id.startswith("T09"):
+        f = os.path.join(d, "src/bank.py"); _backup(f)
+        src = open(f).read()
+        # reset the _credit_or_rollback hook to the NAIVE body (credit, no rollback) —
+        # removes atomicity. Coder-agnostic via the fixed hook. Matches the method body
+        # up to the next dedented def or EOF.
+        new, n = re.subn(
+            r'(def _credit_or_rollback\(self.*:\n)(?:[ \t]+.*\n|[ \t]*\n)+?(?=\n?[ \t]*def |\Z)',
+            r'\1        dst.credit(amount)\n', src, count=1)
+        open(f, "w").write(new)
+        return f, (n == 1), "reset _credit_or_rollback -> naive credit (atomicity/rollback removed)"
     if task_id.startswith("T03"):
         f = os.path.join(d, "src/account.py"); _backup(f)
         src = open(f).read()

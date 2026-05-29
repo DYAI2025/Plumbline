@@ -13,7 +13,8 @@
   "tasks": [
     {"id": "T08-account-deletion", "type": "gap-build", "dark_zone": "wiring + fake-only (un-cued)", "scaffold": "tasks/T08-account-deletion", "oracle": "oracles/T08-account-deletion.md"},
     {"id": "T02-webhook", "type": "gap-build", "dark_zone": "fake-only reality", "scaffold": "tasks/T02-webhook", "oracle": "oracles/T02-webhook.md"},
-    {"id": "T03-cache", "type": "gap-build", "dark_zone": "named-failure-mode", "scaffold": "tasks/T03-cache", "oracle": "oracles/T03-cache.md"},
+    {"id": "T03-overdraft-guard", "type": "gap-build", "dark_zone": "named-failure-mode (guard)", "scaffold": "tasks/T03-overdraft-guard", "oracle": "oracles/T03-overdraft-guard.md"},
+    {"id": "T09-transfer-rollback", "type": "gap-build", "dark_zone": "SEPARABLE partial-failure rollback — the happy path does NOT cover it (the hard task, built to defeat 'build forces the guarding test')", "scaffold": "tasks/T09-transfer-rollback", "oracle": "oracles/T09-transfer-rollback.md"},
     {"id": "CTRL-discount", "type": "control-build", "dark_zone": "none (pure logic)", "scaffold": "tasks/CTRL-discount", "oracle": "oracles/CTRL-discount.md"},
     {"id": "RDIFF-A", "type": "review-diff", "dark_zone": "broad scrutiny (account-deletion, wired)", "diff": "review-diffs/RDIFF-A.md", "oracle": "oracles/RDIFF.md"},
     {"id": "RDIFF-B", "type": "review-diff", "dark_zone": "broad scrutiny (password-reset, wired)", "diff": "review-diffs/RDIFF-B.md", "oracle": "oracles/RDIFF.md"},
