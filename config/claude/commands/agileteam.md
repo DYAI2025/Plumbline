@@ -99,11 +99,29 @@ Development may not start until all of the following are true:
 - Product Vision status is user-confirmed.
 - The PRD and the Product Vision each link back to `docs/canvas/<feature>.canvas.md`.
 - The traceability matrix contains the True-Line value fields (vision-link,
-  value-check-id, true-line-status) and the canvas reference field (canvas-link).
+  value-check-id, true-line-status) **and all six mandatory Canvas traceability fields**
+  (see below).
 - There are no unresolved contradictions.
 - The Plumbline Watcher verdict is `pass`.
 
 If any condition is false, stop and ask the user for the missing decision or artifact.
+
+### Canvas traceability fields (mandatory, on every top-level REQ)
+
+Every top-level requirement must be traceable to a confirmed Product Canvas value
+statement. The traceability matrix therefore carries **all six** of these Canvas fields
+on every top-level REQ (none optional):
+
+- `canvas-link` — link to the confirmed `docs/canvas/<feature>.canvas.md`.
+- `canvas-problem` — the Canvas problem (field 1) this REQ serves.
+- `canvas-target-user` — the Canvas target user / customer (field 2) this REQ serves.
+- `canvas-value-claim` — the Canvas value proposition (field 4) this REQ delivers.
+- `canvas-success-signal` — the Canvas success signal (field 5) this REQ moves.
+- `canvas-risk-status` — alignment vs. the Canvas risks / non-goals (fields 7–8):
+  `aligned | value-risk | non-goal-violation | risk-introduced | blocked`.
+
+A top-level REQ missing any of these six Canvas fields is **not satisfiable** and is a
+BLOCKER for Phase 1 — the same hard treatment as a missing acceptance test.
 
 ### Watcher continuation rules (Phase 1 onward)
 
@@ -114,6 +132,25 @@ From Phase 1 onward, every gate must include a Plumbline Watcher check (run the
 - Watcher verdict `review-required` (`value-risk`): resolve the value-risk first.
 - Watcher verdict `pause` (`contradiction`): stop and ask the user.
 - Watcher verdict `blocked`: stop and require user or human review.
+
+**Canvas alignment check (every Watcher pass, Phase 1 onward).** In addition to the
+True-Line questions, the Watcher must validate each requirement against every confirmed
+Canvas dimension and may issue `review-required`, `pause`, or `blocked` on any failure:
+
+1. Does the requirement still match the confirmed Canvas **problem**?
+2. Does it still serve the confirmed Canvas **target user / customer**?
+3. Does it preserve the confirmed Canvas **value proposition**?
+4. Does it support the confirmed Canvas **success signal**?
+5. Does it violate a Canvas **non-goal**?
+6. Does it introduce or worsen a Canvas **risk**?
+7. Does the traceability row contain **all six mandatory Canvas traceability fields**
+   (`canvas-link`, `canvas-problem`, `canvas-target-user`, `canvas-value-claim`,
+   `canvas-success-signal`, `canvas-risk-status`)?
+
+A drift from problem / target-user / value / success-signal → `review-required`
+(`canvas-risk-status: value-risk`); a Canvas **non-goal violation** or a missing
+mandatory Canvas field → `pause`/`blocked` (`canvas-risk-status: non-goal-violation` /
+`blocked`), recorded as a `CONTRA-<id>`.
 
 No contradiction may be carried forward silently. A contradiction may never be resolved
 by a mock, placeholder, fake-only evidence, "known limitation" laundering, a silent
@@ -244,8 +281,11 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
      | real-boundary-smoke | production-verified`. Any feature touching I/O, remote,
      external APIs or UI that stays at `*-fake` is **RED regardless of green tests**,
      and that RED is surfaced in every report — see the escalation rule below.
-   The matrix also carries a **canvas-link** field so every top-level REQ traces back to
-   the confirmed Product Canvas (`docs/canvas/<feature>.canvas.md`).
+   The matrix also carries the **six mandatory Canvas traceability fields** on every
+   top-level REQ — `canvas-link`, `canvas-problem`, `canvas-target-user`,
+   `canvas-value-claim`, `canvas-success-signal`, `canvas-risk-status` — so every
+   requirement traces back to a confirmed Product Canvas value statement (see "Canvas
+   traceability fields" above).
    `context-keeper` owns `docs/context/state.md`, `docs/context/decision-log.md`,
    `docs/architecture/adr-*.md`, `docs/traceability.md`.
 4. Definition of Ready met? Save PRD to `docs/prd/<feature>.prd.md`. On BLOCKER → USER GATE.
@@ -256,9 +296,10 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    non-goals + unresolved gaps + customer/value statements to `product-owner`, which
    writes `docs/vision/<feature>.vision.md` from the `product-vision.template.md`. The
    Vision must link back to `docs/canvas/<feature>.canvas.md`. Add the True-Line fields
-   (vision-link, value-check-id, true-line-status) and the canvas-link field to the
-   matrix. Phase 0 is not complete until the Canvas, the PRD, **and** the Vision are all
-   user-confirmed.
+   (vision-link, value-check-id, true-line-status) and all six Canvas traceability fields
+   (canvas-link, canvas-problem, canvas-target-user, canvas-value-claim,
+   canvas-success-signal, canvas-risk-status) to the matrix. Phase 0 is not complete
+   until the Canvas, the PRD, **and** the Vision are all user-confirmed.
 
 ### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
 1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode

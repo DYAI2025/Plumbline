@@ -207,6 +207,8 @@ web bootstrap, and (if installed) shell scripts via `shellcheck`.
 ├── metrics/                   # the benchmark corpora + the honest write-ups
 ├── explorer/                  # source for agent-explorer.html
 ├── docs/                      # /agileteam spec v3 + governance
+│   ├── canvas/                # docs/canvas — user-confirmed Product Canvas artifacts
+│   └── templates/             # docs/templates — Product Canvas + workflow templates
 ├── README.md  SETUP.md  CLAUDE.md
 ```
 

@@ -51,11 +51,43 @@ Before each check, read:
 7. Has the Vision/PRD been changed without explicit user confirmation?
 8. Has a previous contradiction been carried forward unresolved?
 
+## Canvas alignment checks (mandatory, every check from Phase 1 onward)
+
+Beyond the Vision, you must validate each requirement against **every confirmed Product
+Canvas dimension**. Run all seven; each can independently force a non-`pass` verdict:
+
+1. **Problem alignment** — does the requirement still match the confirmed Canvas
+   problem? Drift → `review-required` (`value-risk`).
+2. **Target-user alignment** — does it still serve the confirmed Canvas target user /
+   customer? Drift → `review-required` (`value-risk`).
+3. **Value-proposition alignment** — does it preserve the confirmed Canvas value
+   proposition? Erosion → `review-required` (`value-risk`).
+4. **Success-signal alignment** — does it support the confirmed Canvas success signal,
+   or does it ship something that cannot move it? Drift → `review-required`.
+5. **Non-goal violation** — does it build something the Canvas explicitly named a
+   non-goal? Violation → `pause`/`blocked` (`CONTRA-<id>`, never self-downgraded).
+6. **Canvas risk** — does it introduce or worsen a Canvas risk / contradiction?
+   New or worsened risk → `pause` (`CONTRA-<id>`) until the user decides.
+7. **Canvas traceability completeness** — does the traceability row carry **all six**
+   mandatory Canvas fields: `canvas-link`, `canvas-problem`, `canvas-target-user`,
+   `canvas-value-claim`, `canvas-success-signal`, `canvas-risk-status`? Any missing
+   field → `blocked` (an untraceable REQ may not pass).
+
+Reflect the outcome in the row's `canvas-risk-status`
+(`aligned | value-risk | non-goal-violation | risk-introduced | blocked`). You may issue
+`review-required`, `pause`, or `blocked` for a Canvas-alignment failure exactly as you do
+for any other True-Line failure.
+
 ## Pause authority
 
 You must pause the workflow when:
 - the Product Canvas is missing or its status is not `user-confirmed` before PRD
   finalization or development,
+- a requirement violates a confirmed Canvas non-goal, or introduces/worsens a Canvas
+  risk, or drifts from the confirmed Canvas problem/target-user/value/success-signal,
+- a traceability row is missing any of the six mandatory Canvas fields (`canvas-link`,
+  `canvas-problem`, `canvas-target-user`, `canvas-value-claim`, `canvas-success-signal`,
+  `canvas-risk-status`),
 - Product Vision is missing or unconfirmed before development,
 - a requirement has no value link (no vision-link / value-check-id),
 - a gate result is `contradiction` or `blocked`,
