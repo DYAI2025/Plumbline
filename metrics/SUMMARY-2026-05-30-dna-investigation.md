@@ -54,17 +54,17 @@ tatsächlichen Bauen ist sie **präzisions-sicher, aber ergebnis-neutral** — s
 ## Umgesetzte Modell-Belegung der /agileteam-Rollen (2026-05-30)
 
 Direkt aus dem Befund abgeleitet, gesetzt als `model:`-Frontmatter in der jeweiligen
-Agent-Datei. Gewählt: **Hybrid (Variante C)** — nur die kritischen Schutz-Gates werden hart auf
-Opus gepinnt; alle übrigen Rollen folgen `/model` (`model: inherit`) mit einer
-dokumentierten Empfehlung.
+Agent-Datei. Gewählt: **Hybrid** — alle Urteils-/Review-/Adversarial-Gates werden hart
+auf Opus gepinnt; die Generierungs-/Kuratierungs-Rollen folgen `/model`
+(`model: inherit`) mit dokumentierter Empfehlung.
 
 | Rolle | Datei | Modell | Durchsetzung |
 |---|---|---|---|
 | tester (QA) | `core/tester.md` | **opus** | **hart gepinnt** |
 | code-reviewer | `code-reviewer.md` | **opus** | **hart gepinnt** |
 | security-reviewer | `agileteam/security-reviewer.md` | **opus** | **hart gepinnt** |
-| spec-auditor | `agileteam/spec-auditor.md` | inherit | Empfehlung: Opus |
-| product-owner | `agileteam/product-owner.md` | inherit | Empfehlung: Opus |
+| spec-auditor | `agileteam/spec-auditor.md` | **opus** | **hart gepinnt** |
+| product-owner | `agileteam/product-owner.md` | **opus** | **hart gepinnt** |
 | coder | `core/coder.md` | inherit | Empfehlung: Sonnet |
 | requirements-analyst | `agileteam/requirements-analyst.md` | inherit | Empfehlung: Sonnet |
 | planner | `core/planner.md` | inherit | Empfehlung: Sonnet |
@@ -72,22 +72,23 @@ dokumentierten Empfehlung.
 | production-validator | `testing/validation/production-validator.md` | inherit | Empfehlung: Sonnet |
 | retro-analyst | `agileteam/retro-analyst.md` | inherit | Empfehlung: Sonnet |
 
-Begründung: Der GBrain-Fehlertyp wird *nur* von einem starken QA-Modell gefangen
-(siehe oben). Würden alle Rollen `inherit` sein, verlöre ein versehentliches
-`/model haiku` genau diesen Schutz still. Deshalb bleiben tester/code-reviewer/
-security-reviewer hart; coder/planner/etc. dürfen ruhig `/model` folgen.
+Begründung: Der GBrain-Fehlertyp wird *nur* von einem starken Modell gefangen, und das
+betrifft alle prüfenden Gates (QA, Review, Security, Spec-Audit, Urteil). Würden sie
+`inherit` sein, verlöre ein versehentliches `/model haiku` diesen Schutz still. Deshalb
+sind die **5 Gates hart auf Opus**; die generierenden Rollen (coder/planner/etc.) dürfen
+`/model` folgen.
 
 ### Wie `/model` damit zusammenspielt (Override-Mechanik)
 Auflösungs-Reihenfolge bei einem Subagenten (laut Tool-Doku, höchste zuerst):
 1. **Expliziter `model`-Parameter** beim Spawn (der Orchestrator setzt hier keinen —
    `agileteam.md` hardcodet kein Modell, geprüft).
-2. **`model:`-Frontmatter** der Agent-Datei → bei den 3 harten Rollen = `opus`.
+2. **`model:`-Frontmatter** der Agent-Datei → bei den 5 harten Rollen = `opus`.
 3. **Vererbung vom Eltern-/Session-Modell** (das, was `/model` setzt) — greift bei
    allen `inherit`-Rollen.
 
-Konsequenz: `/model haiku` zieht **8 der 11 Rollen** auf Haiku, aber **tester,
-code-reviewer und security-reviewer bleiben Opus**. Wer auch diese drei umstellen
-will, muss bewusst ihr Frontmatter ändern.
+Konsequenz: `/model haiku` zieht **6 der 11 Rollen** auf Haiku, aber **tester,
+code-reviewer, security-reviewer, spec-auditor und product-owner bleiben Opus**. Wer
+auch diese fünf umstellen will, muss bewusst ihr Frontmatter ändern.
 
 ### Bekommt der User eine Warnung, bevor `/model` greift?
 **Nein.** `/model` ist nur ein Session-Schalter — es gibt **keine eingebaute Warnung**,
