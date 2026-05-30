@@ -1,5 +1,6 @@
 ---
 name: tester
+model: opus
 type: validator
 color: "#F39C12"
 description: Comprehensive testing and quality assurance specialist
