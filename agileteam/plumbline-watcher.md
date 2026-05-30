@@ -30,6 +30,9 @@ load-bearing mechanisms:
 ## Required inputs
 
 Before each check, read:
+- `docs/canvas/<feature>.canvas.md` (the confirmed Product Canvas — the upstream value
+  baseline: problem, target user, value proposition, success signal, core use case,
+  non-goals, risks, evidence needed)
 - `docs/prd/<feature>.prd.md`
 - `docs/vision/<feature>.vision.md`
 - `docs/traceability.md` (including the Reality Ledger + True-Line fields)
@@ -51,6 +54,8 @@ Before each check, read:
 ## Pause authority
 
 You must pause the workflow when:
+- the Product Canvas is missing or its status is not `user-confirmed` before PRD
+  finalization or development,
 - Product Vision is missing or unconfirmed before development,
 - a requirement has no value link (no vision-link / value-check-id),
 - a gate result is `contradiction` or `blocked`,

@@ -125,6 +125,7 @@ The governing stance: **there is no "100% safe" (Rice's theorem) — so chain ma
 *diverse, independent* checks, such that a defect would have to survive several
 uncorrelated gates.**
 
+0. **Product Canvas** — a mandatory upstream value-alignment gate: problem, target user, value proposition, success signal, core use case, non-goals, risks, evidence needed — saved to `docs/canvas/<feature>.canvas.md` and **explicitly user-confirmed before the PRD is finalized or development starts** (no agent may self-confirm it)
 1. **Requirements** — PRD, REQ-IDs, acceptance criteria, traceability matrix
 2. **Spec sanity** — ultrathink + konfabulation audit (claim-provenance check)
 3. **Planning** — architecture, atomic tasks, sequence

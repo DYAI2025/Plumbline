@@ -24,6 +24,21 @@ usable, not production-real, or no longer true to the user's confirmed value sta
 This layer is **additive**: it does not weaken the Reality Ledger, the escalation-
 asymmetry rule, or Gates A–D — it adds a higher-order customer-value line on top.
 
+### Required Product Canvas (upstream of everything)
+
+Before the PRD is finalized and before any later phase, the workflow must create a
+**Product Canvas** at `docs/canvas/<feature>.canvas.md` from
+`docs/templates/product-canvas.template.md`. It holds ten mandatory fields — problem,
+target user/customer, current workaround, value proposition, success signal, core use
+case, non-goals, risks/contradictions, evidence needed, traceability links — and a
+`Status` of `draft | user-confirmed | blocked`. **No PRD finalization and no development
+phase may start without a `user-confirmed` Product Canvas**, and no agent may
+self-confirm it; an unanswered product-critical field stays `MISSING`/`OPEN
+QUESTION`/`BLOCKER` and blocks Phase 1 rather than being silently assumed. The canvas is
+**additive** — it does not weaken the PRD, Product Vision, traceability, Reality Ledger,
+Watcher, or human-acceptance gates; PRD and Vision both link back to it, and the
+traceability matrix carries a `canvas-link` field.
+
 ### Required Product Vision
 
 Before development starts, the workflow must create `docs/vision/<feature>.vision.md`
@@ -106,6 +121,15 @@ Modell / adversariale Rolle.
     │   ├─ Branch-Check (main/master) → Feature-Branch / Worktree
     │   ├─ Projekt-Parameter auflösen (s.o.; MISSING markieren)
     │   └─ Task-Backbone in kanban-md (oder TodoWrite) anlegen
+    │
+    ├─ Phase 0.15 — Product Canvas  (PFLICHT-GATE, vor PRD-Finalisierung)
+    │   │  Owner: requirements-analyst
+    │   ├─ Canvas aus docs/templates/product-canvas.template.md
+    │   │     → docs/canvas/<feature>.canvas.md (10 Pflichtfelder, keins entfernbar)
+    │   ├─ Keine stillen Annahmen: offene Felder MISSING/OPEN QUESTION/BLOCKER;
+    │   │     produktkritisch offen → BLOCKER für Phase 1
+    │   ├─ Status: draft | user-confirmed | blocked — kein Self-Confirm
+    │   └─ NUR bei user-confirmed → PRD-Finalisierung & spätere Phasen erlaubt
     │
     ├─ Phase 0 — Requirements & Validation Design
     │   │  Owner: requirements-analyst
@@ -216,6 +240,7 @@ Artefakten**, die jeder Agent zu Beginn liest und am Ende aktualisiert. Der
 widerspruchsfrei sind — Kurator, nicht Gedächtnis.
 
 ```text
+docs/canvas/<feature>.canvas.md  Product Canvas (Pflicht-Gate)  — Phase 0.15
 docs/prd/<feature>.prd.md        Anforderungen (REQ-IDs)        — Phase 0
 docs/traceability.md             REQ ↔ Test ↔ Task ↔ Evidenz    — alle Phasen
 docs/architecture/adr-*.md       Architecture Decision Records  — bei jeder Änderung
