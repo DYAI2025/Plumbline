@@ -10,9 +10,14 @@
 
 `#AIAgents` `#AgenticAI` `#ClaudeCode` `#MultiAgentSystems` `#AgentEngineering` `#TDD` `#AutonomousCoding` `#DefenseInDepth` `#LLMOps`
 
+> ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
+> Then we shipped the honest result anyway. **That** is Plumbline.
+
+**[▶ Live demo](https://dyai2025.github.io/claude-agents/)** · explore all 82 agents in your browser, nothing to install
+
 <br/>
 
-![Plumbline Agent Explorer — 82 colour-coded subagents, searchable and filterable](docs/images/explorer-grid.png)
+![Plumbline Agent Explorer — searching, filtering and inspecting 82 colour-coded subagents](docs/images/explorer-demo.gif)
 
 </div>
 
@@ -95,7 +100,8 @@ Browse them all visually in the **Agent Explorer** (see below).
 `agent-explorer.html` is a self-contained, dependency-free snapshot of the whole
 collection — a dark terminal-style UI with colour-coded categories, full-text search
 over names/tools/keywords, schema filters, and a per-agent detail drawer that links
-straight to the source on GitHub. Open the file in any browser; nothing to install.
+straight to the source on GitHub. **[Try the live demo →](https://dyai2025.github.io/claude-agents/)**
+or open `agent-explorer.html` in any browser; nothing to install.
 
 <!-- SCREENSHOTS: docs/images/explorer-grid.png, explorer-detail.png — added once rendered from agent-explorer.html -->
 
