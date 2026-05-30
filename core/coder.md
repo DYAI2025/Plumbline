@@ -1,6 +1,6 @@
 ---
 name: coder
-model: sonnet
+model: inherit
 type: developer
 color: "#FF6B35"
 description: Implementation specialist for writing clean, efficient code

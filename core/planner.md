@@ -1,6 +1,6 @@
 ---
 name: planner
-model: sonnet
+model: inherit
 type: coordinator
 color: "#4ECDC4"
 description: Strategic planning and task orchestration agent

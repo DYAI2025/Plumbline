@@ -53,19 +53,26 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 
 ## Team (subagents from ~/.claude/agents/)
 
-| Role | subagent_type | Responsibility | Independence |
-|------|---------------|----------------|--------------|
-| Requirements | `requirements-analyst` | Elicitation, PRD, REQ-IDs, traceability matrix | — |
-| Spec sanity | `spec-auditor` | ultrathink + konfabulations-audit on the spec | reads spec only |
-| Context | `context-keeper` | Curates state.md / decision-log / ADRs / matrix | — |
-| Planner | `planner` | Architecture, milestones, atomic task breakdown | — |
-| QA design | `tester` | Acceptance/E2E tests from spec, then runs suites | derives tests before coder |
-| Dev | `coder` | Implements one task at a time, test-first | fresh subagent per task |
-| Reviewer | `code-reviewer` | Independent quality/clean-code review on diff | no coder reasoning |
-| Security | `security-reviewer` | SAST/deps/secrets/threat + injection surface | on diff |
-| Acceptance | `production-validator` | Per-REQ pass/fail against the matrix | machine-checkable verdict |
-| Judgment | `product-owner` | ultrathink iteration gate: right thing? bias? claims? | no coder reasoning |
-| Retro | `retro-analyst` | Process learnings + system-level proposals | — |
+| Role | subagent_type | Responsibility | Independence | Model |
+|------|---------------|----------------|--------------|-------|
+| Requirements | `requirements-analyst` | Elicitation, PRD, REQ-IDs, traceability matrix | — | inherit (rec. Sonnet) |
+| Spec sanity | `spec-auditor` | ultrathink + konfabulations-audit on the spec | reads spec only | inherit (rec. Opus) |
+| Context | `context-keeper` | Curates state.md / decision-log / ADRs / matrix | — | inherit (rec. Sonnet) |
+| Planner | `planner` | Architecture, milestones, atomic task breakdown | — | inherit (rec. Sonnet) |
+| QA design | `tester` | Acceptance/E2E tests from spec, then runs suites | derives tests before coder | **Opus (pinned)** |
+| Dev | `coder` | Implements one task at a time, test-first | fresh subagent per task | inherit (rec. Sonnet) |
+| Reviewer | `code-reviewer` | Independent quality/clean-code review on diff | no coder reasoning | **Opus (pinned)** |
+| Security | `security-reviewer` | SAST/deps/secrets/threat + injection surface | on diff | **Opus (pinned)** |
+| Acceptance | `production-validator` | Per-REQ pass/fail against the matrix | machine-checkable verdict | inherit (rec. Sonnet) |
+| Judgment | `product-owner` | ultrathink iteration gate: right thing? bias? claims? | no coder reasoning | inherit (rec. Opus) |
+| Retro | `retro-analyst` | Process learnings + system-level proposals | — | inherit (rec. Sonnet) |
+
+**Model policy (from the DNA investigation, `metrics/SUMMARY-2026-05-30`):** the
+reality-reaching / judgment behaviour is governed by model capability, not prompt. So
+**tester, code-reviewer and security-reviewer are hard-pinned to Opus** (they ignore
+`/model`); all other roles follow the session `/model` with the recommendation shown.
+At run start, announce the effective models, e.g.
+"QA/Review fixed on Opus; other roles on <session model>".
 
 **Independence invariant:** whoever writes code does not review it; whoever derives
 tests does not implement them. Reviewers/validators get **diff + spec**, never the

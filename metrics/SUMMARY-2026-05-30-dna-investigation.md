@@ -53,38 +53,50 @@ tatsächlichen Bauen ist sie **präzisions-sicher, aber ergebnis-neutral** — s
 
 ## Umgesetzte Modell-Belegung der /agileteam-Rollen (2026-05-30)
 
-Direkt aus dem Befund abgeleitet — Urteils-/Review-/Adversarial-Rollen auf Opus 4.8
-(dort entscheidet Fähigkeit, nicht Prompt), Generierungs-/Kuratierungs-Rollen auf
-Sonnet 4.6. Gesetzt als `model:`-Frontmatter in der jeweiligen Agent-Datei.
+Direkt aus dem Befund abgeleitet, gesetzt als `model:`-Frontmatter in der jeweiligen
+Agent-Datei. Gewählt: **Hybrid (Variante C)** — nur die kritischen Schutz-Gates werden hart auf
+Opus gepinnt; alle übrigen Rollen folgen `/model` (`model: inherit`) mit einer
+dokumentierten Empfehlung.
 
-| Rolle | Datei | Modell |
-|---|---|---|
-| tester (QA) | `core/tester.md` | **opus** |
-| code-reviewer | `code-reviewer.md` | **opus** |
-| spec-auditor | `agileteam/spec-auditor.md` | **opus** |
-| security-reviewer | `agileteam/security-reviewer.md` | **opus** |
-| product-owner | `agileteam/product-owner.md` | **opus** |
-| coder | `core/coder.md` | sonnet |
-| requirements-analyst | `agileteam/requirements-analyst.md` | sonnet |
-| planner | `core/planner.md` | sonnet |
-| context-keeper | `agileteam/context-keeper.md` | sonnet |
-| production-validator | `testing/validation/production-validator.md` | sonnet |
-| retro-analyst | `agileteam/retro-analyst.md` | sonnet |
+| Rolle | Datei | Modell | Durchsetzung |
+|---|---|---|---|
+| tester (QA) | `core/tester.md` | **opus** | **hart gepinnt** |
+| code-reviewer | `code-reviewer.md` | **opus** | **hart gepinnt** |
+| security-reviewer | `agileteam/security-reviewer.md` | **opus** | **hart gepinnt** |
+| spec-auditor | `agileteam/spec-auditor.md` | inherit | Empfehlung: Opus |
+| product-owner | `agileteam/product-owner.md` | inherit | Empfehlung: Opus |
+| coder | `core/coder.md` | inherit | Empfehlung: Sonnet |
+| requirements-analyst | `agileteam/requirements-analyst.md` | inherit | Empfehlung: Sonnet |
+| planner | `core/planner.md` | inherit | Empfehlung: Sonnet |
+| context-keeper | `agileteam/context-keeper.md` | inherit | Empfehlung: Sonnet |
+| production-validator | `testing/validation/production-validator.md` | inherit | Empfehlung: Sonnet |
+| retro-analyst | `agileteam/retro-analyst.md` | inherit | Empfehlung: Sonnet |
+
+Begründung: Der GBrain-Fehlertyp wird *nur* von einem starken QA-Modell gefangen
+(siehe oben). Würden alle Rollen `inherit` sein, verlöre ein versehentliches
+`/model haiku` genau diesen Schutz still. Deshalb bleiben tester/code-reviewer/
+security-reviewer hart; coder/planner/etc. dürfen ruhig `/model` folgen.
 
 ### Wie `/model` damit zusammenspielt (Override-Mechanik)
 Auflösungs-Reihenfolge bei einem Subagenten (laut Tool-Doku, höchste zuerst):
 1. **Expliziter `model`-Parameter** beim Spawn (der Orchestrator setzt hier keinen —
    `agileteam.md` hardcodet kein Modell, geprüft).
-2. **`model:`-Frontmatter** der Agent-Datei → das sind diese Pins.
-3. **Vererbung vom Eltern-/Session-Modell** (das, was `/model` setzt) — greift nur,
-   wenn 1 und 2 fehlen bzw. `model: inherit` steht.
+2. **`model:`-Frontmatter** der Agent-Datei → bei den 3 harten Rollen = `opus`.
+3. **Vererbung vom Eltern-/Session-Modell** (das, was `/model` setzt) — greift bei
+   allen `inherit`-Rollen.
 
-Konsequenz: **Ein explizites `model:` (wie hier) gewinnt gegen `/model`.** Setzt der
-User `/model haiku`, laufen die gepinnten Rollen weiter auf opus/sonnet — `/model`
-steuert nur die Haupt-Session und alle `inherit`-Rollen. Das ist die **harte** Variante:
-QA/Review bekommen immer Opus, auch in einer billigen Session. Wer einen ganzen Lauf
-auf ein Tier zwingen will, muss die Frontmatter ändern (oder der Orchestrator müsste
-einen expliziten Override durchreichen).
+Konsequenz: `/model haiku` zieht **8 der 11 Rollen** auf Haiku, aber **tester,
+code-reviewer und security-reviewer bleiben Opus**. Wer auch diese drei umstellen
+will, muss bewusst ihr Frontmatter ändern.
+
+### Bekommt der User eine Warnung, bevor `/model` greift?
+**Nein.** `/model` ist nur ein Session-Schalter — es gibt **keine eingebaute Warnung**,
+dass dabei hart gepinnte Rollen unberührt bleiben (oder, bei Variante B, mit umgestellt
+würden). Die Frontmatter-Auflösung passiert still beim Spawn jedes Subagenten; es gibt
+keinen Bestätigungs-Dialog und kein „model syncing"-Vorab-Hinweis. Bei Variante C ist
+das unkritisch (die Schutz-Gates ignorieren `/model` ohnehin), aber transparent machen
+lässt sich's nur über Doku oder einen optionalen Orchestrator-Hinweis zu Lauf-Beginn
+(„QA/Review laufen fix auf Opus, übrige Rollen auf <Session-Modell>").
 
 > ⚠ Verifikations-Caveat: Die Reihenfolge entspricht der dokumentierten Tool-Semantik;
 > dass deine konkrete Claude-Code-Version das `model:`-Frontmatter pro Subagent beim
