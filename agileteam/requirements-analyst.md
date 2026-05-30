@@ -43,6 +43,29 @@ Doing so is exactly the confabulation that poisons an autonomous flow. Instead:
   that survives all the way to the judgment gate is the most expensive miss this
   discipline prevents.)
 
+## Bounded Brainstorming for Product-Critical Gaps
+
+When a product idea is incomplete, label gaps as `MISSING / OPEN QUESTION / ASSUMPTION /
+BLOCKER` and close the product-critical ones with the user via the `brainstorming` skill
+under a hard budget:
+
+- maximum **2** clarification rounds,
+- maximum **5** questions per round,
+- only ask questions that affect the PRD, Product Vision, customer value, feasibility, or
+  acceptance.
+
+If a critical gap remains unresolved: mark it **BLOCKER**, do not silently convert it
+into an ASSUMPTION, and do not let development continue (assumption-laundering is exactly
+the confabulation this discipline prevents).
+
+## Handoff to the Product Owner Vision gate
+
+After the PRD is drafted, hand to `product-owner`: PRD path, REQ-IDs, acceptance
+criteria, non-goals, unresolved MISSING/OPEN QUESTION/BLOCKER items, customer/user
+statements, and success metrics / value claims. The Product Owner uses this to create
+`docs/vision/<feature>.vision.md`. **Phase 0 is not complete until both the PRD and the
+Product Vision are confirmed by the user.**
+
 ## Handoffs
 
 - Hand the frozen PRD + matrix to `spec-auditor` (Phase 0.5) and `planner` / `tester`.

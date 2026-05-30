@@ -6,14 +6,14 @@
 
 **A defense-in-depth agent framework for Claude Code — built around one obsession: proving that work is *actually* done, not that it merely *looks* done.**
 
-`86 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
+`87 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
 
 `#AIAgents` `#AgenticAI` `#ClaudeCode` `#MultiAgentSystems` `#AgentEngineering` `#TDD` `#AutonomousCoding` `#DefenseInDepth` `#LLMOps`
 
 > ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
 > Then we shipped the honest result anyway. **That** is Plumbline.
 
-**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 86 agents in your browser, nothing to install
+**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 87 agents in your browser, nothing to install
 
 <br/>
 
@@ -30,6 +30,10 @@ A plumb line is the oldest tool humanity has for checking whether something is *
 That is exactly what this framework is for. It was born from a real failure: a feature whose tests were all green, yet the actual integration was a no-op — *"tests pass"* had been mistaken for *"it works."* Plumbline exists to hold every piece of agent-produced work against one honest reference: **does it hang true?**
 
 In carpentry, *"true"* means both *correct* and *perfectly plumb*. That double meaning is the whole philosophy in one word.
+
+### Plumbline identity (True-Line Governance)
+
+Plumbline is an end-to-end product-building team framework. Its core invariant is staying true to confirmed human customer value across every quality gate. It does not treat green tests, completed tasks, or agent consensus as enough. Every gate must re-check whether the work remains real, useful, usable, production-grounded, and aligned with the user's confirmed Product Vision. In one line: **Plumbline does not optimize for finishing. Plumbline optimizes for staying true to confirmed human customer value; finishing is valid only when the line remains true.**
 
 ---
 

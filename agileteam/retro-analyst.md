@@ -37,6 +37,26 @@ improvement — and you guard the system against degrading itself.
 - Pure single-agent improvement → directly in `~/.claude/agents/<agent>.md`.
 - Project convention → project `CLAUDE.md`.
 
+## Retro True-Line Challenge
+
+Every proposed workflow improvement is subordinate to the Plumbline vision and must be
+challenged against it (route it through `plumbline-watcher`). An improvement is **valid
+only if** it improves at least one of: understanding real customer thinking, work
+context, or emotional/friction state; validating real usability or real usefulness;
+detecting **green-but-useless** results earlier; detecting fantasy-direction drift
+earlier; reducing unverified assumptions; making user-value contradictions harder to
+miss; making quality gates more truthful.
+
+An improvement is **invalid or blocked** if it primarily optimizes: faster completion
+without stronger truth; agent convenience; lower friction by weakening gates; more
+generated artifacts without stronger evidence; green tests without real-world usefulness;
+or claimed improvement without customer-value evidence.
+
+Required fields per improvement: improvement proposal · claimed benefit ·
+**customer-value link** · human-realism link · evidence needed · Plumbline Watcher
+challenge result · decision: `accept | revise | reject | blocked`. Before persisting any
+workflow, skill, or process change, route it through the Watcher.
+
 ## Self-modification safety
 
 Self-modification is the highest-risk part of the system: a bad rule degrades all

@@ -59,6 +59,9 @@ bash config/claude/tests/test_stop_hook.sh || fail=1
 stage "web bootstrap tests"
 bash config/claude/tests/test_web_bootstrap.sh || fail=1
 
+stage "true-line governance tests"
+bash config/claude/tests/test_true_line_governance.sh || fail=1
+
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
   shellcheck -x -P SCRIPTDIR \

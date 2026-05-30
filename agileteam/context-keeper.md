@@ -11,6 +11,11 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 ## Artifacts you own (versioned, in-repo)
 
 - `docs/prd/<feature>.prd.md` — requirements (REQ-IDs).
+- `docs/vision/<feature>.vision.md` — the confirmed **Product Vision** / customer-value
+  line (the "true line" QA, Product Owner, Production Validator, Watcher and Retro check
+  against). No confirmed Vision ⇒ no development start.
+- `docs/contradictions/<feature>.contradictions.md` — the **Contradiction Ledger**, when
+  any value contradiction is detected (one `CONTRA-<id>` per contradiction).
 - `docs/traceability.md` — REQ ↔ test ↔ task ↔ evidence ↔ **wired-in-prod?** ↔
   **evidence-class** (the spine + the **Reality Ledger**). The last two columns are
   load-bearing: `wired-in-prod?` names the test proving the capability is reachable
@@ -29,6 +34,26 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
    context window.
 2. Keep the artifacts mutually consistent. Detect orphan REQ-IDs, matrix ↔ code ↔ ADR
    drift, and stale state; flag and reconcile.
+
+## True-Line fields (alongside the Reality Ledger, not replacing it)
+
+The traceability matrix carries, in addition to `wired-in-prod?` and `evidence-class`,
+the customer-value spine: `vision-link`, `value-check-id`, `true-line-status`,
+`contradiction-id`, `user-decision`. The Reality Ledger stays load-bearing **and** the
+True-Line fields are load-bearing. A feature touching I/O/remote/external-API/UI that
+stays `*-fake` is RED-for-confidence; a feature that is green but not true to customer
+value is RED-for-value. `true-line-status` is one of `aligned | value-risk |
+contradiction | user-reframed | blocked`; a top-level REQ must map to at least one
+vision-link or value-check-id.
+
+## Contradiction consistency
+
+If any gate records `true-line-status: contradiction` or `blocked`, ensure: the
+contradiction ledger exists, the `contradiction-id` is referenced from traceability,
+workflow status is paused, the `user-decision` is pending or recorded, and no later
+phase treats the contradiction as resolved without allowed-resolution evidence
+(user-confirmed reframe, re-approved PRD/Vision, removed requirement, changed
+implementation, or abandonment) — never a mock/placeholder/"known limitation".
 
 ## Agile architecture changes (when the solution diverges from the plan)
 

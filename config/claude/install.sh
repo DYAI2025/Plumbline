@@ -103,7 +103,7 @@ install_commands() {
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' cmd; do
     local rel name
-    rel="${cmd#$src_dir/}"
+    rel="${cmd#"$src_dir"/}"
     name="${rel%.md}"
     transfer "$cmd" "$CLAUDE_HOME/commands/$name.md"
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.md' -print0 | sort -z)

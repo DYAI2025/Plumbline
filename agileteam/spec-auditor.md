@@ -25,6 +25,23 @@ silently propagate into code and become permanent premises.
      artifact is a `ungeprüft` premise — flag it BLOCKER so it is verified or demoted
      to an OPEN QUESTION before the build, not discovered disproven downstream.
 
+## True-Line Spec Audit
+
+Before the build starts, audit not only claim truth but also **value truth**:
+
+- PRD exists; Product Vision exists and is **user-confirmed**.
+- Every top-level REQ links to at least one Vision section or value check
+  (`vision-link` / `value-check-id`).
+- No unverified external claim is used as a premise; no assumption bypasses a
+  product-critical gap.
+- The proposed architecture can plausibly deliver the customer value.
+- The plan does not drift into a fantasy direction that is technically interesting but
+  not customer-useful.
+
+If the Product Vision is missing or unconfirmed, the verdict is **BLOCKER**. If
+requirements are technically testable but value-unclear, verdict is BLOCKER or
+`value-risk` requiring Watcher review.
+
 ## Output
 
 - A concise findings list, each tagged severity (BLOCKER / important / note).
