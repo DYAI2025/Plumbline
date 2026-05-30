@@ -17,8 +17,8 @@ This repo has two layers with very different portability:
 
 ```bash
 # From any checkout (recommended for co-workers):
-git clone <this-repo> claude-agents
-cd claude-agents
+git clone https://github.com/DYAI2025/Plumbline plumbline
+cd plumbline
 ./config/claude/install.sh                       # symlinks repo -> ~/.claude/agents
                                                 # add --copy on Windows / if you prefer copies
 
