@@ -6,7 +6,7 @@
 
 **A defense-in-depth agent framework for Claude Code — built around one obsession: proving that work is *actually* done, not that it merely *looks* done.**
 
-`82 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `Reality-Ledger QA` · `empirically benchmarked`
+`85 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` three-body council · `Reality-Ledger QA` · `empirically benchmarked`
 
 `#AIAgents` `#AgenticAI` `#ClaudeCode` `#MultiAgentSystems` `#AgentEngineering` `#TDD` `#AutonomousCoding` `#DefenseInDepth` `#LLMOps`
 
@@ -17,7 +17,7 @@
 
 <br/>
 
-![Plumbline Agent Explorer — searching, filtering and inspecting 82 colour-coded subagents](docs/images/explorer-demo.gif)
+![Plumbline Agent Explorer — searching, filtering and inspecting the colour-coded subagent library](docs/images/explorer-demo.gif)
 
 </div>
 
@@ -79,8 +79,9 @@ Plumbline even ships its own honesty as commands: **`/honest-status`** (separate
 | `swarm/` | 3 | Swarm topologies: adaptive, hierarchical, mesh |
 | `goal/`, `reasoning/`, `testing/` | 6 | GOAP planners, reasoning variants, TDD-London + production validation |
 | domain specialists | 8 | analysis, architecture, ML, backend, CI/CD, API-docs, neural, mobile |
+| `concilium/` | 3 | Three-body idea+team council: market-realist · tech-arbiter · skeptic |
 | `config/claude/skills/` | 16 | Vendored skills so workflows stay portable without external packs |
-| `config/claude/commands/` | 6 | `/agileteam`, `/agileteam-bench`, `/honest-status`, `/bench-oracle`, `/reflect`, `/reflect-skills` |
+| `config/claude/commands/` | 7 | `/agileteam`, `/agileteam-bench`, `/concilium`, `/honest-status`, `/bench-oracle`, `/reflect`, `/reflect-skills` |
 
 Browse them all visually in the **Agent Explorer** (see below).
 
