@@ -53,26 +53,47 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 
 ## Team (subagents from ~/.claude/agents/)
 
-| Role | subagent_type | Responsibility | Independence | Model |
-|------|---------------|----------------|--------------|-------|
-| Requirements | `requirements-analyst` | Elicitation, PRD, REQ-IDs, traceability matrix | — | inherit (rec. Sonnet) |
-| Spec sanity | `spec-auditor` | ultrathink + konfabulations-audit on the spec | reads spec only | **Opus (pinned)** |
-| Context | `context-keeper` | Curates state.md / decision-log / ADRs / matrix | — | inherit (rec. Sonnet) |
-| Planner | `planner` | Architecture, milestones, atomic task breakdown | — | inherit (rec. Sonnet) |
-| QA design | `tester` | Acceptance/E2E tests from spec, then runs suites | derives tests before coder | **Opus (pinned)** |
-| Dev | `coder` | Implements one task at a time, test-first | fresh subagent per task | inherit (rec. Sonnet) |
-| Reviewer | `code-reviewer` | Independent quality/clean-code review on diff | no coder reasoning | **Opus (pinned)** |
-| Security | `security-reviewer` | SAST/deps/secrets/threat + injection surface | on diff | **Opus (pinned)** |
-| Acceptance | `production-validator` | Per-REQ pass/fail against the matrix | machine-checkable verdict | inherit (rec. Sonnet) |
-| Judgment | `product-owner` | ultrathink iteration gate: right thing? bias? claims? | no coder reasoning | **Opus (pinned)** |
-| Retro | `retro-analyst` | Process learnings + system-level proposals | — | inherit (rec. Sonnet) |
+| Role | subagent_type | Responsibility | Independence |
+|------|---------------|----------------|--------------|
+| Requirements | `requirements-analyst` | Elicitation, PRD, REQ-IDs, traceability matrix | — |
+| Spec sanity | `spec-auditor` | ultrathink + konfabulations-audit on the spec | reads spec only |
+| Context | `context-keeper` | Curates state.md / decision-log / ADRs / matrix | — |
+| Planner | `planner` | Architecture, milestones, atomic task breakdown | — |
+| QA design | `tester` | Acceptance/E2E tests from spec, then runs suites | derives tests before coder |
+| Dev | `coder` | Implements one task at a time, test-first | fresh subagent per task |
+| Reviewer | `code-reviewer` | Independent quality/clean-code review on diff | no coder reasoning |
+| Security | `security-reviewer` | SAST/deps/secrets/threat + injection surface | on diff |
+| Acceptance | `production-validator` | Per-REQ pass/fail against the matrix | machine-checkable verdict |
+| Judgment | `product-owner` | ultrathink iteration gate: right thing? bias? claims? | no coder reasoning |
+| Retro | `retro-analyst` | Process learnings + system-level proposals | — |
 
-**Model policy (from the DNA investigation, `metrics/SUMMARY-2026-05-30`):** the
-reality-reaching / judgment behaviour is governed by model capability, not prompt. So
-the five checking gates — **tester, code-reviewer, security-reviewer, spec-auditor and
-product-owner — are hard-pinned to Opus** (they ignore `/model`); all other roles follow
-the session `/model` with the recommendation shown. At run start, announce the effective
-models, e.g. "QA/Review/Audit/Judgment fixed on Opus; other roles on <session model>".
+### Model selection (orchestrator-controlled — read before dispatching any subagent)
+The per-agent `model:` frontmatter is **NOT reliably applied** by the runtime
+(verified 2026-05-30 via subagent logs: a role pinned to `haiku` still ran on the
+session model; only an **explicit `model` parameter on the dispatch** takes effect).
+So the orchestrator owns model selection, not the agent files. All roles default to the
+**session model** (whatever the user set via `/model`).
+
+**Reality caveat (measured, `metrics/SUMMARY-2026-05-30`):** the "test reaches the real
+boundary instead of a provided fake" behaviour — the exact failure that bit this project
+(GBrain no-op: green against a mock, real write never exercised) — is **caught only by
+Opus**. Both **Haiku and Sonnet escaped it 3/3**. So a `/agileteam` run on Sonnet or
+below does **not** guarantee the GBrain-class safety net on the checking gates
+(`tester`, `code-reviewer`, `security-reviewer`, `spec-auditor`, `product-owner`).
+
+Policy = **user's choice, with one mandatory disclosure**:
+1. Run all roles on the **session model** by default (pass no per-dispatch `model`).
+2. **At run start, state the effective model and the caveat ONCE**, e.g.:
+   "Running /agileteam on `<session model>`. The GBrain-class real-boundary safety net
+   on the QA/Review/Audit/Judgment gates is only guaranteed on Opus (measured); on
+   `<session model>` it is not. Reply `gates on opus` to force just those five gates to
+   Opus for this run."
+3. **Only if the user opts in** ("gates on opus" / equivalent), dispatch the five
+   checking gates with an explicit `model: "opus"` parameter (the verified-working
+   lever) and leave the rest on the session model. Otherwise force nothing.
+
+Do not silently upgrade or downgrade any role. The disclosure is required because the
+risk is invisible: Sonnet is a perfectly reasonable coder yet still misses this class.
 
 **Independence invariant:** whoever writes code does not review it; whoever derives
 tests does not implement them. Reviewers/validators get **diff + spec**, never the

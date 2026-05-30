@@ -33,6 +33,11 @@ fertiger Fake + Starter-Test, das Echte zu testen ist Mehrarbeit. Resultat:
 | Haiku  | 3/3 durchgerutscht | **3/3 durchgerutscht** |
 | Opus   | 0/3 (alles gefangen) | 0/3 (alles gefangen) |
 
+**Nachtrag 2026-05-30 — Sonnet 4.6 nachgemessen (die fehlende Mitte):** 3 Läufe auf
+derselben P1-Falle, Tester-DNA via explizitem `model`-Parameter erzwungen → **3/3
+durchgerutscht, wie Haiku.** Die Grenze ist also **Opus vs. der Rest**, nicht "Haiku vs.
+Rest". Sonnet ist ein vernünftiges Coding-Modell, greift hier aber still daneben.
+
 ## Die eine echte Erkenntnis
 **Ob die Realität getestet wird, entscheidet die Modell-Stärke — nicht der Prompt.**
 - Opus fasst die echte Boundary von allein an (auch *ohne* DNA) → fängt den Fehler immer.
@@ -51,57 +56,43 @@ tatsächlichen Bauen ist sie **präzisions-sicher, aber ergebnis-neutral** — s
 3. **Nicht behaupten**, die DNA schließe die Fake-Boundary-Lücke auf schwachen Modellen —
    gemessen: tut sie nicht.
 
-## Umgesetzte Modell-Belegung der /agileteam-Rollen (2026-05-30)
+## Modell-Policy der /agileteam-Rollen (2026-05-30, verifiziert)
 
-Direkt aus dem Befund abgeleitet, gesetzt als `model:`-Frontmatter in der jeweiligen
-Agent-Datei. Gewählt: **Hybrid** — alle Urteils-/Review-/Adversarial-Gates werden hart
-auf Opus gepinnt; die Generierungs-/Kuratierungs-Rollen folgen `/model`
-(`model: inherit`) mit dokumentierter Empfehlung.
+### Verifizierter Mechanismus (Subagent-Logs, nicht Selbstauskunft)
+Quelle: `…/<session>/subagents/agent-<id>.jsonl` — jeder Subagent loggt sein
+tatsächlich genutztes Modell. Drei kontrollierte Probes:
 
-| Rolle | Datei | Modell | Durchsetzung |
+| Test | erwartet (wenn Frontmatter wirkt) | tatsächlich geloggt | Schluss |
 |---|---|---|---|
-| tester (QA) | `core/tester.md` | **opus** | **hart gepinnt** |
-| code-reviewer | `code-reviewer.md` | **opus** | **hart gepinnt** |
-| security-reviewer | `agileteam/security-reviewer.md` | **opus** | **hart gepinnt** |
-| spec-auditor | `agileteam/spec-auditor.md` | **opus** | **hart gepinnt** |
-| product-owner | `agileteam/product-owner.md` | **opus** | **hart gepinnt** |
-| coder | `core/coder.md` | inherit | Empfehlung: Sonnet |
-| requirements-analyst | `agileteam/requirements-analyst.md` | inherit | Empfehlung: Sonnet |
-| planner | `core/planner.md` | inherit | Empfehlung: Sonnet |
-| context-keeper | `agileteam/context-keeper.md` | inherit | Empfehlung: Sonnet |
-| production-validator | `testing/validation/production-validator.md` | inherit | Empfehlung: Sonnet |
-| retro-analyst | `agileteam/retro-analyst.md` | inherit | Empfehlung: Sonnet |
+| 11 Rollen, Session=Opus | alle Opus | alle `claude-opus-4-8` | nicht unterscheidend |
+| `retro-analyst` **Frontmatter** `model: haiku` | haiku | `claude-opus-4-8` | ❌ Frontmatter ignoriert |
+| `general-purpose` **expliziter** `model: haiku` | haiku | `claude-haiku-4-5` | ✅ greift |
 
-Begründung: Der GBrain-Fehlertyp wird *nur* von einem starken Modell gefangen, und das
-betrifft alle prüfenden Gates (QA, Review, Security, Spec-Audit, Urteil). Würden sie
-`inherit` sein, verlöre ein versehentliches `/model haiku` diesen Schutz still. Deshalb
-sind die **5 Gates hart auf Opus**; die generierenden Rollen (coder/planner/etc.) dürfen
-`/model` folgen.
+**Befund: Das `model:`-Frontmatter wird von dieser Claude-Code-Version NICHT angewandt.**
+Subagenten laufen auf dem **Session-Modell** (`/model`). Der einzige wirksame Hebel ist
+der **explizite `model`-Parameter beim Dispatch** — den setzt nur der Orchestrator.
+Konsequenz: Frontmatter-Pins sind wirkungslos → **alle 11 Rollen auf `model: inherit`**
+zurückgesetzt; die Steuerung liegt im `/agileteam`-Command (Orchestrator), nicht in den
+Agent-Dateien.
 
-### Wie `/model` damit zusammenspielt (Override-Mechanik)
-Auflösungs-Reihenfolge bei einem Subagenten (laut Tool-Doku, höchste zuerst):
-1. **Expliziter `model`-Parameter** beim Spawn (der Orchestrator setzt hier keinen —
-   `agileteam.md` hardcodet kein Modell, geprüft).
-2. **`model:`-Frontmatter** der Agent-Datei → bei den 5 harten Rollen = `opus`.
-3. **Vererbung vom Eltern-/Session-Modell** (das, was `/model` setzt) — greift bei
-   allen `inherit`-Rollen.
+### Gewählte Policy: User entscheidet, mit Pflicht-Hinweis
+Gemessen (siehe Nachtrag oben): die GBrain-Klasse (Real-Boundary statt Fake) fangen
+**nur Opus** — **Haiku UND Sonnet** rutschen 3/3 durch. Da Frontmatter ohnehin nicht
+greift und der User die Modellwahl behalten soll, gilt:
 
-Konsequenz: `/model haiku` zieht **6 der 11 Rollen** auf Haiku, aber **tester,
-code-reviewer, security-reviewer, spec-auditor und product-owner bleiben Opus**. Wer
-auch diese fünf umstellen will, muss bewusst ihr Frontmatter ändern.
+1. **Default:** alle Rollen auf dem **Session-Modell** (kein per-Dispatch-`model`).
+2. **Pflicht-Disclosure zu Lauf-Beginn (einmal):** der Orchestrator nennt das effektive
+   Modell und den GBrain-Vorbehalt — auf Sonnet/Haiku ist das Sicherheitsnetz der
+   prüfenden Gates (tester, code-reviewer, security-reviewer, spec-auditor,
+   product-owner) **nicht** garantiert.
+3. **Opt-in:** sagt der User „gates on opus", dispatcht der Orchestrator genau diese
+   fünf Gates mit explizitem `model: "opus"` (der verifiziert wirksame Hebel); sonst
+   wird nichts erzwungen.
 
-### Bekommt der User eine Warnung, bevor `/model` greift?
-**Nein.** `/model` ist nur ein Session-Schalter — es gibt **keine eingebaute Warnung**,
-dass dabei hart gepinnte Rollen unberührt bleiben (oder, bei Variante B, mit umgestellt
-würden). Die Frontmatter-Auflösung passiert still beim Spawn jedes Subagenten; es gibt
-keinen Bestätigungs-Dialog und kein „model syncing"-Vorab-Hinweis. Bei Variante C ist
-das unkritisch (die Schutz-Gates ignorieren `/model` ohnehin), aber transparent machen
-lässt sich's nur über Doku oder einen optionalen Orchestrator-Hinweis zu Lauf-Beginn
-(„QA/Review laufen fix auf Opus, übrige Rollen auf <Session-Modell>").
-
-> ⚠ Verifikations-Caveat: Die Reihenfolge entspricht der dokumentierten Tool-Semantik;
-> dass deine konkrete Claude-Code-Version das `model:`-Frontmatter pro Subagent beim
-> `/agileteam`-Lauf tatsächlich anwendet, ist noch nicht im Live-Lauf bestätigt.
+Kein stilles Hoch-/Runterstufen. Der Hinweis ist verpflichtend, weil das Risiko
+unsichtbar ist: Sonnet ist ein vernünftiges Coder-Modell und verfehlt diese Klasse
+trotzdem. Umgesetzt in `config/claude/commands/agileteam.md` → Abschnitt
+„Model selection (orchestrator-controlled)".
 
 ## Methoden-Disziplin (Selbstkorrektur, transparent)
 Das Instrument fing mehrfach **eigene** Fehler: ein Regex-Bug im Sabotage-Skript (falscher
