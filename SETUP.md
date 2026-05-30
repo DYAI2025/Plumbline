@@ -1,6 +1,6 @@
 # SETUP — making Plumbline (and /agileteam) work on a new system
 
-> **Plumbline** is the framework; `claude-agents` is the current Git repository name.
+> **Plumbline** is both the framework and the GitHub repo (`DYAI2025/Plumbline`).
 > The agent definitions install into `~/.claude/agents/` regardless of the repo name.
 
 This repo has two layers with very different portability:
