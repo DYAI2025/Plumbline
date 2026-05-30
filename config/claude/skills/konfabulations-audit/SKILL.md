@@ -1,6 +1,6 @@
 ---
 name: konfabulations-audit
-description: Prüft jede externe Behauptung auf Beleg vor der finalen Antwort und klassifiziert sie als belegt, ableitbar, ungeprüft oder nicht-behaupten. Companion zu ultrathink-craftsmanship. Use when stating releases, APIs, prices, benchmarks, studies, product behavior, legal/medical/financial facts, claims about foreign codebases/files/org knowledge, or any numbers, names, dates, versions, quotes — and before any autonomous agent flow adopts a claim that could propagate.
+description: Checks every external claim for evidence before the final answer and classifies it as supported, inferable, unverified, or do-not-claim. Companion to ultrathink-craftsmanship. Use when stating releases, APIs, prices, benchmarks, studies, product behavior, legal/medical/financial facts, claims about foreign codebases/files/org knowledge, or any numbers, names, dates, versions, quotes — and before any autonomous agent flow adopts a claim that could propagate.
 ---
 
 # Konfabulations-Audit
