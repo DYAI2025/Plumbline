@@ -51,6 +51,45 @@ tatsächlichen Bauen ist sie **präzisions-sicher, aber ergebnis-neutral** — s
 3. **Nicht behaupten**, die DNA schließe die Fake-Boundary-Lücke auf schwachen Modellen —
    gemessen: tut sie nicht.
 
+## Umgesetzte Modell-Belegung der /agileteam-Rollen (2026-05-30)
+
+Direkt aus dem Befund abgeleitet — Urteils-/Review-/Adversarial-Rollen auf Opus 4.8
+(dort entscheidet Fähigkeit, nicht Prompt), Generierungs-/Kuratierungs-Rollen auf
+Sonnet 4.6. Gesetzt als `model:`-Frontmatter in der jeweiligen Agent-Datei.
+
+| Rolle | Datei | Modell |
+|---|---|---|
+| tester (QA) | `core/tester.md` | **opus** |
+| code-reviewer | `code-reviewer.md` | **opus** |
+| spec-auditor | `agileteam/spec-auditor.md` | **opus** |
+| security-reviewer | `agileteam/security-reviewer.md` | **opus** |
+| product-owner | `agileteam/product-owner.md` | **opus** |
+| coder | `core/coder.md` | sonnet |
+| requirements-analyst | `agileteam/requirements-analyst.md` | sonnet |
+| planner | `core/planner.md` | sonnet |
+| context-keeper | `agileteam/context-keeper.md` | sonnet |
+| production-validator | `testing/validation/production-validator.md` | sonnet |
+| retro-analyst | `agileteam/retro-analyst.md` | sonnet |
+
+### Wie `/model` damit zusammenspielt (Override-Mechanik)
+Auflösungs-Reihenfolge bei einem Subagenten (laut Tool-Doku, höchste zuerst):
+1. **Expliziter `model`-Parameter** beim Spawn (der Orchestrator setzt hier keinen —
+   `agileteam.md` hardcodet kein Modell, geprüft).
+2. **`model:`-Frontmatter** der Agent-Datei → das sind diese Pins.
+3. **Vererbung vom Eltern-/Session-Modell** (das, was `/model` setzt) — greift nur,
+   wenn 1 und 2 fehlen bzw. `model: inherit` steht.
+
+Konsequenz: **Ein explizites `model:` (wie hier) gewinnt gegen `/model`.** Setzt der
+User `/model haiku`, laufen die gepinnten Rollen weiter auf opus/sonnet — `/model`
+steuert nur die Haupt-Session und alle `inherit`-Rollen. Das ist die **harte** Variante:
+QA/Review bekommen immer Opus, auch in einer billigen Session. Wer einen ganzen Lauf
+auf ein Tier zwingen will, muss die Frontmatter ändern (oder der Orchestrator müsste
+einen expliziten Override durchreichen).
+
+> ⚠ Verifikations-Caveat: Die Reihenfolge entspricht der dokumentierten Tool-Semantik;
+> dass deine konkrete Claude-Code-Version das `model:`-Frontmatter pro Subagent beim
+> `/agileteam`-Lauf tatsächlich anwendet, ist noch nicht im Live-Lauf bestätigt.
+
 ## Methoden-Disziplin (Selbstkorrektur, transparent)
 Das Instrument fing mehrfach **eigene** Fehler: ein Regex-Bug im Sabotage-Skript (falscher
 "durchgerutscht"-Befund), vier "Leaks", bei denen Spec/Code/Docstrings die dunkle Zone
