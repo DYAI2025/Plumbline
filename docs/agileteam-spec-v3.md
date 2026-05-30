@@ -13,6 +13,43 @@
 
 ---
 
+## True-Line Governance
+
+Plumbline does not optimize for finishing. Plumbline optimizes for staying true to confirmed human customer value; finishing is valid only when the line remains true.
+The central invariant is not completion. Every quality gate is also a **plumbline check**: it
+tests whether the work is still aligned with the confirmed Product Vision, the PRD, the
+real user, the real usage moment, production evidence (the Reality Ledger), and customer
+value. A technically correct, green result can still **fail** if it is not useful, not
+usable, not production-real, or no longer true to the user's confirmed value statement.
+This layer is **additive**: it does not weaken the Reality Ledger, the escalation-
+asymmetry rule, or Gates A–D — it adds a higher-order customer-value line on top.
+
+### Required Product Vision
+
+Before development starts, the workflow must create `docs/vision/<feature>.vision.md`
+(customer/user, real usage moment, customer value, human realism, non-goals, value risks,
+QA value checks, user confirmation). **No development phase may start without a
+user-confirmed Product Vision.**
+
+### Plumbline Watcher
+
+The `plumbline-watcher` is an independent governance gate with **pause authority**. It
+reads PRD, Vision, traceability, the Reality Ledger, current evidence, and contradictions,
+and must pause when: Vision is missing or unconfirmed; customer value is contradicted; a
+requirement lacks value traceability; a feature is green but not useful; mocks/
+placeholders/fake-only evidence are used to bypass value; a retro improvement weakens
+truth for speed; or an unresolved contradiction exists.
+
+### Contradiction Rule
+
+No contradiction may be carried forward. **Forbidden** resolutions: placeholder, mock,
+fake-only evidence, "known limitation" laundering, silent assumption, completion
+pressure, agent consensus without user confirmation. **Allowed** resolutions: the user
+confirms a reframe; PRD and Vision are updated and re-approved; the requirement is
+removed; the implementation is changed; or the work is abandoned.
+
+---
+
 ## Konfigurierbare Projekt-Parameter (zu Beginn auflösen)
 
 ```text
@@ -51,6 +88,7 @@ vorschlagen, NICHT still erfinden.
 | **production-validator** | DoD + jedes Acceptance-Kriterium gegen Matrix | — |
 | **product-owner** (ultrathink) | Iterations-Schlussurteil: richtig gebaut? Bias? erfundene Claims? | Coder-Reasoning |
 | **retro-analyst** | Prozessregeln + Gesamtsystem-Justierung | — |
+| **plumbline-watcher** | True-Line governance; checks Vision/PRD/value/evidence alignment and pauses on contradictions | unabhängig; darf User-Entscheidung NICHT überstimmen |
 
 **Unabhängigkeits-Invariante:** Wer Code schreibt, prüft ihn nicht. Wer Tests
 ableitet, implementiert sie nicht. Reviewer/Validatoren bekommen **Diff + Spec**, nie

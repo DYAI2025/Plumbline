@@ -214,6 +214,33 @@ Ausführung:
 
 ---
 
+## 6a. Retro True-Line Challenge
+
+Plumbline does not optimize for finishing. Plumbline optimizes for staying true to confirmed human customer value; finishing is valid only when the line remains true.
+Retrospective improvements are **subordinate** to this Plumbline vision: a process
+improvement is valid only if it improves Plumbline's ability to build real products that
+people can use. Every proposed workflow improvement must answer:
+
+1. Does this help us understand how customers think?
+2. Does this help us understand how customers work?
+3. Does this help us understand how customers feel friction or value?
+4. Does this make customer value easier to validate?
+5. Does this detect green-but-useless output earlier?
+6. Does this detect fantasy-direction drift earlier?
+7. Does this reduce unverified assumptions?
+8. Does this make user-value contradictions harder to miss?
+9. Does this make quality gates more truthful?
+
+Reject or block changes that primarily optimize: faster completion without stronger
+truth; agent convenience; lower friction by weakening gates; more generated artifacts
+without stronger evidence; green tests without real-world usefulness; or claimed
+improvement without customer-value evidence. Required retro fields: improvement proposal ·
+claimed benefit · customer-value link · human-realism link · evidence needed · Watcher
+challenge result · decision (`accept | revise | reject | blocked`). Route every proposal
+through `plumbline-watcher` before persisting it.
+
+---
+
 ## 7. Anschluss an die bestehenden Tools
 
 - **claude-reflect** liefert Roh-Signal (Korrekturen, Muster) auf der Meta-Ebene —

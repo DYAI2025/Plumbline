@@ -16,6 +16,82 @@ invoked `/agileteam` to build the following:
 > maschinell prüfbares Pass-Kriterium. Vollständige Spec: `docs/agileteam-spec-v3.md`;
 > Metriken & Meta-Meta-Governance: `docs/agileteam-governance.md`.
 
+## True-Line Governance (read first)
+
+Plumbline does not optimize for finishing. Plumbline optimizes for staying true to confirmed human customer value; finishing is valid only when the line remains true.
+Every gate below is also a **plumbline check**: it re-pulls the true line between the
+user's idea, the PRD, the confirmed Product Vision, the real user, real usefulness, the
+Reality-Ledger evidence, and the delivered behavior. This layer sits **on top of** —
+never weakening — the existing Reality Ledger, escalation-asymmetry, and Gates A–D.
+
+### First-run orientation
+
+When the user starts `/agileteam`, first explain Plumbline in the user's language.
+
+> **EN:** Plumbline is an end-to-end product-building team framework that uses reflective
+> agile gates to keep every decision true to real customer value, not just green code.
+>
+> **DE:** Plumbline ist ein End-to-End-Product-Building-Team-Framework, das mit
+> reflektiven agilen Gates jede Entscheidung am realen Kundennutzen ausrichtet, nicht
+> nur an grünem Code.
+
+Then ask for a minimal product idea (1. What should be built? 2. Who is it for? 3. What
+real human value should it create? / 1. Was soll gebaut werden? 2. Für wen? 3. Welchen
+realen menschlichen Nutzen?). **Language rule:** if the user writes in German, continue
+in German; otherwise default to English.
+
+### Phase sequence
+
+```text
+Phase 0.0  First-run orientation
+Phase 0.1  Minimal product idea intake
+Phase 0.2  PRD drafting                     (requirements-analyst)
+Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
+Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
+Phase 0.5  User confirmation of PRD + Vision  +  spec-sanity audit
+Phase 1    TDD & QA setup                    (+ True-Line Gate Check from here on)
+Phase 2    Implementation (coder/reviewer loop)
+Phase 3    Verification / security / validation / judgment gates
+Phase 4    QA / customer-value QA
+Phase 5    Production validation (+ value alignment)
+Phase 6    Product Owner final value gate
+Phase 7    User acceptance
+Phase 8    Retro / governance improvement (Watcher-challenged)
+```
+
+(The legacy Phase 0–4 detail below still governs the build loop; these sub-phases add
+the customer-value framing around it.)
+
+### Development entry condition (hard gate)
+
+Development may not start until all of the following are true:
+
+- `docs/prd/<feature>.prd.md` exists.
+- PRD status is user-confirmed.
+- `docs/vision/<feature>.vision.md` exists.
+- Product Vision status is user-confirmed.
+- The traceability matrix contains the True-Line value fields (vision-link,
+  value-check-id, true-line-status).
+- There are no unresolved contradictions.
+- The Plumbline Watcher verdict is `pass`.
+
+If any condition is false, stop and ask the user for the missing decision or artifact.
+
+### Watcher continuation rules (Phase 1 onward)
+
+From Phase 1 onward, every gate must include a Plumbline Watcher check (run the
+`plumbline-watcher` subagent / the `true-line-gate-check` template):
+
+- Watcher verdict `pass`: continue.
+- Watcher verdict `review-required` (`value-risk`): resolve the value-risk first.
+- Watcher verdict `pause` (`contradiction`): stop and ask the user.
+- Watcher verdict `blocked`: stop and require user or human review.
+
+No contradiction may be carried forward silently. A contradiction may never be resolved
+by a mock, placeholder, fake-only evidence, "known limitation" laundering, a silent
+assumption, agent consensus, or completion pressure — only by an allowed resolution the
+**user** confirms.
+
 ## Operating modes (read first)
 
 Default mode is **CORE**. Select with `--mode=core|full`.
@@ -66,6 +142,7 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 | Acceptance | `production-validator` | Per-REQ pass/fail against the matrix | machine-checkable verdict |
 | Judgment | `product-owner` | ultrathink iteration gate: right thing? bias? claims? | no coder reasoning |
 | Retro | `retro-analyst` | Process learnings + system-level proposals | — |
+| True-Line | `plumbline-watcher` | Customer-value governance: Vision/PRD/value/evidence alignment; pauses on contradictions | independent; may not override the user |
 
 ### Model selection (orchestrator-controlled — read before dispatching any subagent)
 The per-agent `model:` frontmatter is **NOT reliably applied** by the runtime
@@ -126,6 +203,14 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    `context-keeper` owns `docs/context/state.md`, `docs/context/decision-log.md`,
    `docs/architecture/adr-*.md`, `docs/traceability.md`.
 4. Definition of Ready met? Save PRD to `docs/prd/<feature>.prd.md`. On BLOCKER → USER GATE.
+5. **Bounded brainstorming (gaps):** close product-critical gaps with the user in
+   ≤2 rounds / ≤5 questions per round via Skill `brainstorming`. An unresolved core gap
+   stays a BLOCKER — never silently downgraded to an ASSUMPTION.
+6. **Product Vision hand-off:** `requirements-analyst` hands PRD + REQ-IDs + acceptance +
+   non-goals + unresolved gaps + customer/value statements to `product-owner`, which
+   writes `docs/vision/<feature>.vision.md` from the `product-vision.template.md`. Add
+   the True-Line fields (vision-link, value-check-id, true-line-status) to the matrix.
+   Phase 0 is not complete until **both** PRD and Vision are user-confirmed.
 
 ### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
 1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode
@@ -137,7 +222,10 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    ⚠ This gate checks reasoning quality & claim provenance, NOT functional correctness.
 
 ### USER GATE
-Show DoD + traceability matrix + spec-audit findings before implementing.
+Show DoD + traceability matrix + spec-audit findings before implementing. **Also confirm
+the Development entry condition (above): PRD and Product Vision both user-confirmed, value
+fields present, no unresolved contradictions, Plumbline Watcher verdict `pass`.** No
+confirmed Vision ⇒ no development start.
 
 ### Phase 1 — TDD & QA setup
 1. `tester` derives acceptance/E2E tests **independently** from the spec (black-box,
@@ -184,6 +272,11 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
   right thing?", bias + failure-mode, konfabulations-audit on claims that entered
   code/docs/commits. On BLOCKER: exactly one targeted fix back to Phase 2 (counts toward
   MAX_QA_RETURNS). ⚠ complements, never replaces, Gates A–C.
+- **Gate E — True-Line (plumbline-watcher):** layered on top of A–D, run the
+  `true-line-gate-check`. A green/wired result still at `value-risk` → `review-required`;
+  a conflict with the confirmed Vision → `pause` + a `CONTRA-<id>` in the contradiction
+  ledger. Verdict `pause`/`blocked` ⇒ stop and route to the user — never launder a value
+  contradiction into a "known limitation".
 - All pass → Phase 4; fail → Phase 2 (`systematic-debugging`; ≥2× same bug → 5-Why),
   return counter ≤ MAX_QA_RETURNS, else escalate.
 - **METRICS-EMITTER:** write a run record (config_fingerprint + metrics + gate outcomes)
@@ -204,7 +297,9 @@ baseline you cannot tell improvement from drift, so do not self-modify.
    mutation/security hits, root-cause findings, ultrathink findings.
 2. **Level 2 (system-level):** do phases/gates/roles cooperate or create friction?
    Propose workflow adjustments (gate order, loop limits, modes) with a drift-vs-
-   precision hypothesis each.
+   precision hypothesis each. **Route every proposal through `plumbline-watcher`'s
+   retro challenge** — an improvement that only optimizes speed/convenience without a
+   customer-value benefit is rejected or blocked.
 3. **Discovery:** use `claude-reflect` (`/reflect`, `/reflect-skills`) to surface
    recurring patterns BEFORE authoring anything. New skills authored ONLY via Skill
    `writing-skills`. Validate each rule/skill (dedup, conflict, net-benefit).

@@ -95,6 +95,21 @@ test that kills it.** This is the team's anti-bias reflex aimed at the darkest,
 most load-bearing zone (does the *assembled system* deliver the user's value) —
 **without** crying wolf on logic that has no boundary to cross.
 
+## Customer-Value QA (Product Vision alignment)
+
+The Gegenthese above already inverts each acceptance test toward user value; this beat
+binds it explicitly to the confirmed **Product Vision** (`docs/vision/<feature>.vision.md`).
+You do not test only implementation correctness — you also test requirement behavior,
+production wiring (the Reality Ledger), absence of fake-only evidence, customer-value
+fulfillment, real-usage-moment plausibility, and Vision alignment.
+
+For each top-level feature/REQ, include at least one value check: Does the user achieve
+the intended outcome? Is the result usable in the real context the Vision describes?
+Would a green test still be misleading here? Is the feature valuable without hidden
+manual intervention? Does the test prove value or only function? Map every value check to
+a `VCHK-*` entry in the Product Vision. If value cannot be tested directly, record the
+limitation as `value-risk` and route to `plumbline-watcher` — do not silently pass.
+
 ## Testing Strategy
 
 ### 1. Test Pyramid
