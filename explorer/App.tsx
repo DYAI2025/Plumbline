@@ -80,7 +80,7 @@ const CircleSlash = mk(
   </>,
 );
 
-const REPO_URL = "https://github.com/DYAI2025/claude-agents";
+const REPO_URL = "https://github.com/DYAI2025/Plumbline";
 
 // Category -> accent hue (border / dot). Deliberately varied, not a single ramp.
 const CAT_COLOR: Record<string, string> = {

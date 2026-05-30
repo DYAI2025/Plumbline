@@ -13,7 +13,7 @@
 > ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
 > Then we shipped the honest result anyway. **That** is Plumbline.
 
-**[▶ Live demo](https://dyai2025.github.io/claude-agents/)** · explore all 82 agents in your browser, nothing to install
+**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 85 agents in your browser, nothing to install
 
 <br/>
 
@@ -103,7 +103,7 @@ Browse them all visually in the **Agent Explorer** (see below).
 `agent-explorer.html` is a self-contained, dependency-free snapshot of the whole
 collection — a dark terminal-style UI with colour-coded categories, full-text search
 over names/tools/keywords, schema filters, and a per-agent detail drawer that links
-straight to the source on GitHub. **[Try the live demo →](https://dyai2025.github.io/claude-agents/)**
+straight to the source on GitHub. **[Try the live demo →](https://dyai2025.github.io/Plumbline/)**
 or open `agent-explorer.html` in any browser; nothing to install.
 
 Regenerate it after editing agents:
@@ -158,7 +158,7 @@ orchestrator, transparently.)
 ## Quickstart
 
 ```bash
-git clone https://github.com/DYAI2025/claude-agents plumbline
+git clone https://github.com/DYAI2025/Plumbline plumbline
 cd plumbline
 ./config/claude/install.sh        # symlinks repo → ~/.claude/agents, installs commands/skills/hook
                                   # add --copy on Windows / if you prefer copies
