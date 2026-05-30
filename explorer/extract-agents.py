@@ -20,8 +20,13 @@ os.chdir(root)
 
 agents = []
 for path in sorted(glob.glob("**/*.md", recursive=True)):
-    # Skip docs and the explorer's own sources.
-    if path == "README.md" or path.startswith("explorer/"):
+    # Skip docs, metrics and the explorer's own sources. `config/` holds vendored
+    # skills + slash-commands (not subagents) and `docs/`/`metrics/` are prose, so
+    # they must not be counted as agents.
+    if (
+        path in ("README.md", "SETUP.md", "CLAUDE.md")
+        or path.startswith(("explorer/", "config/", "docs/", "metrics/"))
+    ):
         continue
     cat = path.split("/")[0] if "/" in path else "(root)"
     m = re.match(r"^---\n(.*?)\n---(.*)$", open(path, encoding="utf-8").read(), re.S)

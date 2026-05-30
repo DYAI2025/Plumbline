@@ -1,4 +1,7 @@
-# SETUP — making claude-agents (and /agileteam) work on a new system
+# SETUP — making Plumbline (and /agileteam) work on a new system
+
+> **Plumbline** is the framework; `claude-agents` is the current Git repository name.
+> The agent definitions install into `~/.claude/agents/` regardless of the repo name.
 
 This repo has two layers with very different portability:
 

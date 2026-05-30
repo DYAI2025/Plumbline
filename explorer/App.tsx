@@ -162,10 +162,10 @@ function App() {
           </div>
           <div className="leading-tight">
             <h1 className="font-mono text-sm font-semibold tracking-tight text-zinc-100">
-              claude-agents
+              Plumbline
             </h1>
             <p className="text-[11px] text-zinc-500">
-              ~/.claude/agents · {AGENTS.length} subagent definitions
+              {AGENTS.length} subagents · does it hang true?
             </p>
           </div>
         </div>
