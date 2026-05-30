@@ -51,3 +51,10 @@ echo "==> bundling"
 
 cp "$PROJ/bundle.html" "$OUT"
 echo "==> wrote $OUT ($(du -h "$OUT" | cut -f1))"
+
+# Keep the GitHub Pages live demo (served from /docs) in lockstep with the bundle,
+# so the demo and the committed explorer can never drift apart.
+PAGES="$REPO_DIR/docs/index.html"
+mkdir -p "$REPO_DIR/docs"
+cp "$OUT" "$PAGES"
+echo "==> synced $PAGES (GitHub Pages live demo)"

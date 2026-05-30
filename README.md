@@ -103,12 +103,10 @@ over names/tools/keywords, schema filters, and a per-agent detail drawer that li
 straight to the source on GitHub. **[Try the live demo →](https://dyai2025.github.io/claude-agents/)**
 or open `agent-explorer.html` in any browser; nothing to install.
 
-<!-- SCREENSHOTS: docs/images/explorer-grid.png, explorer-detail.png — added once rendered from agent-explorer.html -->
-
 Regenerate it after editing agents:
 
 ```bash
-./build-explorer.sh   # re-extracts frontmatter → rebuilds the single HTML file
+./build-explorer.sh   # re-extracts frontmatter → rebuilds the bundle + docs/index.html (the live demo)
 ```
 
 ---
