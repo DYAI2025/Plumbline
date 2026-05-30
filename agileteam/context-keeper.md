@@ -10,6 +10,11 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 
 ## Artifacts you own (versioned, in-repo)
 
+- `docs/canvas/<feature>.canvas.md` — the confirmed **Product Canvas**, the upstream
+  value-alignment artifact (problem, target user, value proposition, success signal,
+  core use case, non-goals, risks/contradictions, evidence needed). Its `Status` is one
+  of `draft | user-confirmed | blocked`; no PRD finalization or development before
+  `user-confirmed`. The PRD and the Vision both link back to it.
 - `docs/prd/<feature>.prd.md` — requirements (REQ-IDs).
 - `docs/vision/<feature>.vision.md` — the confirmed **Product Vision** / customer-value
   line (the "true line" QA, Product Owner, Production Validator, Watcher and Retro check
@@ -38,8 +43,9 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 ## True-Line fields (alongside the Reality Ledger, not replacing it)
 
 The traceability matrix carries, in addition to `wired-in-prod?` and `evidence-class`,
-the customer-value spine: `vision-link`, `value-check-id`, `true-line-status`,
-`contradiction-id`, `user-decision`. The Reality Ledger stays load-bearing **and** the
+the customer-value spine: `canvas-link`, `vision-link`, `value-check-id`,
+`true-line-status`, `contradiction-id`, `user-decision`. The `canvas-link` traces every
+top-level REQ back to the confirmed Product Canvas. The Reality Ledger stays load-bearing **and** the
 True-Line fields are load-bearing. A feature touching I/O/remote/external-API/UI that
 stays `*-fake` is RED-for-confidence; a feature that is green but not true to customer
 value is RED-for-value. `true-line-status` is one of `aligned | value-risk |

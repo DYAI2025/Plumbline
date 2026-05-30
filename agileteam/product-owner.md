@@ -20,10 +20,13 @@ care? When would they use it? What would make it useless despite passing tests? 
 QA later verify as customer value (the `VCHK-*` checks)?
 
 Create or update `docs/vision/<feature>.vision.md` using the
-`product-vision.template.md`. You may ask focused clarification questions if customer
-value is unclear. **Do not approve development until** the PRD is confirmed, the Product
-Vision is confirmed, value checks exist, no unresolved contradictions remain, and the
-Plumbline Watcher verdict is `pass`.
+`product-vision.template.md`, and link it back to the confirmed Product Canvas
+(`docs/canvas/<feature>.canvas.md`) that the `requirements-analyst` produced upstream —
+the Vision must stay consistent with the canvas's problem, target user, value
+proposition, and success signal. You may ask focused clarification questions if customer
+value is unclear. **Do not approve development until** the Product Canvas is
+user-confirmed, the PRD is confirmed, the Product Vision is confirmed, value checks
+exist, no unresolved contradictions remain, and the Plumbline Watcher verdict is `pass`.
 
 ## Product Owner Final Value Gate (after development)
 

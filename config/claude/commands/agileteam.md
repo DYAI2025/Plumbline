@@ -45,6 +45,7 @@ in German; otherwise default to English.
 ```text
 Phase 0.0  First-run orientation
 Phase 0.1  Minimal product idea intake
+Phase 0.15 Product Canvas drafting + user confirmation  (requirements-analyst → docs/canvas/<feature>.canvas.md)  ← mandatory gate, blocks everything below
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
@@ -62,16 +63,43 @@ Phase 8    Retro / governance improvement (Watcher-challenged)
 (The legacy Phase 0–4 detail below still governs the build loop; these sub-phases add
 the customer-value framing around it.)
 
+### Mandatory Product Canvas gate (runs first, hard gate)
+
+Before the PRD is finalized and before any later phase, the `requirements-analyst` must
+create a **Product Canvas** — the upstream value-alignment artifact that keeps the team
+from building before the problem, target user, value, success signal, core use case,
+risks, non-goals, and required evidence are clear.
+
+- The canvas is written from `docs/templates/product-canvas.template.md` and saved to
+  `docs/canvas/<feature>.canvas.md`.
+- The canvas carries a `Status` field whose only allowed values are `draft`,
+  `user-confirmed`, and `blocked`. It starts at `draft`.
+- **No agent may self-confirm the canvas.** It only becomes `user-confirmed` after the
+  user explicitly confirms it. Until then the canvas is `draft` and PRD finalization,
+  Product Vision, and development must not proceed.
+- **No silent assumptions:** every unanswered canvas field is marked `MISSING`,
+  `OPEN QUESTION`, or `BLOCKER` — never quietly filled in by an agent. A product-critical
+  field still at `MISSING` / `OPEN QUESTION` / `BLOCKER` is a **BLOCKER for Phase 1**;
+  close it with the user via Skill `brainstorming`, never by a "logical" guess.
+- The canvas is an **addition, not a replacement**: it does not weaken or make optional
+  the PRD, Product Vision, traceability, Reality Ledger, Plumbline Watcher, security, or
+  human-acceptance gates. Each of those still runs exactly as before, and each later gate
+  may re-read the canvas (problem, target user, value proposition, success signal, core
+  use case, non-goals, risks/contradictions, evidence needed) as its value baseline.
+
 ### Development entry condition (hard gate)
 
 Development may not start until all of the following are true:
 
+- `docs/canvas/<feature>.canvas.md` exists.
+- Canvas status is user-confirmed.
 - `docs/prd/<feature>.prd.md` exists.
 - PRD status is user-confirmed.
 - `docs/vision/<feature>.vision.md` exists.
 - Product Vision status is user-confirmed.
+- The PRD and the Product Vision each link back to `docs/canvas/<feature>.canvas.md`.
 - The traceability matrix contains the True-Line value fields (vision-link,
-  value-check-id, true-line-status).
+  value-check-id, true-line-status) and the canvas reference field (canvas-link).
 - There are no unresolved contradictions.
 - The Plumbline Watcher verdict is `pass`.
 
@@ -131,7 +159,7 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 
 | Role | subagent_type | Responsibility | Independence |
 |------|---------------|----------------|--------------|
-| Requirements | `requirements-analyst` | Elicitation, PRD, REQ-IDs, traceability matrix | — |
+| Requirements | `requirements-analyst` | Product Canvas (first), elicitation, PRD, REQ-IDs, traceability matrix | — |
 | Spec sanity | `spec-auditor` | ultrathink + konfabulations-audit on the spec | reads spec only |
 | Context | `context-keeper` | Curates state.md / decision-log / ADRs / matrix | — |
 | Planner | `planner` | Architecture, milestones, atomic task breakdown | — |
@@ -178,11 +206,27 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
 
 ## Workflow (run autonomously; stop only on genuine blockers)
 
+### Phase 0.15 — Product Canvas (mandatory, before the PRD is finalized)
+1. Dispatch `requirements-analyst` to create the **Product Canvas** first, from
+   `docs/templates/product-canvas.template.md`, saved to `docs/canvas/<feature>.canvas.md`.
+   It must contain all ten fields — Problem, Target user/customer, Current workaround,
+   Value proposition, Success signal, Core use case, Non-goals, Risks/contradictions,
+   Evidence needed, Traceability links — none of which may be removed.
+2. **No silent assumptions:** mark every unanswered field `MISSING` / `OPEN QUESTION` /
+   `BLOCKER`. Close product-critical gaps with the user via Skill `brainstorming` (same
+   bounded budget as below). A product-critical field still open is a BLOCKER for Phase 1.
+3. **User confirmation is mandatory.** Set the canvas `Status` to `user-confirmed` only
+   after the user explicitly confirms it (record confirmer + date + note). No agent may
+   self-confirm. Until `user-confirmed`, the PRD must not be finalized and no later phase
+   may start. This is the hard Canvas gate of the Development entry condition above.
+
 ### Phase 0 — Requirements & Validation Design
-1. Dispatch `requirements-analyst`. Use Skill `ai-native-prd-architect` (mandatory) to
-   produce REQ-IDs, data model, architecture constraints, Given/When/Then acceptance,
-   NFRs, security matrix, atomic tasks, and `MISSING/ASSUMPTION/OPEN QUESTION/BLOCKER`.
-   Optionally use `product-management:write-spec` first if the goal is vague.
+1. With the canvas confirmed, dispatch `requirements-analyst`. Use Skill
+   `ai-native-prd-architect` (mandatory) to produce REQ-IDs, data model, architecture
+   constraints, Given/When/Then acceptance, NFRs, security matrix, atomic tasks, and
+   `MISSING/ASSUMPTION/OPEN QUESTION/BLOCKER`. The PRD must link back to
+   `docs/canvas/<feature>.canvas.md`. Optionally use `product-management:write-spec`
+   first if the goal is vague.
 2. **Gap rule (hard):** NEVER close a MISSING/OPEN QUESTION/BLOCKER by your own
    "logical" guess. Close each gap individually by asking the user via Skill
    `brainstorming`. No `ASSUMPTION` without explicit user confirmation. (This prevents
@@ -200,6 +244,8 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
      | real-boundary-smoke | production-verified`. Any feature touching I/O, remote,
      external APIs or UI that stays at `*-fake` is **RED regardless of green tests**,
      and that RED is surfaced in every report — see the escalation rule below.
+   The matrix also carries a **canvas-link** field so every top-level REQ traces back to
+   the confirmed Product Canvas (`docs/canvas/<feature>.canvas.md`).
    `context-keeper` owns `docs/context/state.md`, `docs/context/decision-log.md`,
    `docs/architecture/adr-*.md`, `docs/traceability.md`.
 4. Definition of Ready met? Save PRD to `docs/prd/<feature>.prd.md`. On BLOCKER → USER GATE.
@@ -208,9 +254,11 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    stays a BLOCKER — never silently downgraded to an ASSUMPTION.
 6. **Product Vision hand-off:** `requirements-analyst` hands PRD + REQ-IDs + acceptance +
    non-goals + unresolved gaps + customer/value statements to `product-owner`, which
-   writes `docs/vision/<feature>.vision.md` from the `product-vision.template.md`. Add
-   the True-Line fields (vision-link, value-check-id, true-line-status) to the matrix.
-   Phase 0 is not complete until **both** PRD and Vision are user-confirmed.
+   writes `docs/vision/<feature>.vision.md` from the `product-vision.template.md`. The
+   Vision must link back to `docs/canvas/<feature>.canvas.md`. Add the True-Line fields
+   (vision-link, value-check-id, true-line-status) and the canvas-link field to the
+   matrix. Phase 0 is not complete until the Canvas, the PRD, **and** the Vision are all
+   user-confirmed.
 
 ### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
 1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode
@@ -223,9 +271,10 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
 
 ### USER GATE
 Show DoD + traceability matrix + spec-audit findings before implementing. **Also confirm
-the Development entry condition (above): PRD and Product Vision both user-confirmed, value
-fields present, no unresolved contradictions, Plumbline Watcher verdict `pass`.** No
-confirmed Vision ⇒ no development start.
+the Development entry condition (above): Product Canvas, PRD, and Product Vision all
+user-confirmed; canvas linked from PRD and Vision; value fields (incl. canvas-link)
+present; no unresolved contradictions; Plumbline Watcher verdict `pass`.** No confirmed
+Canvas ⇒ no PRD finalization; no confirmed Vision ⇒ no development start.
 
 ### Phase 1 — TDD & QA setup
 1. `tester` derives acceptance/E2E tests **independently** from the spec (black-box,
