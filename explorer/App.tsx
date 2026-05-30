@@ -175,7 +175,7 @@ function App() {
           rel="noreferrer"
           className="flex items-center gap-1.5 border border-zinc-700 px-2.5 py-1.5 font-mono text-[11px] text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
         >
-          <Github size={13} /> DYAI2025/claude-agents
+          <Github size={13} /> DYAI2025/Plumbline
         </a>
       </header>
 
