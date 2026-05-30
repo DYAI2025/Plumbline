@@ -6,14 +6,14 @@
 
 **A defense-in-depth agent framework for Claude Code — built around one obsession: proving that work is *actually* done, not that it merely *looks* done.**
 
-`85 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` three-body council · `Reality-Ledger QA` · `empirically benchmarked`
+`86 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
 
 `#AIAgents` `#AgenticAI` `#ClaudeCode` `#MultiAgentSystems` `#AgentEngineering` `#TDD` `#AutonomousCoding` `#DefenseInDepth` `#LLMOps`
 
 > ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
 > Then we shipped the honest result anyway. **That** is Plumbline.
 
-**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 85 agents in your browser, nothing to install
+**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 86 agents in your browser, nothing to install
 
 <br/>
 
@@ -79,7 +79,7 @@ Plumbline even ships its own honesty as commands: **`/honest-status`** (separate
 | `swarm/` | 3 | Swarm topologies: adaptive, hierarchical, mesh |
 | `goal/`, `reasoning/`, `testing/` | 6 | GOAP planners, reasoning variants, TDD-London + production validation |
 | domain specialists | 8 | analysis, architecture, ML, backend, CI/CD, API-docs, neural, mobile |
-| `concilium/` | 3 | Three-body idea+team council: market-realist · tech-arbiter · skeptic |
+| `concilium/` | 4 | Four-body idea+team council: market-realist · tech-arbiter · skeptic · distribution-realist |
 | `config/claude/skills/` | 16 | Vendored skills so workflows stay portable without external packs |
 | `config/claude/commands/` | 7 | `/agileteam`, `/agileteam-bench`, `/concilium`, `/honest-status`, `/bench-oracle`, `/reflect`, `/reflect-skills` |
 

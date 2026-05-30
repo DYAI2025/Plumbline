@@ -22,9 +22,12 @@ consensus.
 | Market Realist | `concilium-market-realist` | observable customer demand / willingness-to-pay |
 | Tech Arbiter | `concilium-tech-arbiter` | buildability-to-dependable (demo ≠ dependable) |
 | Skeptic (Advocatus Diaboli) | `concilium-skeptic` | "should it exist?" + team-constellation critique |
+| Distribution Realist | `concilium-distribution-realist` | how it physically reaches users / becomes a coordination point |
 
-Independence invariant: dispatch all three **in parallel** in round 1 so none anchors on
-another. They only see each other's positions from round 2 onward.
+Independence invariant: dispatch all four **in parallel** in round 1 so none anchors on
+another. They only see each other's positions from round 2 onward. (The Distribution
+Realist was added by the council's own first run — see `concilium/reports/2026-05-30-plumbline.md`
+— because a council blind to distribution overvalues an artifact's intrinsic merit.)
 
 ## Step 0 — Frame the subject (do this first, do not skip)
 - Read the idea/brief (the argument, or the file it points to). If it is a path, Read it.
@@ -35,8 +38,10 @@ another. They only see each other's positions from round 2 onward.
   user via Skill `brainstorming`. Do not evaluate a strawman you invented.
 
 ## Step 0.5 — Diversity check (this is what keeps it honest, not theater)
-The council's value is *uncorrelated* perspectives. Three Claude subagents share Claude's
-blind spots (we measured this: a stronger prompt on the same model does not close them).
+The council's value is *uncorrelated* perspectives. Claude subagents all share Claude's
+blind spots (we measured this: a stronger prompt on the same model does not close them —
+and the Plumbline run proved it live: four Claude bodies reached a confident unanimous
+verdict that an adversarial round then overturned).
 So check what real model diversity is available **and tell the user the truth about it**:
 
 ```bash
@@ -51,7 +56,7 @@ for c in codex gemini qwen; do printf "%-8s %s\n" "$c" "$(command -v $c >/dev/nu
 - Hard floor: at least **2 independent bodies** must produce a position, or abort and say so.
 
 ## Step 1 — Round 1: independent positions (parallel, maximum friction)
-Dispatch all three bodies **simultaneously** with the framed subject. Each returns its
+Dispatch all four bodies **simultaneously** with the framed subject. Each returns its
 Output-Contract block (POSITION + evidence + falsifier + …). Forbid cross-talk this round.
 Require each to ground external claims via Skill `konfabulations-audit`, using WebSearch/
 WebFetch or Skill `deep-research` where available; unverifiable claims become open
@@ -67,7 +72,7 @@ Do NOT average POSITIONS into a mush. A `kill` + two `go` is not "lean go" — i
 unresolved instability to drive into round 2.
 
 ## Step 3 — Round 2: collision (only where friction is real)
-Feed each body the *other two* contracts. Each must fill **REACTION TO OTHER BODIES**:
+Feed each body the *other three* contracts. Each must fill **REACTION TO OTHER BODIES**:
 where an opponent legitimately moves it (and why), where it holds (and why). The Skeptic
 is instructed to push hardest exactly where round 1 showed easy agreement. Re-ground any
 new external claim. Stop when positions stabilise OR after at most **2 collision rounds**
