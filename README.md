@@ -59,6 +59,8 @@ That intellectual honesty — *measuring* our own framework instead of marketing
 - **Wired-in-prod check** — a feature with a real implementation but no test through the production composition root is **not satisfiable**. The two costliest real-world misses ("exists in tests, never composed in prod") die here.
 - **"Kritische semantische Glättung"** — a cheap, gated 3-beat QA reflex (thesis → counter-thesis → the one test that kills it) that fires only on genuine boundary features, never crying wolf on pure logic.
 
+Plumbline even ships its own honesty as commands: **`/honest-status`** (separate *looks done* from *is done*, including what's unverified) and **`/bench-oracle`** (measure a change with a deterministic mutation oracle instead of asserting it works). The framework holds itself to its own plumb line.
+
 ---
 
 ## What's inside
@@ -78,7 +80,7 @@ That intellectual honesty — *measuring* our own framework instead of marketing
 | `goal/`, `reasoning/`, `testing/` | 6 | GOAP planners, reasoning variants, TDD-London + production validation |
 | domain specialists | 8 | analysis, architecture, ML, backend, CI/CD, API-docs, neural, mobile |
 | `config/claude/skills/` | 16 | Vendored skills so workflows stay portable without external packs |
-| `config/claude/commands/` | 4 | `/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills` |
+| `config/claude/commands/` | 6 | `/agileteam`, `/agileteam-bench`, `/honest-status`, `/bench-oracle`, `/reflect`, `/reflect-skills` |
 
 Browse them all visually in the **Agent Explorer** (see below).
 
