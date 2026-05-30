@@ -66,7 +66,7 @@ questions, never asserted facts.
 Lay the four contracts side by side and extract the *dynamics*, not an average:
 - **Resonance:** where do ≥2 bodies independently converge? (high-confidence signal)
 - **Repulsion:** where do they directly conflict? Name the specific axis of disagreement.
-- **Three-body instability:** does any position depend on another's being wrong? Map it.
+- **N-body instability:** does any position depend on another's being wrong? Map it.
 - **Unanswered:** which open questions block a verdict?
 Do NOT average POSITIONS into a mush. A `kill` + two `go` is not "lean go" — it is an
 unresolved instability to drive into round 2.
