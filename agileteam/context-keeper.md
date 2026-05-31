@@ -32,6 +32,17 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 - `docs/context/state.md` — living snapshot of the overall context.
 - `docs/context/decision-log.md` — append-only chronological changes + rationale.
 
+You also own the iteration/Kanban progress state (G7), so the orchestrator can give the
+user CLI iteration visibility at each iteration boundary. (Concretely: context-keeper
+**owns the iteration/Kanban progress state**.) You track three things:
+the **total planned iterations (M)**;
+the **current iteration (N)**;
+and the **remaining tasks for the current iteration** (the still-open Kanban tickets for
+this iteration). Keep N, M, and the remaining-task list current so the orchestrator can
+render the `Iteration N/M` counter and the per-iteration pending task list without holding
+that state in its own context window.
+Context-keeper **derives N and M from the plan / traceability artifacts and updates them when the plan changes** — M is never an invented number; it comes from the planner's atomic task / milestone breakdown, and a re-scope updates M (shown to the user, never silent).
+
 ## What you do
 
 1. At each phase start, ensure any agent can become synchronized by reading

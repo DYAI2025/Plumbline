@@ -46,10 +46,12 @@ in German; otherwise default to English.
 Phase 0.0  First-run orientation
 Phase 0.1  Minimal product idea intake
 Phase 0.15 Product Canvas drafting + user confirmation  (requirements-analyst → docs/canvas/<feature>.canvas.md)  ← mandatory gate, blocks everything below
+Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challenger · Advisor · Critic; token-bounded; user-facing summary; user steers)  ← runs after Canvas-confirm, before the PRD is finalized
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
 Phase 0.5  User confirmation of PRD + Vision  +  spec-sanity audit
+Vision GO gate  Present saved docs/vision/<feature>.vision.md → explicit initial GO → from GO it runs autonomously/iteratively per the /goal skill, bounded by the Watcher (may pause; user is final authority)
 Phase 1    TDD & QA setup                    (+ True-Line Gate Check from here on)
 Phase 2    Implementation (coder/reviewer loop)
 Phase 3    Verification / security / validation / judgment gates
@@ -86,6 +88,52 @@ risks, non-goals, and required evidence are clear.
   human-acceptance gates. Each of those still runs exactly as before, and each later gate
   may re-read the canvas (problem, target user, value proposition, success signal, core
   use case, non-goals, risks/contradictions, evidence needed) as its value baseline.
+
+### Council challenge gate (Phase 0.16 — runs after Canvas-confirm, before PRD finalize)
+
+This gate runs **after the Product Canvas is user-confirmed** and **before the PRD is
+finalized**: a **token-bounded council challenge gate**. Its purpose is friction, not approval: a thin
+three-role council stress-tests the *confirmed Canvas + the raw idea* so a wrong or weak
+product request is caught **before** the team invests in a PRD and a build.
+
+Invoke the three-role challenge council via `concilium --mode=challenge` (the standalone
+four-body `/concilium` deep council, incl. the Distribution Realist, is unchanged — this
+gate uses only the thin challenge mode). The three explicit roles:
+
+- **Challenger** — attacks the user's requirement: *is this the right ask?* Is the stated
+  problem the real problem; is the target user the real user?
+- **Advisor** — proposes a *materially better implementation/approach* to the same
+  underlying user goal (cheaper, simpler, more dependable, faster to real value).
+- **Critic** — attacks the *underlying concept*: should this exist at all; what makes the
+  premise itself fragile?
+
+Run it **friction-driven, ≤2 collision rounds** (same diminishing-returns loop limit as
+`/concilium`).
+
+**Token-bounded (hard cap).** This gate is **token-bounded**: ≤ ~15k tokens total;
+≤180 words per role per round; on reaching the cap → **stop and summarize** with whatever
+friction has surfaced. The gate must never grow unbounded — a pre-PRD challenge that costs
+more than the PRD defeats its purpose.
+
+**User-facing summary.** The orchestrator distils the council into a **user-facing
+≤1-page summary**: the top *legitimate* challenges (requirement), the best
+*better-implementation* proposals (approach), and the sharpest *concept risks*. No
+transcript — a usable digest the user can act on.
+
+**User steers (the only authority).** The orchestrator then asks the user whether any legitimate point changes the product request. The user chooses: adopt none (proceed to
+the PRD as-is), or adopt specific points → **amend the Canvas and re-confirm** (the
+amended Canvas returns to `draft` and only the user may re-confirm it; no agent
+self-confirms — see the Canvas gate above).
+
+**Suggests, never seizes.** The council **may not auto-edit the Canvas or PRD**, and it
+may not finalize the PRD. It only *suggests*; **only the user reclassifies** — this is the
+same escalation-asymmetry / no-laundering rule as the Operating rules below, applied to the
+council (a council recommendation is a suggestion, never an authority).
+
+**Additive only.** This gate does not weaken or make optional the Canvas, Product Vision,
+Reality Ledger, Plumbline Watcher, or Gates A–D; each still runs exactly as before. A
+token-cap abort is *not* a pass of any later gate — it only bounds the cost of this
+pre-PRD challenge.
 
 ### Development entry condition (hard gate)
 
@@ -157,6 +205,28 @@ by a mock, placeholder, fake-only evidence, "known limitation" laundering, a sil
 assumption, agent consensus, or completion pressure — only by an allowed resolution the
 **user** confirms.
 
+#### Graded escalation (per-increment) (G6)
+
+When the per-increment chain raises legitimate doubt about an increment, the Watcher pause
+follows this precise ordering — it refines *when* the existing Watcher pause / Allowed
+resolutions apply (see `agileteam/plumbline-watcher.md`), it does not replace them:
+
+1. On legitimate doubt about an increment, the Watcher pauses the team.
+2. FIRST, the orchestrator + team try to re-align the increment to `vision.md` — adjust the
+   implementation so the work is congruent with the product's confirmed customer value.
+3. ONLY IF no correction can still reach the Vision goal, inform the USER: describe the
+   situation factually and make proposals.
+4. Otherwise, continue autonomously, iteratively (re-alignment succeeded, or there is no
+   risk to the Vision goal).
+
+The pause is reserved for genuine risk of MISSING the Vision goal — not routine doubt. The
+**user** remains the final authority.
+
+- **Re-alignment is implementation-only (it never silently redefines the Vision).**
+  Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself. Any change to the Vision goal is a Vision change requiring explicit user re-confirmation (per the "No contradiction may be carried forward silently / resolved only by an allowed resolution the **user** confirms" rule above and the Development entry condition's confirmed-Vision requirement), and can never be done silently inside re-alignment.
+- **Owner + uncertainty bias for the "unreachable" determination.**
+  The Plumbline Watcher (not the coder or orchestrator) owns the determination of whether no correction can still reach the Vision goal; if reachability is uncertain, the Watcher escalates to the user rather than continuing — uncertainty resolves toward the user, consistent with the escalation-asymmetry / no-self-downgrade rule above.
+
 ## Operating modes (read first)
 
 Default mode is **CORE**. Select with `--mode=core|full`.
@@ -191,6 +261,14 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 - Create the task backbone in **kanban-md** (preferred) or `TodoWrite`, mirroring the
   phases below, and keep it updated. With kanban-md, agents claim work via
   `kanban-md pick --claim <agent> --move in-progress`; humans watch via `kanban-md tui`.
+- **CLI iteration visibility (G7):** at every iteration boundary the orchestrator MUST show
+  the user, so they can gauge remaining duration, two things.
+  (a) The **pending Kanban tasks for the current iteration** — the still-open tickets for this iteration only.
+  (b) An **overall iteration counter**, stated as the **iteration counter in `N/M` form (e.g. `3/5`)**, where N = current iteration and M = total planned iterations.
+  Render this as a short `Iteration N/M` header followed by the current iteration's open task list.
+  Source it from **kanban-md where available, falling back to TodoWrite (per the Guard clause)** — reuse the task-backbone fallback established above, do not re-implement it.
+  The iteration/Kanban progress state (N, M, and the remaining tasks for the current iteration) is owned by `context-keeper`, not held in the orchestrator's own context window.
+  **No fake denominator:** M (total planned iterations) is derived from the planner's atomic task / milestone breakdown (the Phase 1 `planner` output), never invented to look definite. If the plan is re-scoped, a re-scope of the plan updates M and is shown to the user (e.g. `3/5` -> `3/7` is never silent), so the counter never misleads about remaining duration.
 
 ## Team (subagents from ~/.claude/agents/)
 
@@ -241,6 +319,26 @@ risk is invisible: Sonnet is a perfectly reasonable coder yet still misses this 
 tests does not implement them. Reviewers/validators get **diff + spec**, never the
 coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task N…").
 
+### Team composition (minimum + dynamic)
+
+The team is not a fixed roster. The orchestrator **selects the most competent team for the specific product/architecture** — it composes the team per build from the roles in the Team table above, sized and specialised to what this Canvas/PRD/architecture actually needs.
+
+**Default minimum (always present).** Independent of domain, every build always staffs the
+three customer-value gate roles — never fewer, never zero:
+
+- at least 1 `code-reviewer` (independent quality/clean-code review on the diff)
+- at least 1 `tester` (QA) (acceptance/E2E + customer-value QA)
+- at least 1 `product-owner` (judgment / final value gate)
+
+**All other roles are product/architecture-dependent.** Beyond that fixed minimum, the orchestrator **adds domain roles (e.g. `backend-dev`, `security-reviewer`, `ml-developer`, `mobile-dev`, `system-architect`)** driven by the confirmed Canvas / PRD / architecture for this specific build — a backend service pulls in `backend-dev` + `security-reviewer`, an ML feature pulls in `ml-developer`, a mobile app pulls in `mobile-dev`, and so on. Roles a given product does not need are not staffed; roles it does need are added.
+
+**Model policy (DRY — see Model selection above).** The three default-minimum roles
+(`code-reviewer`, `tester`/QA, `product-owner`) are exactly the judgment / review gates that
+the **Model selection** section above already flags as Opus-recommended (the GBrain-class
+real-boundary safety net is only guaranteed on Opus) via the explicit per-dispatch `model`
+parameter — that section is the single source of truth for the per-role model policy and is
+**not restated here**.
+
 ## Workflow (run autonomously; stop only on genuine blockers)
 
 ### Phase 0.15 — Product Canvas (mandatory, before the PRD is finalized)
@@ -256,6 +354,21 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    after the user explicitly confirms it (record confirmer + date + note). No agent may
    self-confirm. Until `user-confirmed`, the PRD must not be finalized and no later phase
    may start. This is the hard Canvas gate of the Development entry condition above.
+
+### Phase 0.16 — Council challenge gate (after Canvas-confirm, before the PRD is finalized)
+1. With the Canvas `user-confirmed`, dispatch the thin three-role council via
+   `concilium --mode=challenge` on the confirmed Canvas + the raw idea — **Challenger**
+   (right ask?), **Advisor** (materially better approach?), **Critic** (should the concept
+   exist?). Friction-driven, ≤2 collision rounds.
+2. Enforce the **token budget**: ≤ ~15k tokens total; ≤180 words per role per round; on
+   cap → stop and summarize.
+3. Distil a **user-facing ≤1-page summary** (top legitimate challenges + better-implementation
+   proposals + concept risks) and **ask the user whether any legitimate point changes the
+   product request**. On adopt → **amend the Canvas and re-confirm** (user only); on
+   adopt-none → proceed to Phase 0.
+4. The council **suggests, never seizes**: it **may not auto-edit the Canvas or PRD**; only
+   the user reclassifies. Do not finalize the PRD until this gate has run and the user has
+   steered.
 
 ### Phase 0 — Requirements & Validation Design
 1. With the canvas confirmed, dispatch `requirements-analyst`. Use Skill
@@ -317,6 +430,35 @@ user-confirmed; canvas linked from PRD and Vision; value fields (incl. canvas-li
 present; no unresolved contradictions; Plumbline Watcher verdict `pass`.** No confirmed
 Canvas ⇒ no PRD finalization; no confirmed Vision ⇒ no development start.
 
+### Vision GO gate (initial GO → autonomous /goal run)
+This sub-gate fires **after the Product Vision is user-confirmed** (Phase 0.4) and
+sits inside the USER GATE above. It is **additive**: it does not weaken any existing gate
+(Canvas, Vision, PRD, spec-sanity, Gates A–E remain exactly as specified) — it
+only encodes where the Vision is shown, the start signal, and the bounded autonomy.
+
+1. **Tell the user where the Vision lives.** The orchestrator states **where the Vision
+   lives** — the concrete path `docs/vision/<feature>.vision.md` — and must
+   present the saved Vision path to the user for a final look, so the user knows exactly which
+   artifact is about to govern the build.
+2. **Explicit initial GO.** The orchestrator then asks for the **explicit initial GO**:
+   **the user must say GO before development starts.** No agent may infer or self-grant
+   this GO. (This is the same start signal as the Development entry condition above —
+   referenced, not duplicated.)
+3. **Autonomous /goal run.** Once the user gives GO, from GO onward it runs autonomously and
+   iteratively, following the `/goal` skill rules — i.e. the autonomous `/goal` run follows the `goal-planner` skill ruleset
+   (the `goal-planner` agent, invoked as `/goal`, is the autonomy ruleset that governs goal
+   decomposition and adaptive replanning during the build; there is no separate `/goal`
+   *command* — this references the `goal-planner` skill/agent).
+   **GO is accepted only once the Development entry condition above is fully met** (Canvas,
+   PRD, and Vision all user-confirmed, no unresolved contradictions, Plumbline Watcher
+   verdict `pass`); **GO never overrides or bypasses that entry condition** — it is the
+   start signal *after* the gate, never a substitute for it.
+4. **Autonomy is bounded.** That autonomy remains bounded by the Plumbline Watcher escalation rule
+   (the per-increment chain + graded escalation defined in the Watcher
+   continuation rules and `agileteam/plumbline-watcher.md` — referenced, not restated):
+   **the Watcher may pause; the user is the final authority.** The autonomous run never
+   overrides a Watcher pause or the user's decision.
+
 ### Phase 1 — TDD & QA setup
 1. `tester` derives acceptance/E2E tests **independently** from the spec (black-box,
    before the coder starts; the coder treats them as a contract). For each top-level
@@ -343,6 +485,19 @@ Follow `executing-plans` + `test-driven-development` (fresh subagent per task). 
    evidence-backed (log/test/code), not guessed (couple to `konfabulations-audit`).
 5. Loop coder↔reviewer until unconditional green (≤ MAX_DEVREVIEW_LOOPS, else escalate
    to human). Update the matrix. Atomic, signed commit per task (agent provenance).
+6. **Per-increment creation chain (G5).** This is a per-increment creation chain.
+   After EACH incremental code part (not only at the end of a task), run the chain
+   `code-reviewer -> QA (tester) -> Watcher (vision adherence)` in that order:
+   - `code-reviewer` reviews the increment's diff (smells, architecture, clean-code);
+   - `tester` (QA) confirms the increment's behaviour and tests are meaningfully green;
+   - `plumbline-watcher` judges the increment for **vision adherence**. Its per-increment
+     question is **value-not-green**:
+     why and how does this increment serve the human customer's benefit?
+     The Watcher **ignores green tests as sufficient** — green tests prove the code runs,
+     not that the increment serves the confirmed customer value.
+   An increment is not accepted until this full chain has run and the Watcher holds no
+   pause. This is the per-increment expression of the Watcher continuation rules above and
+   the graded escalation below.
 
 ### Phase 3 — Verification, security, validation & judgment gates (HERMETIC)
 Run in a clean hermetic runner, not the stateful agent sandbox.

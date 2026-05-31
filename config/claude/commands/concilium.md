@@ -16,6 +16,33 @@ consensus.
 > *diverse, independent* judgment under friction. A stronger single voice cannot replace
 > genuinely uncorrelated perspectives — that is the whole reason this is a council.
 
+## Modes — `--mode=deep` (default) vs `--mode=challenge`
+
+`/concilium` defaults to the **deep** four-body council described below (Market Realist ·
+Tech Arbiter · Skeptic · Distribution Realist) — unchanged. A second, thin mode exists for
+use as the `/agileteam` pre-PRD gate:
+
+### Challenge mode (`--mode=challenge`) — thin, token-bounded, three roles
+
+`--mode=challenge` convenes a **three-role** challenge council instead of the four bodies.
+It is the pre-PRD challenge gate invoked by `/agileteam` (Phase 0.16) on a `user-confirmed`
+Product Canvas + the raw idea. It is **token-bounded** by design: ≤ ~15k tokens total;
+≤180 words per role per round; friction-driven, ≤2 collision rounds; on reaching the cap →
+stop and summarize. The three roles (reusing the existing body prompts under role-aliases
+where sensible — DRY):
+
+| Role | Reuses | Pulls toward |
+|------|--------|--------------|
+| **Challenger** | `concilium-skeptic` lens on the *requirement* | "is this the **right ask**?" — is the stated problem/user the real one? |
+| **Advisor** | `concilium-tech-arbiter` (+ distribution lens) on the *build* | a **materially better implementation/approach** to the same underlying user goal |
+| **Critic** | `concilium-skeptic` (+ market lens) on the *concept* | "**should it exist?**" — what makes the underlying premise fragile? |
+
+Challenge mode output is a **user-facing ≤1-page summary** (top legitimate requirement
+challenges + better-implementation proposals + concept risks) — not a deep report. It
+**suggests, never seizes**: it may not edit the Canvas/PRD; only the user reclassifies and
+steers. The default four-body council (incl. the Distribution Realist) is never invoked in
+this mode and remains the standalone `/concilium` deep audit.
+
 ## The four bodies (each a sharp, opposing mandate)
 | Body | subagent_type | Pulls toward |
 |------|---------------|--------------|
