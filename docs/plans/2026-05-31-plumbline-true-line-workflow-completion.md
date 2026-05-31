@@ -93,6 +93,16 @@ plan before any council wiring:
 **Step 1:** Ask the user (Skill `brainstorming` / AskUserQuestion). Record the choice
 here as `COUNCIL-DECISION: A|B|C` with date + note. **Do not proceed to Task 2 until set.**
 
+**COUNCIL-DECISION: B** (user, 2026-05-31). Add a thin token-bounded `--mode=challenge`
+to `concilium` with three explicit roles — **Challenger** (attacks the user's
+requirement: is this the right ask?), **Advisor** (proposes a materially better
+implementation/approach), **Critic** (attacks the underlying concept) — used as the
+`/agileteam` pre-PRD gate. The standalone 4-body deep council (`/concilium` default,
+incl. distribution-realist) is unchanged. Implication for Task 2: wire the
+challenge-mode, not the default council; no agent files are removed (distribution-realist
+stays); the three challenge roles may reuse existing body prompts under role-aliases or be
+defined inline in the challenge-mode section — decide at build time, favouring reuse (DRY).
+
 ---
 
 ## Task 2: Council challenge gate in `/agileteam` (G1)
