@@ -36,8 +36,13 @@ phase may start without a `user-confirmed` Product Canvas**, and no agent may
 self-confirm it; an unanswered product-critical field stays `MISSING`/`OPEN
 QUESTION`/`BLOCKER` and blocks Phase 1 rather than being silently assumed. The canvas is
 **additive** — it does not weaken the PRD, Product Vision, traceability, Reality Ledger,
-Watcher, or human-acceptance gates; PRD and Vision both link back to it, and the
-traceability matrix carries a `canvas-link` field.
+Watcher, or human-acceptance gates; PRD and Vision both link back to it.
+
+Every top-level REQ must be traceable to a confirmed Product Canvas value statement: the
+traceability matrix carries **all six mandatory Canvas fields** — `canvas-link`,
+`canvas-problem`, `canvas-target-user`, `canvas-value-claim`, `canvas-success-signal`,
+`canvas-risk-status` (the last one is `aligned | value-risk | non-goal-violation |
+risk-introduced | blocked`). A top-level REQ missing any of the six is not satisfiable.
 
 ### Required Product Vision
 
@@ -49,11 +54,23 @@ user-confirmed Product Vision.**
 ### Plumbline Watcher
 
 The `plumbline-watcher` is an independent governance gate with **pause authority**. It
-reads PRD, Vision, traceability, the Reality Ledger, current evidence, and contradictions,
-and must pause when: Vision is missing or unconfirmed; customer value is contradicted; a
-requirement lacks value traceability; a feature is green but not useful; mocks/
-placeholders/fake-only evidence are used to bypass value; a retro improvement weakens
-truth for speed; or an unresolved contradiction exists.
+reads the Product Canvas, PRD, Vision, traceability, the Reality Ledger, current
+evidence, and contradictions, and must pause when: Canvas or Vision is missing or
+unconfirmed; customer value is contradicted; a requirement lacks value traceability; a
+feature is green but not useful; mocks/placeholders/fake-only evidence are used to bypass
+value; a retro improvement weakens truth for speed; or an unresolved contradiction exists.
+
+**Canvas alignment checks (Phase 1 onward).** On every check the Watcher validates each
+requirement against all confirmed Canvas dimensions and may issue `review-required`,
+`pause`, or `blocked` on failure: (1) does it still match the Canvas **problem**;
+(2) does it still serve the Canvas **target user/customer**; (3) does it preserve the
+Canvas **value proposition**; (4) does it support the Canvas **success signal**;
+(5) does it violate a Canvas **non-goal**; (6) does it introduce or worsen a Canvas
+**risk**; (7) does the traceability row carry **all six mandatory Canvas fields**
+(`canvas-link`, `canvas-problem`, `canvas-target-user`, `canvas-value-claim`,
+`canvas-success-signal`, `canvas-risk-status`). A non-goal violation or a missing
+mandatory Canvas field pauses/blocks; drift from problem/target-user/value/success-signal
+is `review-required`.
 
 ### Contradiction Rule
 

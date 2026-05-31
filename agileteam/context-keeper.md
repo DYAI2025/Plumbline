@@ -43,9 +43,14 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 ## True-Line fields (alongside the Reality Ledger, not replacing it)
 
 The traceability matrix carries, in addition to `wired-in-prod?` and `evidence-class`,
-the customer-value spine: `canvas-link`, `vision-link`, `value-check-id`,
-`true-line-status`, `contradiction-id`, `user-decision`. The `canvas-link` traces every
-top-level REQ back to the confirmed Product Canvas. The Reality Ledger stays load-bearing **and** the
+the customer-value spine: the **six mandatory Canvas fields** (`canvas-link`,
+`canvas-problem`, `canvas-target-user`, `canvas-value-claim`, `canvas-success-signal`,
+`canvas-risk-status`), plus `vision-link`, `value-check-id`, `true-line-status`,
+`contradiction-id`, `user-decision`. The Canvas fields trace every top-level REQ back to
+a confirmed Product Canvas value statement (problem, target user, value proposition,
+success signal) and carry its `canvas-risk-status`
+(`aligned | value-risk | non-goal-violation | risk-introduced | blocked`); a top-level
+REQ missing any of the six is not satisfiable. You own that completeness check. The Reality Ledger stays load-bearing **and** the
 True-Line fields are load-bearing. A feature touching I/O/remote/external-API/UI that
 stays `*-fake` is RED-for-confidence; a feature that is green but not true to customer
 value is RED-for-value. `true-line-status` is one of `aligned | value-risk |
