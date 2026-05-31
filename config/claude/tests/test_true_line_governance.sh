@@ -133,7 +133,7 @@ has "TEST-010 gate has an explicit initial GO"             "$CMD"  "explicit ini
 has "TEST-010 the user must say GO before development"     "$CMD"  "the user must say GO before development starts"
 has "TEST-010 from GO it runs autonomously"               "$CMD"  "from GO onward it runs autonomously"
 has "TEST-010 autonomous run is iterative"                "$CMD"  "iteratively"
-has "TEST-010 run follows the /goal skill rules"          "$CMD"  "following the \`/goal\` skill rules"
+has "TEST-010 run follows the /goal skill rules"          "$CMD"  "the autonomous \`/goal\` run follows the \`goal-planner\` skill ruleset"
 has "TEST-010 references the goal-planner skill"          "$CMD"  "goal-planner"
 has "TEST-010 autonomy bounded by the Watcher"            "$CMD"  "autonomy remains bounded by the Plumbline Watcher escalation rule"
 has "TEST-010 Watcher may pause / user is final authority" "$CMD" "the Watcher may pause; the user is the final authority"

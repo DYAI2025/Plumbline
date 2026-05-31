@@ -354,9 +354,14 @@ only encodes where the Vision is shown, the start signal, and the bounded autono
    this GO. (This is the same start signal as the Development entry condition above —
    referenced, not duplicated.)
 3. **Autonomous /goal run.** Once the user gives GO, from GO onward it runs autonomously and
-   iteratively, following the `/goal` skill rules — the `goal-planner` agent
-   (`/goal`) is the autonomy ruleset that governs goal decomposition and adaptive
-   replanning during the build.
+   iteratively, following the `/goal` skill rules — i.e. the autonomous `/goal` run follows the `goal-planner` skill ruleset
+   (the `goal-planner` agent, invoked as `/goal`, is the autonomy ruleset that governs goal
+   decomposition and adaptive replanning during the build; there is no separate `/goal`
+   *command* — this references the `goal-planner` skill/agent).
+   **GO is accepted only once the Development entry condition above is fully met** (Canvas,
+   PRD, and Vision all user-confirmed, no unresolved contradictions, Plumbline Watcher
+   verdict `pass`); **GO never overrides or bypasses that entry condition** — it is the
+   start signal *after* the gate, never a substitute for it.
 4. **Autonomy is bounded.** That autonomy remains bounded by the Plumbline Watcher escalation rule
    (the per-increment chain + graded escalation defined in the Watcher
    continuation rules and `agileteam/plumbline-watcher.md` — referenced, not restated):
