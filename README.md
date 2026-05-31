@@ -8,7 +8,9 @@
 
 `87 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
 
-`#AIAgents` `#AgenticAI` `#ClaudeCode` `#MultiAgentSystems` `#AgentEngineering` `#TDD` `#AutonomousCoding` `#DefenseInDepth` `#LLMOps`
+**An agile AI agent framework for Claude Code: a self-learning, customer-value-governed agentic team that builds software with TDD gates, Kaizen retrospectives, and a defense-in-depth quality pipeline.**
+
+`#ClaudeCode` `#ClaudeSkills` `#AgentFramework` `#AIAgents` `#AgenticAI` `#AgileAIAgents` `#AIAgile` `#AIAgenticAgileTeam` `#KaizenAgentic` `#SelfLearningAgileTeam` `#MultiAgentSystems` `#AgentEngineering` `#TDD` `#AutonomousCoding` `#DefenseInDepth` `#LLMOps`
 
 > ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
 > Then we shipped the honest result anyway. **That** is Plumbline.
@@ -64,6 +66,21 @@ That intellectual honesty — *measuring* our own framework instead of marketing
 - **"Kritische semantische Glättung"** — a cheap, gated 3-beat QA reflex (thesis → counter-thesis → the one test that kills it) that fires only on genuine boundary features, never crying wolf on pure logic.
 
 Plumbline even ships its own honesty as commands: **`/honest-status`** (separate *looks done* from *is done*, including what's unverified) and **`/bench-oracle`** (measure a change with a deterministic mutation oracle instead of asserting it works). The framework holds itself to its own plumb line.
+
+---
+
+## Features
+
+- 🧭 **Customer-value governance ("True Line")** — a Product Canvas gate, a confirmed Product Vision, and an independent **Plumbline Watcher** keep every decision tied to real human value, not just green tests.
+- 🤖 **`/agileteam` — an autonomous, self-organizing agile AI team** — requirements → TDD → independent review → security → validation → product judgment → human sign-off, end to end.
+- ♻️ **Kaizen / self-learning loop** — a guarded retrospective turns recurring failures into persistent, evidence-checked process improvements (no blind self-modification).
+- ⚖️ **`/concilium` — a four-body adversarial council** (Market · Tech · Skeptic · Distribution) that stress-tests a product idea *and* the team setup before you build.
+- 🪜 **Defense-in-depth quality gates** — many diverse, uncorrelated checks (Gates A–E) so a defect must survive several independent reviewers, not one.
+- 🔬 **Reality Ledger** — every requirement carries an evidence class; anything that stays fake/mock is **RED regardless of green tests**, and can't be silently downgraded.
+- 📊 **Empirically benchmarked** — a deterministic mutation-oracle harness measures the agents themselves; we published the honest negative result, not just the wins.
+- 🧩 **87 ready-to-use Claude Code subagents + 16 vendored skills** across 21 categories — coding, review, security, SPARC, swarm, hive-mind, consensus, GitHub automation, and more.
+- 🖥️ **Live Agent Explorer** — a zero-install web UI to search, filter, and inspect every agent ([live demo](https://dyai2025.github.io/Plumbline/)).
+- 🛠️ **Portable & self-contained** — vendored skills + commands install with one script; works locally and in Claude Code on the web.
 
 ---
 
