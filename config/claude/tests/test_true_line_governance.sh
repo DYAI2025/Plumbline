@@ -139,6 +139,17 @@ has "TEST-010 autonomy bounded by the Watcher"            "$CMD"  "autonomy rema
 has "TEST-010 Watcher may pause / user is final authority" "$CMD" "the Watcher may pause; the user is the final authority"
 has "TEST-010 gate does not weaken existing gates"        "$CMD"  "does not weaken any existing gate"
 
+# --- TEST-011: minimum + dynamic team composition (G4) ---------------------
+has "TEST-011 command has Team composition section"        "$CMD"  "Team composition"
+has "TEST-011 orchestrator selects most competent team"    "$CMD"  "selects the most competent team for the specific product/architecture"
+has "TEST-011 default minimum is always present"           "$CMD"  "Default minimum (always present)"
+has "TEST-011 minimum names code-reviewer"                 "$CMD"  "at least 1 \`code-reviewer\`"
+has "TEST-011 minimum names tester/QA"                     "$CMD"  "at least 1 \`tester\` (QA)"
+has "TEST-011 minimum names product-owner"                 "$CMD"  "at least 1 \`product-owner\`"
+has "TEST-011 other roles are product/architecture-dependent" "$CMD" "All other roles are product/architecture-dependent"
+has "TEST-011 orchestrator adds domain roles by architecture" "$CMD" "adds domain roles (e.g. \`backend-dev\`, \`security-reviewer\`, \`ml-developer\`, \`mobile-dev\`, \`system-architect\`)"
+has "TEST-011 references the Model selection policy for gate roles" "$CMD" "the **Model selection** section above already flags as Opus-recommended"
+
 # --- agent-role coverage (every role pulls the same plumbline) -------------
 has "requirements-analyst: bounded brainstorming" "$RA"     "Bounded Brainstorming"
 has "product-owner: owns Product Vision"          "$PO"     "Product Vision Responsibility"

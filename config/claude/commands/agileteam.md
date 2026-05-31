@@ -252,6 +252,26 @@ risk is invisible: Sonnet is a perfectly reasonable coder yet still misses this 
 tests does not implement them. Reviewers/validators get **diff + spec**, never the
 coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task N…").
 
+### Team composition (minimum + dynamic)
+
+The team is not a fixed roster. The orchestrator **selects the most competent team for the specific product/architecture** — it composes the team per build from the roles in the Team table above, sized and specialised to what this Canvas/PRD/architecture actually needs.
+
+**Default minimum (always present).** Independent of domain, every build always staffs the
+three customer-value gate roles — never fewer, never zero:
+
+- at least 1 `code-reviewer` (independent quality/clean-code review on the diff)
+- at least 1 `tester` (QA) (acceptance/E2E + customer-value QA)
+- at least 1 `product-owner` (judgment / final value gate)
+
+**All other roles are product/architecture-dependent.** Beyond that fixed minimum, the orchestrator **adds domain roles (e.g. `backend-dev`, `security-reviewer`, `ml-developer`, `mobile-dev`, `system-architect`)** driven by the confirmed Canvas / PRD / architecture for this specific build — a backend service pulls in `backend-dev` + `security-reviewer`, an ML feature pulls in `ml-developer`, a mobile app pulls in `mobile-dev`, and so on. Roles a given product does not need are not staffed; roles it does need are added.
+
+**Model policy (DRY — see Model selection above).** The three default-minimum roles
+(`code-reviewer`, `tester`/QA, `product-owner`) are exactly the judgment / review gates that
+the **Model selection** section above already flags as Opus-recommended (the GBrain-class
+real-boundary safety net is only guaranteed on Opus) via the explicit per-dispatch `model`
+parameter — that section is the single source of truth for the per-role model policy and is
+**not restated here**.
+
 ## Workflow (run autonomously; stop only on genuine blockers)
 
 ### Phase 0.15 — Product Canvas (mandatory, before the PRD is finalized)
