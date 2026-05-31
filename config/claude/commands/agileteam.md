@@ -224,6 +224,16 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 - Create the task backbone in **kanban-md** (preferred) or `TodoWrite`, mirroring the
   phases below, and keep it updated. With kanban-md, agents claim work via
   `kanban-md pick --claim <agent> --move in-progress`; humans watch via `kanban-md tui`.
+- **CLI iteration visibility (G7):** at every iteration boundary the orchestrator MUST
+  show the user, so they can gauge remaining duration: (a) the **pending Kanban tasks for
+  the current iteration** — the still-open tickets for this iteration only; and (b) an
+  **overall iteration counter in `N/M` form (e.g. `3/5`)**, where N = current iteration and
+  M = total planned iterations. Render this as a short `Iteration N/M` header followed by
+  the current iteration's open task list. Source it from kanban-md where available, falling
+  back to TodoWrite (per the Guard clause) — reuse the task-backbone fallback established
+  above, do not re-implement it. The iteration/Kanban progress state (N, M, and the remaining
+  tasks for the current iteration) is owned by `context-keeper`, not held in the
+  orchestrator's own context window.
 
 ## Team (subagents from ~/.claude/agents/)
 

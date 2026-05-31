@@ -170,6 +170,17 @@ has "TEST-012 watcher: escalate to user only if unreachable" "$WATCHER" "ONLY IF
 has "TEST-012 watcher: otherwise continue autonomously" "$WATCHER" "Otherwise, continue autonomously, iteratively"
 has "TEST-012 watcher: references existing Pause authority (DRY)" "$WATCHER" "without duplicating the Pause authority / Allowed resolutions lists above"
 
+# --- TEST-025: CLI iteration visibility — counter N/M + per-iteration Kanban (G7) ---
+has "TEST-025 command shows pending Kanban tasks for the current iteration" "$CMD" "pending Kanban tasks for the current iteration"
+has "TEST-025 command names the per-iteration visibility duty"             "$CMD" "CLI iteration visibility"
+has "TEST-025 command requires an overall iteration counter"              "$CMD" "overall iteration counter"
+has "TEST-025 command states the counter is in N/M form"                  "$CMD" "iteration counter in \`N/M\` form (e.g. \`3/5\`)"
+has "TEST-025 command reuses the kanban-md / TodoWrite fallback (DRY)"    "$CMD" "kanban-md where available, falling back to TodoWrite (per the Guard clause)"
+has "TEST-025 context-keeper owns the iteration/Kanban progress state"    "$CK"  "owns the iteration/Kanban progress state"
+has "TEST-025 context-keeper tracks total planned iterations M"           "$CK"  "total planned iterations (M)"
+has "TEST-025 context-keeper tracks current iteration N"                  "$CK"  "current iteration (N)"
+has "TEST-025 context-keeper tracks remaining tasks for current iteration" "$CK" "remaining tasks for the current iteration"
+
 # --- TEST-024k: re-alignment is implementation-only; it can never silently redefine the Vision (review) ---
 RE_ALIGN_IMPL_ONLY="Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself"
 has "TEST-024k command: re-align is impl-only, cannot silently change the Vision" "$CMD"     "$RE_ALIGN_IMPL_ONLY"
