@@ -157,6 +157,12 @@ uncorrelated gates.**
 **Independence invariant:** whoever writes code does not review it; whoever derives
 tests does not implement them.
 
+> **In active development:** an expanded autonomous, customer-value-governed pipeline
+> (token-bounded council challenge gate, Vision-GO → hands-off run, per-increment
+> Code-reviewer→QA→Watcher value checks, live `N/M` iteration progress) is reviewed on a
+> feature branch but not yet merged — see [`dev-plan.md`](dev-plan.md) for the honest
+> roadmap and validation status.
+
 ### Model policy (measured, not guessed)
 
 Per the benchmark above, the *reach-the-real-boundary* judgment lives in **model
