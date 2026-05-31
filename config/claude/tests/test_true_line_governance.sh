@@ -181,6 +181,12 @@ has "TEST-025 context-keeper tracks total planned iterations M"           "$CK" 
 has "TEST-025 context-keeper tracks current iteration N"                  "$CK"  "current iteration (N)"
 has "TEST-025 context-keeper tracks remaining tasks for current iteration" "$CK" "remaining tasks for the current iteration"
 
+# --- TEST-025h: M (total iterations) has a real origin; no fake denominator (review) ---
+M_ORIGIN_CMD="M (total planned iterations) is derived from the planner's atomic task / milestone breakdown"
+has "TEST-025h command: M derived from the planner's breakdown (not invented)" "$CMD" "$M_ORIGIN_CMD"
+has "TEST-025h command: a re-scope of M is shown to the user, never silent"    "$CMD" "a re-scope of the plan updates M and is shown to the user (e.g. \`3/5\` -> \`3/7\` is never silent)"
+has "TEST-025h context-keeper derives + updates N and M from the plan"         "$CK"  "derives N and M from the plan / traceability artifacts and updates them when the plan changes"
+
 # --- TEST-024k: re-alignment is implementation-only; it can never silently redefine the Vision (review) ---
 RE_ALIGN_IMPL_ONLY="Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself"
 has "TEST-024k command: re-align is impl-only, cannot silently change the Vision" "$CMD"     "$RE_ALIGN_IMPL_ONLY"
