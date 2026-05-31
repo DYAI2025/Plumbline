@@ -168,6 +168,23 @@ by a mock, placeholder, fake-only evidence, "known limitation" laundering, a sil
 assumption, agent consensus, or completion pressure — only by an allowed resolution the
 **user** confirms.
 
+#### Graded escalation (per-increment) (G6)
+
+When the per-increment chain raises legitimate doubt about an increment, the Watcher pause
+follows this precise ordering — it refines *when* the existing Watcher pause / Allowed
+resolutions apply (see `agileteam/plumbline-watcher.md`), it does not replace them:
+
+1. On legitimate doubt about an increment, the Watcher pauses the team.
+2. FIRST, the orchestrator + team try to re-align the increment to `vision.md` — adjust the
+   implementation so the work is congruent with the product's confirmed customer value.
+3. ONLY IF no correction can still reach the Vision goal, inform the USER: describe the
+   situation factually and make proposals.
+4. Otherwise, continue autonomously, iteratively (re-alignment succeeded, or there is no
+   risk to the Vision goal).
+
+The pause is reserved for genuine risk of MISSING the Vision goal — not routine doubt. The
+**user** remains the final authority.
+
 ## Operating modes (read first)
 
 Default mode is **CORE**. Select with `--mode=core|full`.
@@ -414,6 +431,19 @@ Follow `executing-plans` + `test-driven-development` (fresh subagent per task). 
    evidence-backed (log/test/code), not guessed (couple to `konfabulations-audit`).
 5. Loop coder↔reviewer until unconditional green (≤ MAX_DEVREVIEW_LOOPS, else escalate
    to human). Update the matrix. Atomic, signed commit per task (agent provenance).
+6. **Per-increment creation chain (G5).** This is a per-increment creation chain.
+   After EACH incremental code part (not only at the end of a task), run the chain
+   `code-reviewer -> QA (tester) -> Watcher (vision adherence)` in that order:
+   - `code-reviewer` reviews the increment's diff (smells, architecture, clean-code);
+   - `tester` (QA) confirms the increment's behaviour and tests are meaningfully green;
+   - `plumbline-watcher` judges the increment for **vision adherence**. Its per-increment
+     question is **value-not-green**:
+     why and how does this increment serve the human customer's benefit?
+     The Watcher **ignores green tests as sufficient** — green tests prove the code runs,
+     not that the increment serves the confirmed customer value.
+   An increment is not accepted until this full chain has run and the Watcher holds no
+   pause. This is the per-increment expression of the Watcher continuation rules above and
+   the graded escalation below.
 
 ### Phase 3 — Verification, security, validation & judgment gates (HERMETIC)
 Run in a clean hermetic runner, not the stateful agent sandbox.

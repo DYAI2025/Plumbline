@@ -150,6 +150,26 @@ has "TEST-011 other roles are product/architecture-dependent" "$CMD" "All other 
 has "TEST-011 orchestrator adds domain roles by architecture" "$CMD" "adds domain roles (e.g. \`backend-dev\`, \`security-reviewer\`, \`ml-developer\`, \`mobile-dev\`, \`system-architect\`)"
 has "TEST-011 references the Model selection policy for gate roles" "$CMD" "the **Model selection** section above already flags as Opus-recommended"
 
+# --- TEST-012: per-increment creation chain + graded Watcher escalation (G5, G6) ---
+# (A) per-increment creation chain in Phase 2
+has "TEST-012 Phase 2 has per-increment creation chain" "$CMD" "per-increment creation chain"
+has "TEST-012 chain runs after EACH increment"          "$CMD" "After EACH incremental code part"
+has "TEST-012 chain order reviewer->QA->Watcher"        "$CMD" "code-reviewer -> QA (tester) -> Watcher (vision adherence)"
+has "TEST-012 watcher per-increment value-not-green Q"  "$CMD" "why and how does this increment serve the human customer's benefit?"
+has "TEST-012 watcher ignores green tests as sufficient" "$CMD" "ignores green tests as sufficient"
+# (B) graded escalation in agileteam.md (Watcher continuation rules area)
+has "TEST-012 graded escalation header (command)"       "$CMD" "Graded escalation (per-increment)"
+has "TEST-012 command: re-align to vision FIRST"        "$CMD" "FIRST, the orchestrator + team try to re-align the increment to \`vision.md\`"
+has "TEST-012 command: escalate to user only if unreachable" "$CMD" "ONLY IF no correction can still reach the Vision goal, inform the USER"
+has "TEST-012 command: otherwise continue autonomously" "$CMD" "Otherwise, continue autonomously, iteratively"
+has "TEST-012 command: pause reserved for genuine risk" "$CMD" "reserved for genuine risk of MISSING the Vision goal — not routine doubt"
+# (B) same graded escalation encoded in the Watcher agent file
+has "TEST-012 watcher: graded escalation header"        "$WATCHER" "Graded escalation (per-increment)"
+has "TEST-012 watcher: re-align to vision FIRST"        "$WATCHER" "FIRST, the orchestrator + team try to re-align the increment to \`vision.md\`"
+has "TEST-012 watcher: escalate to user only if unreachable" "$WATCHER" "ONLY IF no correction can still reach the Vision goal, inform the USER"
+has "TEST-012 watcher: otherwise continue autonomously" "$WATCHER" "Otherwise, continue autonomously, iteratively"
+has "TEST-012 watcher: references existing Pause authority (DRY)" "$WATCHER" "without duplicating the Pause authority / Allowed resolutions lists above"
+
 # --- agent-role coverage (every role pulls the same plumbline) -------------
 has "requirements-analyst: bounded brainstorming" "$RA"     "Bounded Brainstorming"
 has "product-owner: owns Product Vision"          "$PO"     "Product Vision Responsibility"
