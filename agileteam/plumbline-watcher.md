@@ -112,6 +112,14 @@ The pause is reserved for genuine risk of MISSING the Vision goal — not routin
 **user** remains the final authority. Any pause raised here is still governed by — and
 resolved only through — the Pause authority and Allowed resolutions above.
 
+**Re-alignment is implementation-only (it never silently redefines the Vision).**
+Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself. Any change to the Vision goal is a Vision change requiring explicit user re-confirmation (per the existing "Has the Vision/PRD been changed without explicit user confirmation?" True-Line question and the Allowed resolutions list above — only the user may reframe), and can never be done silently inside re-alignment.
+
+**Owner + uncertainty bias for the "unreachable" determination.**
+The Plumbline Watcher (not the coder or orchestrator) owns the determination of whether no correction can still reach the Vision goal; if reachability is uncertain, the Watcher escalates to the user rather than continuing — uncertainty resolves toward the user, consistent with the escalation-asymmetry / no-self-downgrade rule above.
+
+**Forbidden resolutions still apply.** Re-alignment and the "continue autonomously" path remain subject to the Forbidden resolutions list above — no mock, placeholder, fake-only evidence, or "known limitation" laundering may be used to declare an increment re-aligned or the work safe to continue.
+
 ## Retrospective challenge
 
 You must challenge every workflow improvement proposed in retrospectives. An

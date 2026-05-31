@@ -185,6 +185,11 @@ resolutions apply (see `agileteam/plumbline-watcher.md`), it does not replace th
 The pause is reserved for genuine risk of MISSING the Vision goal — not routine doubt. The
 **user** remains the final authority.
 
+- **Re-alignment is implementation-only (it never silently redefines the Vision).**
+  Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself. Any change to the Vision goal is a Vision change requiring explicit user re-confirmation (per the "No contradiction may be carried forward silently / resolved only by an allowed resolution the **user** confirms" rule above and the Development entry condition's confirmed-Vision requirement), and can never be done silently inside re-alignment.
+- **Owner + uncertainty bias for the "unreachable" determination.**
+  The Plumbline Watcher (not the coder or orchestrator) owns the determination of whether no correction can still reach the Vision goal; if reachability is uncertain, the Watcher escalates to the user rather than continuing — uncertainty resolves toward the user, consistent with the escalation-asymmetry / no-self-downgrade rule above.
+
 ## Operating modes (read first)
 
 Default mode is **CORE**. Select with `--mode=core|full`.

@@ -170,6 +170,19 @@ has "TEST-012 watcher: escalate to user only if unreachable" "$WATCHER" "ONLY IF
 has "TEST-012 watcher: otherwise continue autonomously" "$WATCHER" "Otherwise, continue autonomously, iteratively"
 has "TEST-012 watcher: references existing Pause authority (DRY)" "$WATCHER" "without duplicating the Pause authority / Allowed resolutions lists above"
 
+# --- TEST-024k: re-alignment is implementation-only; it can never silently redefine the Vision (review) ---
+RE_ALIGN_IMPL_ONLY="Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself"
+has "TEST-024k command: re-align is impl-only, cannot silently change the Vision" "$CMD"     "$RE_ALIGN_IMPL_ONLY"
+has "TEST-024k watcher: re-align is impl-only, cannot silently change the Vision" "$WATCHER" "$RE_ALIGN_IMPL_ONLY"
+
+# --- TEST-024l: Watcher owns the "unreachable" call; uncertainty escalates to the user (review) ---
+WATCHER_OWNS_UNREACHABLE="The Plumbline Watcher (not the coder or orchestrator) owns the determination of whether no correction can still reach the Vision goal; if reachability is uncertain, the Watcher escalates to the user rather than continuing"
+has "TEST-024l command: Watcher owns unreachable call + uncertainty->user" "$CMD"     "$WATCHER_OWNS_UNREACHABLE"
+has "TEST-024l watcher: Watcher owns unreachable call + uncertainty->user" "$WATCHER" "$WATCHER_OWNS_UNREACHABLE"
+
+# --- TEST-024m (optional): re-align / continue paths stay bound by the Forbidden resolutions list (review) ---
+has "TEST-024m watcher: re-align/continue subject to Forbidden resolutions" "$WATCHER" "Re-alignment and the \"continue autonomously\" path remain subject to the Forbidden resolutions list above"
+
 # --- agent-role coverage (every role pulls the same plumbline) -------------
 has "requirements-analyst: bounded brainstorming" "$RA"     "Bounded Brainstorming"
 has "product-owner: owns Product Vision"          "$PO"     "Product Vision Responsibility"
