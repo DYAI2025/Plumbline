@@ -231,6 +231,7 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   Render this as a short `Iteration N/M` header followed by the current iteration's open task list.
   Source it from **kanban-md where available, falling back to TodoWrite (per the Guard clause)** — reuse the task-backbone fallback established above, do not re-implement it.
   The iteration/Kanban progress state (N, M, and the remaining tasks for the current iteration) is owned by `context-keeper`, not held in the orchestrator's own context window.
+  **No fake denominator:** M (total planned iterations) is derived from the planner's atomic task / milestone breakdown (the Phase 1 `planner` output), never invented to look definite. If the plan is re-scoped, a re-scope of the plan updates M and is shown to the user (e.g. `3/5` -> `3/7` is never silent), so the counter never misleads about remaining duration.
 
 ## Team (subagents from ~/.claude/agents/)
 

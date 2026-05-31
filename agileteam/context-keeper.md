@@ -41,6 +41,7 @@ and the **remaining tasks for the current iteration** (the still-open Kanban tic
 this iteration). Keep N, M, and the remaining-task list current so the orchestrator can
 render the `Iteration N/M` counter and the per-iteration pending task list without holding
 that state in its own context window.
+Context-keeper **derives N and M from the plan / traceability artifacts and updates them when the plan changes** — M is never an invented number; it comes from the planner's atomic task / milestone breakdown, and a re-scope updates M (shown to the user, never silent).
 
 ## What you do
 
