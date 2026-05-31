@@ -46,6 +46,7 @@ in German; otherwise default to English.
 Phase 0.0  First-run orientation
 Phase 0.1  Minimal product idea intake
 Phase 0.15 Product Canvas drafting + user confirmation  (requirements-analyst → docs/canvas/<feature>.canvas.md)  ← mandatory gate, blocks everything below
+Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challenger · Advisor · Critic; token-bounded; user-facing summary; user steers)  ← runs after Canvas-confirm, before the PRD is finalized
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
@@ -86,6 +87,52 @@ risks, non-goals, and required evidence are clear.
   human-acceptance gates. Each of those still runs exactly as before, and each later gate
   may re-read the canvas (problem, target user, value proposition, success signal, core
   use case, non-goals, risks/contradictions, evidence needed) as its value baseline.
+
+### Council challenge gate (Phase 0.16 — runs after Canvas-confirm, before PRD finalize)
+
+This gate runs **after the Product Canvas is user-confirmed** and **before the PRD is
+finalized**: a **token-bounded council challenge gate**. Its purpose is friction, not approval: a thin
+three-role council stress-tests the *confirmed Canvas + the raw idea* so a wrong or weak
+product request is caught **before** the team invests in a PRD and a build.
+
+Invoke the three-role challenge council via `concilium --mode=challenge` (the standalone
+four-body `/concilium` deep council, incl. the Distribution Realist, is unchanged — this
+gate uses only the thin challenge mode). The three explicit roles:
+
+- **Challenger** — attacks the user's requirement: *is this the right ask?* Is the stated
+  problem the real problem; is the target user the real user?
+- **Advisor** — proposes a *materially better implementation/approach* to the same
+  underlying user goal (cheaper, simpler, more dependable, faster to real value).
+- **Critic** — attacks the *underlying concept*: should this exist at all; what makes the
+  premise itself fragile?
+
+Run it **friction-driven, ≤2 collision rounds** (same diminishing-returns loop limit as
+`/concilium`).
+
+**Token-bounded (hard cap).** This gate is **token-bounded**: ≤ ~15k tokens total;
+≤180 words per role per round; on reaching the cap → **stop and summarize** with whatever
+friction has surfaced. The gate must never grow unbounded — a pre-PRD challenge that costs
+more than the PRD defeats its purpose.
+
+**User-facing summary.** The orchestrator distils the council into a **user-facing
+≤1-page summary**: the top *legitimate* challenges (requirement), the best
+*better-implementation* proposals (approach), and the sharpest *concept risks*. No
+transcript — a usable digest the user can act on.
+
+**User steers (the only authority).** The orchestrator then asks the user whether any legitimate point changes the product request. The user chooses: adopt none (proceed to
+the PRD as-is), or adopt specific points → **amend the Canvas and re-confirm** (the
+amended Canvas returns to `draft` and only the user may re-confirm it; no agent
+self-confirms — see the Canvas gate above).
+
+**Suggests, never seizes.** The council **may not auto-edit the Canvas or PRD**, and it
+may not finalize the PRD. It only *suggests*; **only the user reclassifies** — this is the
+same escalation-asymmetry / no-laundering rule as the Operating rules below, applied to the
+council (a council recommendation is a suggestion, never an authority).
+
+**Additive only.** This gate does not weaken or make optional the Canvas, Product Vision,
+Reality Ledger, Plumbline Watcher, or Gates A–D; each still runs exactly as before. A
+token-cap abort is *not* a pass of any later gate — it only bounds the cost of this
+pre-PRD challenge.
 
 ### Development entry condition (hard gate)
 
@@ -219,6 +266,21 @@ coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task 
    after the user explicitly confirms it (record confirmer + date + note). No agent may
    self-confirm. Until `user-confirmed`, the PRD must not be finalized and no later phase
    may start. This is the hard Canvas gate of the Development entry condition above.
+
+### Phase 0.16 — Council challenge gate (after Canvas-confirm, before the PRD is finalized)
+1. With the Canvas `user-confirmed`, dispatch the thin three-role council via
+   `concilium --mode=challenge` on the confirmed Canvas + the raw idea — **Challenger**
+   (right ask?), **Advisor** (materially better approach?), **Critic** (should the concept
+   exist?). Friction-driven, ≤2 collision rounds.
+2. Enforce the **token budget**: ≤ ~15k tokens total; ≤180 words per role per round; on
+   cap → stop and summarize.
+3. Distil a **user-facing ≤1-page summary** (top legitimate challenges + better-implementation
+   proposals + concept risks) and **ask the user whether any legitimate point changes the
+   product request**. On adopt → **amend the Canvas and re-confirm** (user only); on
+   adopt-none → proceed to Phase 0.
+4. The council **suggests, never seizes**: it **may not auto-edit the Canvas or PRD**; only
+   the user reclassifies. Do not finalize the PRD until this gate has run and the user has
+   steered.
 
 ### Phase 0 — Requirements & Validation Design
 1. With the canvas confirmed, dispatch `requirements-analyst`. Use Skill

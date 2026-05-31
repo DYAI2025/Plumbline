@@ -16,6 +16,7 @@ REPO_DIR="$(cd "$HERE/../../.." && pwd)"
 echo "test_true_line_governance"
 
 CMD="$REPO_DIR/config/claude/commands/agileteam.md"
+CONC="$REPO_DIR/config/claude/commands/concilium.md"
 WATCHER="$REPO_DIR/agileteam/plumbline-watcher.md"
 CK="$REPO_DIR/agileteam/context-keeper.md"
 RA="$REPO_DIR/agileteam/requirements-analyst.md"
@@ -94,6 +95,33 @@ for field in vision-link value-check-id true-line-status contradiction-id user-d
   has "TEST-008 context-keeper owns field $field" "$CK" "$field"
 done
 has "TEST-008 fields template lists true-line-status" "$T_FIELDS" "true-line-status"
+
+# --- TEST-009: token-bounded council challenge gate (Phase 0.16, G1) -------
+has "TEST-009 command has council challenge gate section"   "$CMD"  "Council challenge gate"
+has "TEST-009 gate is Phase 0.16"                           "$CMD"  "Phase 0.16"
+has "TEST-009 gate runs after Canvas-confirm"               "$CMD"  "after the Product Canvas is user-confirmed"
+has "TEST-009 gate runs before PRD finalization"            "$CMD"  "before the PRD is finalized"
+has "TEST-009 gate is token-bounded with explicit cap"      "$CMD"  "token-bounded"
+has "TEST-009 gate states concrete token cap"               "$CMD"  "15k tokens"
+has "TEST-009 gate produces user-facing summary"            "$CMD"  "user-facing"
+has "TEST-009 summary is at most one page"                  "$CMD"  "1-page"
+has "TEST-009 orchestrator asks user about amending request" "$CMD" "asks the user whether any legitimate point changes the product request"
+has "TEST-009 adopting a point re-confirms the Canvas"      "$CMD"  "amend the Canvas and re-confirm"
+has "TEST-009 council may not auto-edit canvas/PRD"         "$CMD"  "may not auto-edit the Canvas or PRD"
+has "TEST-009 only the user reclassifies (suggests not seizes)" "$CMD" "suggests, never seizes"
+has "TEST-009 names the three challenge roles"              "$CMD"  "Challenger"
+has "TEST-009 names the Advisor role"                       "$CMD"  "Advisor"
+has "TEST-009 names the Critic role"                        "$CMD"  "Critic"
+has "TEST-009 invokes concilium challenge mode"             "$CMD"  "concilium --mode=challenge"
+
+# --- TEST-009b: concilium gains a --mode=challenge (3-role) section ---------
+has "TEST-009b concilium has challenge mode section"        "$CONC" "--mode=challenge"
+has "TEST-009b challenge mode is the three-role gate"       "$CONC" "Challenge mode"
+has "TEST-009b challenge mode names Challenger"             "$CONC" "Challenger"
+has "TEST-009b challenge mode names Advisor"                "$CONC" "Advisor"
+has "TEST-009b challenge mode names Critic"                 "$CONC" "Critic"
+has "TEST-009b challenge mode is token-bounded"             "$CONC" "token-bounded"
+has "TEST-009b default 4-body council unchanged"           "$CONC" "Distribution Realist"
 
 # --- agent-role coverage (every role pulls the same plumbline) -------------
 has "requirements-analyst: bounded brainstorming" "$RA"     "Bounded Brainstorming"
