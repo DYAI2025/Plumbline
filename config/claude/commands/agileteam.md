@@ -51,6 +51,7 @@ Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
 Phase 0.5  User confirmation of PRD + Vision  +  spec-sanity audit
+Vision GO gate  Present saved docs/vision/<feature>.vision.md → explicit initial GO → from GO it runs autonomously/iteratively per the /goal skill, bounded by the Watcher (may pause; user is final authority)
 Phase 1    TDD & QA setup                    (+ True-Line Gate Check from here on)
 Phase 2    Implementation (coder/reviewer loop)
 Phase 3    Verification / security / validation / judgment gates
@@ -337,6 +338,30 @@ the Development entry condition (above): Product Canvas, PRD, and Product Vision
 user-confirmed; canvas linked from PRD and Vision; value fields (incl. canvas-link)
 present; no unresolved contradictions; Plumbline Watcher verdict `pass`.** No confirmed
 Canvas ⇒ no PRD finalization; no confirmed Vision ⇒ no development start.
+
+### Vision GO gate (initial GO → autonomous /goal run)
+This sub-gate fires **after the Product Vision is user-confirmed** (Phase 0.4) and
+sits inside the USER GATE above. It is **additive**: it does not weaken any existing gate
+(Canvas, Vision, PRD, spec-sanity, Gates A–E remain exactly as specified) — it
+only encodes where the Vision is shown, the start signal, and the bounded autonomy.
+
+1. **Tell the user where the Vision lives.** The orchestrator states **where the Vision
+   lives** — the concrete path `docs/vision/<feature>.vision.md` — and must
+   present the saved Vision path to the user for a final look, so the user knows exactly which
+   artifact is about to govern the build.
+2. **Explicit initial GO.** The orchestrator then asks for the **explicit initial GO**:
+   **the user must say GO before development starts.** No agent may infer or self-grant
+   this GO. (This is the same start signal as the Development entry condition above —
+   referenced, not duplicated.)
+3. **Autonomous /goal run.** Once the user gives GO, from GO onward it runs autonomously and
+   iteratively, following the `/goal` skill rules — the `goal-planner` agent
+   (`/goal`) is the autonomy ruleset that governs goal decomposition and adaptive
+   replanning during the build.
+4. **Autonomy is bounded.** That autonomy remains bounded by the Plumbline Watcher escalation rule
+   (the per-increment chain + graded escalation defined in the Watcher
+   continuation rules and `agileteam/plumbline-watcher.md` — referenced, not restated):
+   **the Watcher may pause; the user is the final authority.** The autonomous run never
+   overrides a Watcher pause or the user's decision.
 
 ### Phase 1 — TDD & QA setup
 1. `tester` derives acceptance/E2E tests **independently** from the spec (black-box,

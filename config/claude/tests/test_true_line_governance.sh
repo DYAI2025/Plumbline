@@ -123,6 +123,22 @@ has "TEST-009b challenge mode names Critic"                 "$CONC" "Critic"
 has "TEST-009b challenge mode is token-bounded"             "$CONC" "token-bounded"
 has "TEST-009b default 4-body council unchanged"           "$CONC" "Distribution Realist"
 
+# --- TEST-010: Vision-GO gate + autonomous /goal handoff (G3) ---------------
+has "TEST-010 command has Vision GO gate section"           "$CMD"  "Vision GO gate"
+has "TEST-010 gate runs after Vision is user-confirmed"     "$CMD"  "after the Product Vision is user-confirmed"
+has "TEST-010 gate tells the user where the vision lives"   "$CMD"  "where the Vision lives"
+has "TEST-010 gate shows the concrete vision path"          "$CMD"  "docs/vision/<feature>.vision.md"
+has "TEST-010 gate presents the vision path to the user"    "$CMD"  "present the saved Vision path to the user"
+has "TEST-010 gate has an explicit initial GO"             "$CMD"  "explicit initial GO"
+has "TEST-010 the user must say GO before development"     "$CMD"  "the user must say GO before development starts"
+has "TEST-010 from GO it runs autonomously"               "$CMD"  "from GO onward it runs autonomously"
+has "TEST-010 autonomous run is iterative"                "$CMD"  "iteratively"
+has "TEST-010 run follows the /goal skill rules"          "$CMD"  "following the \`/goal\` skill rules"
+has "TEST-010 references the goal-planner skill"          "$CMD"  "goal-planner"
+has "TEST-010 autonomy bounded by the Watcher"            "$CMD"  "autonomy remains bounded by the Plumbline Watcher escalation rule"
+has "TEST-010 Watcher may pause / user is final authority" "$CMD" "the Watcher may pause; the user is the final authority"
+has "TEST-010 gate does not weaken existing gates"        "$CMD"  "does not weaken any existing gate"
+
 # --- agent-role coverage (every role pulls the same plumbline) -------------
 has "requirements-analyst: bounded brainstorming" "$RA"     "Bounded Brainstorming"
 has "product-owner: owns Product Vision"          "$PO"     "Product Vision Responsibility"
