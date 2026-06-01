@@ -18,6 +18,10 @@ Questions:
 7. Has any user-value contradiction appeared?
 8. If yes, has the Watcher paused the workflow and written a contradiction record?
 
+PRIL check output:
+- context-check: <command/output or N/A before Phase 0.5>
+- reality-check: <command/output or N/A before Gate C/D>
+
 Gate result:
 - pass
 - value-risk

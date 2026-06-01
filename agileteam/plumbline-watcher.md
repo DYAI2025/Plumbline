@@ -27,6 +27,27 @@ load-bearing mechanisms:
   failure-mode-not-tested" finding may not be self-downgraded to "known limitation";
   only the user may reclassify. You extend that same asymmetry to value findings.
 
+## PRIL executable gates (hard fail-closed)
+
+Before allowing implementation planning or later-phase continuation, require the context
+gate to pass:
+
+```bash
+config/claude/bin/plumbline-context-check --repo <repo> --feature <feature-slug>
+```
+
+Before any Gate C/D completion or done claim, require the reality evidence gate to pass:
+
+```bash
+config/claude/bin/plumbline-reality-check --repo <repo> --feature <feature-slug> --min-evidence integration
+```
+
+PRIL fail means Watcher verdict cannot be pass. If either command is missing, returns
+non-zero, reports missing/unconfirmed product context, or reports fake-only/mock-only/
+placeholder/unverified/below-minimum evidence, the Watcher must return `blocked` or
+`pause` and name the failing PRIL output. Do not convert a PRIL failure into a warning
+without explicit user confirmation.
+
 ## Required inputs
 
 Before each check, read:
