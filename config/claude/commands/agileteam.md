@@ -50,7 +50,7 @@ Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challe
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
-Phase 0.5  User confirmation of PRD + Vision  +  spec-sanity audit
+Phase 0.5  User confirmation of PRD + Vision  +  PRIL Context Integrity gate  +  spec-sanity audit
 Vision GO gate  Present saved docs/vision/<feature>.vision.md → explicit initial GO → from GO it runs autonomously/iteratively per the /goal skill, bounded by the Watcher (may pause; user is final authority)
 Phase 1    TDD & QA setup                    (+ True-Line Gate Check from here on)
 Phase 2    Implementation (coder/reviewer loop)
@@ -414,6 +414,20 @@ parameter — that section is the single source of truth for the per-role model 
    canvas-success-signal, canvas-risk-status) to the matrix. Phase 0 is not complete
    until the Canvas, the PRD, **and** the Vision are all user-confirmed.
 
+### Phase 0.5 — PRIL Context Integrity gate (hard fail-closed)
+
+Before implementation planning or Phase 1, run the executable PRIL context gate:
+
+```bash
+config/claude/bin/plumbline-context-check --repo <repo> --feature <feature-slug>
+```
+
+This must pass only when `docs/canvas/<feature>.canvas.md`, `docs/prd/<feature>.prd.md`,
+`docs/vision/<feature>.vision.md`, and `docs/traceability.md` exist and carry user/status
+confirmation (`Status: user-confirmed`, `Confirmed by user: yes`, or `Status: confirmed`).
+A missing or unconfirmed artifact is fail-closed: do not plan or implement, and return to the
+user for confirmation rather than inventing product context.
+
 ### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
 1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode
    **exactly once** (no re-run — expensive): bias hooks + failure-mode chain, coupled to
@@ -512,6 +526,16 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
   at `*-fake` is reported as **PASS (tests) / RED (confidence)** — never as plain done.
   "Tests green" certifies *internal correctness*, not *that the assembled system
   delivers the user's value*; the ledger keeps that distinction in every reader's face.
+- **PRIL Reality Evidence gate (before Gate C/D completion):** before Gate C can claim
+  validation complete and before Gate D can judge the iteration done, run:
+
+  ```bash
+  config/claude/bin/plumbline-reality-check --repo <repo> --feature <feature-slug> --min-evidence integration
+  ```
+
+  Fake-only, mock-only, placeholder, unverified, missing, malformed, or below-minimum
+  evidence is fail-closed. A Gate C/D result may not be reported as pass/done until this
+  command passes or the user has explicitly confirmed a lower minimum for that feature.
 - **Gate D — Judgment (ultrathink, ONCE/iteration):** dispatch `product-owner`; run
   `ultrathink-craftsmanship` in kurz/kurz+ mode **once** (no re-run) — "did we build the
   right thing?", bias + failure-mode, konfabulations-audit on claims that entered

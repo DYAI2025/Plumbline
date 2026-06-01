@@ -1,0 +1,1 @@
+{"feature":"demo","requirement_id":"G1-REQ-003","evidence_class":"integration","evidence_ref":"bash config/claude/tests/test_runtime_integrity_layer.sh","verified_by":"pril-test-harness"}

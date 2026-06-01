@@ -18,9 +18,32 @@ stage "agent frontmatter validation (parse / description / duplicate names)"
 python3 - <<'PY' || fail=1
 import re, glob, collections, sys
 try:
-    import yaml
+    import yaml  # type: ignore[import-not-found]
 except ImportError:
-    sys.exit("PyYAML required (pip install pyyaml)")
+    yaml = None
+
+def parse_frontmatter(raw):
+    if yaml is not None:
+        return yaml.safe_load(raw)
+    # Dependency-free fallback for the flat frontmatter used by agent prompts.
+    data = {}
+    for lineno, line in enumerate(raw.splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line[:1].isspace():
+            # Ignore nested YAML details in the fallback; this validator only needs
+            # top-level name/description presence and duplicate names.
+            continue
+        if ":" not in line:
+            raise ValueError(f"unsupported frontmatter line {lineno}: {line}")
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key:
+            raise ValueError(f"empty frontmatter key on line {lineno}")
+        data[key] = value
+    return data
+
 names = collections.Counter(); bad = []; nodesc = []
 for p in sorted(glob.glob("**/*.md", recursive=True)):
     if p.startswith("explorer/"):
@@ -29,7 +52,7 @@ for p in sorted(glob.glob("**/*.md", recursive=True)):
     if not m:
         continue
     try:
-        d = yaml.safe_load(m.group(1))
+        d = parse_frontmatter(m.group(1))
     except Exception as e:  # noqa: BLE001
         bad.append((p, str(e).splitlines()[0])); continue
     if not isinstance(d, dict):
@@ -64,6 +87,9 @@ bash config/claude/tests/test_true_line_governance.sh || fail=1
 
 stage "product canvas gate tests"
 bash config/claude/tests/test_product_canvas_gate.sh || fail=1
+
+stage "runtime integrity layer tests"
+bash config/claude/tests/test_runtime_integrity_layer.sh || fail=1
 
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
