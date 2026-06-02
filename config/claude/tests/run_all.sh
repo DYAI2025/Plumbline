@@ -97,6 +97,9 @@ bash config/claude/tests/test_runtime_integrity_layer.sh || fail=1
 stage "PRIL enforce hook tests"
 bash config/claude/tests/test_pril_enforce_hook.sh || fail=1
 
+stage "rule-ledger provenance tests"
+bash config/claude/tests/test_rule_ledger.sh || fail=1
+
 stage "release-please tests"
 bash config/claude/tests/test_release_please.sh || fail=1
 

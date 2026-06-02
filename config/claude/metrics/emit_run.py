@@ -33,6 +33,9 @@ Options
   --gate-outcomes JSON    e.g. '{"A":"pass","B":"skip","C":"pass","D":"skip"}'
                           (must be a JSON object)
   --human-overrides N     count of human overrides at gates (default: 0)
+  --active-rules JSON     JSON array of approved-rule ids active during this run;
+                          stored verbatim under record["active_rules"] (default []).
+                          Lets later analysis segment a metric by the rules in force.
   --baseline              tag this run as part of the baseline window
   --repo PATH             target repo (default: auto-detect). NB: config_fingerprint
                           resolves COMPONENT paths against the Plumbline install (this
@@ -209,6 +212,17 @@ def parse_json_object(text, flag):
     return value
 
 
+def parse_json_array(text, flag):
+    """Parse `text` as JSON and require a JSON array (fail closed otherwise)."""
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise InputError(f"invalid JSON for {flag}: {exc}") from exc
+    if not isinstance(value, list):
+        raise InputError(f"{flag} must be a JSON array")
+    return value
+
+
 def load_metrics(args):
     if args.metrics_file:
         try:
@@ -278,6 +292,9 @@ def parse_args(argv):
     p.add_argument("--corpus-id", default="adhoc")
     p.add_argument("--mode", default="core", choices=["core", "full"])
     p.add_argument("--gate-outcomes", default="{}")
+    p.add_argument("--active-rules", default="[]",
+                   help="JSON array of rule_ids active during this run "
+                        "(recorded under record['active_rules']; default [])")
     p.add_argument("--human-overrides", type=int, default=0)
     p.add_argument("--baseline", action="store_true")
     p.add_argument("--repo", default=None)
@@ -301,6 +318,7 @@ def main(argv=None):
         metrics = load_metrics(args)
         raw = parse_json_object(args.raw, "--raw")
         gate_outcomes = parse_json_object(args.gate_outcomes, "--gate-outcomes")
+        active_rules = parse_json_array(args.active_rules, "--active-rules")
         apply_cost(metrics, raw, args.tokens_total, args.reqs_accepted)
         validate_metrics(metrics)
     except (InputError, ValueError) as exc:
@@ -319,6 +337,7 @@ def main(argv=None):
         "metrics": metrics,
         "raw": raw,
         "gate_outcomes": gate_outcomes,
+        "active_rules": active_rules,
         "human_overrides": args.human_overrides,
     }
 
