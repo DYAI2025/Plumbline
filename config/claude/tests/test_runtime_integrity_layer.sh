@@ -134,6 +134,16 @@ assert_exit "traceability scope source exits 0" 0 \
   "$SCOPE_BIN" --repo "$FIXTURES/scope-traceability-source" --feature demo --changed-files "$FIXTURES/scope-traceability-source/changed-files.txt"
 assert_exit "JSON scope source exits 0" 0 \
   "$SCOPE_BIN" --repo "$FIXTURES/scope-json-source" --feature demo --changed-files "$FIXTURES/scope-json-source/changed-files.txt"
+# H-2: an overly-broad self-authored scope pattern (a bare `**` with no concrete
+# path segment) must be REFUSED when loading scope — otherwise a one-line wildcard
+# legitimizes every path and defeats the scope guard. Fails closed (non-zero).
+assert_nonzero "broad wildcard scope pattern fails closed" \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad" --feature demo --changed-files "$FIXTURES/scope-broad/changed-files.txt"
+assert_output_contains "broad scope error names the rejected pattern" "too broad" \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad" --feature demo --changed-files "$FIXTURES/scope-broad/changed-files.txt"
+# A normal scoped canvas must STILL pass (legitimate `src/...**` patterns work).
+assert_exit "normal scoped canvas still passes after broad-pattern guard" 0 \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-pass" --feature demo --changed-files "$FIXTURES/scope-pass/changed-files.txt"
 
 # G2-REQ-002: redaction rejects unsafe persistence and can produce a safe redacted stream.
 assert_exit "redaction safe JSONL check exits 0" 0 \

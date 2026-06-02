@@ -512,6 +512,13 @@ only encodes where the Vision is shown, the start signal, and the bounded autono
    confirmed feature is now under active development). When the feature is done/abandoned,
    clear it (`rm -f docs/context/.active-feature`) so a later non-feature session stays a
    no-op. The marker carries exactly the confirmed slug — never a guessed or partial name.
+
+   **Trust boundary.** Enforcement is only as trustworthy as write-access to `docs/context/`;
+   the orchestrator owns this marker (same trust model as the user-confirmed canvas/vision).
+   Because of that, an *armed-then-blanked* marker is treated as suspicious: a marker that is
+   **present but empty/whitespace-only blocks** (enforcement cannot be silently disabled by
+   emptying the file) — only a truly **absent** marker is a no-op. To stand down enforcement,
+   `rm -f` the marker; do not blank it. Likewise, never leave a malformed slug in the marker.
 4. **Autonomy is bounded.** That autonomy remains bounded by the Plumbline Watcher escalation rule
    (the per-increment chain + graded escalation defined in the Watcher
    continuation rules and `agileteam/plumbline-watcher.md` — referenced, not restated):

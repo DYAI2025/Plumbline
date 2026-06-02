@@ -238,4 +238,111 @@ CLAUDE_HOME="$CH" HOME="$CH" bash "$INSTALL" --copy --no-skills --no-bin \
 assert_eq "second install: enforce hook still registered exactly once" "1" \
   "$(count_cmd 'plumbline-enforce\\.sh')"
 
+# --- 9. H-1 marker laundering: present-but-EMPTY marker must BLOCK. ------------
+# An armed-then-blanked marker is suspicious — silently disabling enforcement by
+# emptying the marker must not be possible. A truly ABSENT marker stays a no-op.
+empty_repo="$(make_feature_repo emptyfeat)"
+: > "$empty_repo/docs/context/.active-feature"          # present but empty
+run_hook "$empty_repo" '{}'
+assert_eq "empty marker: exit 0 (never non-zero)" "0" "$HOOK_RC"
+TESTS_RUN=$((TESTS_RUN + 1))
+edecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision' 2>/dev/null)"
+if [ "$edecision" = "block" ]; then
+  _pass "empty marker: blocks (enforcement cannot be silently disabled)"
+else
+  _fail "empty marker: expected .decision==block (out: $HOOK_OUT)"
+fi
+TESTS_RUN=$((TESTS_RUN + 1))
+ereason="$(printf '%s' "$HOOK_OUT" | jq -r '.reason' 2>/dev/null)"
+if printf '%s' "$ereason" | grep -Fq 'empty'; then
+  _pass "empty marker: reason explains the empty marker is rejected"
+else
+  _fail "empty marker: reason should mention 'empty' (reason: $ereason)"
+fi
+
+# Whitespace-only marker is equally a blanked marker -> block.
+ws_repo="$(make_feature_repo wsfeat)"
+printf '   \n\t\n' > "$ws_repo/docs/context/.active-feature"
+run_hook "$ws_repo" '{}'
+TESTS_RUN=$((TESTS_RUN + 1))
+wdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision' 2>/dev/null)"
+if [ "$wdecision" = "block" ]; then
+  _pass "whitespace-only marker: blocks"
+else
+  _fail "whitespace-only marker: expected .decision==block (out: $HOOK_OUT)"
+fi
+
+# Absent marker stays a clean no-op (the normal-session contract is preserved).
+absent_repo="$(make_feature_repo absentfeat)"
+rm -f "$absent_repo/docs/context/.active-feature"      # ensure absent
+run_hook "$absent_repo" '{}'
+assert_eq "absent marker: exit 0" "0" "$HOOK_RC"
+assert_eq "absent marker: empty stdout (no-op)" "" "$HOOK_OUT"
+
+# --- 10. M-1 jq-less loop guard: stop_hook_active honored without jq. ----------
+# If jq is unavailable the hook must still short-circuit on stop_hook_active via a
+# grep fallback — otherwise the loop guard silently fails and the hook re-fires.
+# We build a sandbox PATH that contains the tools the hook needs (cat, tr, grep,
+# git, sort, mktemp, find, rm) but NOT jq, so `command -v jq` genuinely fails and
+# the grep branch is exercised. (A non-executable jq stub would NOT work: command
+# -v finds the next real jq further down PATH.)
+nojq_repo="$(make_feature_repo nojqfeat)"
+printf 'nojqfeat' > "$nojq_repo/docs/context/.active-feature"
+NOJQ_BIN="$(mktemp -d -p "$WORK")"
+for t in cat tr grep git sort mktemp find rm sed bash; do
+  src="$(command -v "$t" 2>/dev/null)" && [ -n "$src" ] && ln -sf "$src" "$NOJQ_BIN/$t"
+done
+TESTS_RUN=$((TESTS_RUN + 1))
+# Guard the test itself: the sandbox PATH must actually hide jq.
+if PATH="$NOJQ_BIN" command -v jq >/dev/null 2>&1; then
+  _fail "M-1: sandbox PATH still exposes jq (test setup invalid)"
+else
+  nojq_outf="$(mktemp -p "$WORK")"
+  PATH="$NOJQ_BIN" CLAUDE_PROJECT_DIR="$nojq_repo" \
+    bash "$HOOK" >"$nojq_outf" 2>/dev/null <<<'{"stop_hook_active":true}'
+  nojq_rc=$?
+  nojq_out="$(cat "$nojq_outf")"; rm -f "$nojq_outf"
+  if [ "$nojq_rc" -eq 0 ] && [ -z "$nojq_out" ]; then
+    _pass "M-1: stop_hook_active short-circuits via grep fallback when jq absent"
+  else
+    _fail "M-1: jq-less stop_hook_active (rc=$nojq_rc, out: $nojq_out)"
+  fi
+fi
+
+# --- 11. Untracked scope-evasion: untracked out-of-scope file -> block. --------
+# "Write malware, never git add" must be caught: the C2 surface unions
+# `git ls-files --others --exclude-standard` so untracked, non-ignored files are
+# checked against scope too.
+untracked_repo="$(make_feature_repo untrackedfeat)"
+printf 'untrackedfeat' > "$untracked_repo/docs/context/.active-feature"
+# Untracked (never added) out-of-scope file under an active feature.
+mkdir -p "$untracked_repo/src/billing"
+printf 'def exfil():\n    return 1\n' > "$untracked_repo/src/billing/secret.py"
+run_hook "$untracked_repo" '{}'
+assert_eq "untracked out-of-scope: exit 0 (never non-zero)" "0" "$HOOK_RC"
+TESTS_RUN=$((TESTS_RUN + 1))
+udecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision' 2>/dev/null)"
+ureason="$(printf '%s' "$HOOK_OUT" | jq -r '.reason' 2>/dev/null)"
+if [ "$udecision" = "block" ] && printf '%s' "$ureason" | grep -Fq 'scope'; then
+  _pass "untracked out-of-scope file blocks on scope (ls-files --others in C2)"
+else
+  _fail "untracked out-of-scope: expected block naming scope (out: $HOOK_OUT)"
+fi
+# A .gitignore'd untracked file must NOT count (exclude-standard honored): the
+# ignore rule is committed on main (in baseline) so it is not itself an
+# out-of-scope feature change, isolating the ls-files --exclude-standard behavior.
+ignore_repo="$(make_feature_repo ignorefeat)"
+printf 'ignorefeat' > "$ignore_repo/docs/context/.active-feature"
+git -C "$ignore_repo" checkout -q main
+printf 'src/billing/\n' > "$ignore_repo/.gitignore"
+git -C "$ignore_repo" add .gitignore
+git -C "$ignore_repo" commit -q -m "ignore billing"
+git -C "$ignore_repo" checkout -q "feat/ignorefeat"
+git -C "$ignore_repo" merge -q --no-edit main
+mkdir -p "$ignore_repo/src/billing"
+printf 'junk\n' > "$ignore_repo/src/billing/ignored.py"   # untracked AND ignored
+run_hook "$ignore_repo" '{}'
+assert_eq "ignored untracked file: exit 0 (no-op, not in C2 surface)" "0" "$HOOK_RC"
+assert_eq "ignored untracked file: empty stdout (not blocked)" "" "$HOOK_OUT"
+
 finish "test_pril_enforce_hook"
