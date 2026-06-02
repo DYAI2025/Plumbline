@@ -50,7 +50,7 @@ Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challe
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
-Phase 0.5  User confirmation of PRD + Vision  +  PRIL Context Integrity gate  +  spec-sanity audit
+Phase 0.5  User confirmation of PRD + Vision  +  PRIL Context Integrity gate  +  spec-sanity audit (Phase 0.7)
 Vision GO gate  Present saved docs/vision/<feature>.vision.md → explicit initial GO → from GO it runs autonomously/iteratively per the /goal skill, bounded by the Watcher (may pause; user is final authority)
 Phase 1    TDD & QA setup                    (+ True-Line Gate Check from here on)
 Phase 2    Implementation (coder/reviewer loop)
@@ -231,7 +231,7 @@ The pause is reserved for genuine risk of MISSING the Vision goal — not routin
 
 Default mode is **CORE**. Select with `--mode=core|full`.
 
-- **CORE** — the runnable, safe baseline. Mandatory: Phase 0 + gap rule, Phase 0.5
+- **CORE** — the runnable, safe baseline. Mandatory: Phase 0 + gap rule, Phase 0.7
   spec-sanity, Phase 1, Phase 2 (coder + code-reviewer TDD loop), Gate A
   (typecheck/lint/unit/integration/e2e + coverage), Gate C (validation against the
   matrix), and the human acceptance gate. **Opt-in / skip-if-unavailable:** Gate B
@@ -458,7 +458,7 @@ config/claude/bin/plumbline-redact --mode auto < <candidate-artifact.txt>
 Secret-like data, credential environment dumps, invalid JSONL, or oversized input are fail-closed.
 Persist only the redacted output or stop for user review.
 
-### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
+### Phase 0.7 — Spec-sanity gate (ultrathink, ONCE)
 1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode
    **exactly once** (no re-run — expensive): bias hooks + failure-mode chain, coupled to
    Skill `konfabulations-audit` (every external claim → belegt | ableitbar | ungeprüft |
