@@ -13,6 +13,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,17 @@ GITHUB_REMOTE_RE = re.compile(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$")
 HTTP_TIMEOUT = 30
 USER_AGENT = "plumbline-update"
 DEFAULT_REPO_SLUG = "DYAI2025/Plumbline"
+# Only ever fetch over http(s); a malicious/compromised release pointing
+# tarball_url at file://, ftp://, gopher:// etc. must be refused, not opened.
+ALLOWED_URL_SCHEMES = ("http", "https")
+# Self-update payloads for this repo are small; cap to refuse decompression
+# bombs and runaway downloads (fail-closed, generous headroom).
+MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+MAX_EXTRACT_BYTES = 256 * 1024 * 1024
+# The fixed, repo-pinned verification command. Plumbline NEVER executes a
+# verifyCommand string lifted from a (possibly untrusted) downloaded payload;
+# the operator's --verify-cmd or this fixed command runs instead.
+DEFAULT_VERIFY = "bash config/claude/tests/run_all.sh"
 
 
 class PlumblineError(RuntimeError):
@@ -144,9 +156,17 @@ def github_api_base() -> str:
     return os.environ.get("PLUMBLINE_GITHUB_API", "https://api.github.com").rstrip("/")
 
 
+def require_safe_url(url: str) -> str:
+    """Refuse any URL that is not http(s) (blocks file://, ftp://, etc.)."""
+    scheme = urllib.parse.urlparse(url).scheme.lower()
+    if scheme not in ALLOWED_URL_SCHEMES:
+        raise PlumblineError(f"refusing non-http(s) URL: {url}")
+    return url
+
+
 def fetch_latest_release(slug: str) -> dict[str, Any]:
     """GET the latest release metadata from the GitHub API (no traceback on failure)."""
-    url = f"{github_api_base()}/repos/{slug}/releases/latest"
+    url = require_safe_url(f"{github_api_base()}/repos/{slug}/releases/latest")
     request = urllib.request.Request(
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
@@ -166,12 +186,15 @@ def fetch_latest_release(slug: str) -> dict[str, Any]:
 
 
 def download_tarball(url: str, dest: Path) -> Path:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(require_safe_url(url), headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-            dest.write_bytes(response.read())
+            data = response.read(MAX_DOWNLOAD_BYTES + 1)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise PlumblineError(f"could not download release tarball: {exc}") from exc
+    if len(data) > MAX_DOWNLOAD_BYTES:
+        raise PlumblineError(f"release tarball exceeds {MAX_DOWNLOAD_BYTES} byte limit")
+    dest.write_bytes(data)
     return dest
 
 
@@ -202,10 +225,20 @@ def safe_extract_tarball(tar_path: Path, into: Path) -> Path:
     into.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tar_path, "r:*") as tar:
         members = tar.getmembers()
+        total = 0
         for member in members:
             if _member_escapes(member, into):
                 raise PlumblineError(f"unsafe tarball member: {member.name}")
-        tar.extractall(into)  # noqa: S202 - every member validated above
+            total += max(member.size, 0)
+            if total > MAX_EXTRACT_BYTES:
+                raise PlumblineError(f"tarball expands beyond {MAX_EXTRACT_BYTES} byte limit")
+        # `filter="data"` is the second, independent guard: it strips setuid/
+        # setgid/sticky bits and refuses device/special-file members that the
+        # name-only check above does not inspect.
+        try:
+            tar.extractall(into, filter="data")  # noqa: S202 - every member validated above
+        except tarfile.FilterError as exc:
+            raise PlumblineError(f"unsafe tarball member: {exc}") from exc
     tops = sorted({Path(m.name).parts[0] for m in members if m.name not in ("", ".")})
     if len(tops) == 1:
         return into / tops[0]
@@ -232,6 +265,13 @@ def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, 
     url = release.get("tarball_url")
     if not url:
         raise PlumblineError("GitHub release metadata missing tarball_url")
+    # Provenance: show exactly what will be downloaded and applied. `plumbline
+    # update` runs the downloaded release's installer, so the operator must see
+    # the source. There is no signature verification yet (declared limitation):
+    # only update from releases you trust, over verified TLS, from this slug.
+    tag = release.get("tag_name") or release.get("name") or "?"
+    print(f"fetching release {tag} from github:{slug}")
+    print(f"tarball: {url}")
     tmp = Path(tempfile.mkdtemp(prefix="plumbline-update-"))
     try:
         archive = download_tarball(str(url), tmp / "release.tar.gz")
@@ -369,7 +409,13 @@ def _apply_from_source(args: argparse.Namespace, target: Path, source: Path) -> 
                 raise PlumblineError("install.sh dry-run failed")
         new = read_version(target)
         run_migrations(target, previous, new)
-        verify = args.verify_cmd or str(load_compatibility(target).get("verifyCommand", "bash config/claude/tests/run_all.sh"))
+        # Validate the payload's contract (fail-closed on a malformed
+        # compatibility.json), but NEVER execute its verifyCommand string — a
+        # downloaded payload must not be able to run arbitrary shell. The
+        # operator's --verify-cmd or the fixed repo-pinned command runs instead.
+        load_compatibility(target)
+        verify = args.verify_cmd or DEFAULT_VERIFY
+        print(f"verify: {verify}")
         result = run_command(verify, target)
         print(result.stdout, end="")
         if result.returncode != 0:

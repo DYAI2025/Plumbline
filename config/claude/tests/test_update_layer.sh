@@ -138,6 +138,61 @@ assert_eq "network failure exits non-zero" "1" "$net_status"
 assert "network failure reports could-not-reach GitHub" "grep -q 'could not reach GitHub' '$TMP_ROOT/net.log'"
 assert "network failure has no traceback" "! grep -q 'Traceback' '$TMP_ROOT/net.log'"
 
+# --- SECURITY (HIGH-1): payload-supplied verifyCommand is NEVER executed -----
+# A downloaded payload's compatibility.json must not be able to run arbitrary
+# shell via its verifyCommand. Applying WITHOUT --verify-cmd must run the fixed
+# standard verify (the payload's run_all.sh stub), never the payload's string.
+EVILV_TOP="plumbline-evilverify-deadbeef"
+EVILV_BUILD="$TMP_ROOT/evilverify-build"
+EVILV_DIR="$EVILV_BUILD/$EVILV_TOP"
+mkdir -p "$EVILV_DIR/config/claude/tests"
+printf '%s\n' "$NEWER_VERSION" > "$EVILV_DIR/VERSION"
+printf '{\n  "version": "%s",\n  "schema": 1,\n  "verifyCommand": "touch EVIL_VERIFY_SENTINEL",\n  "frozenContracts": ["VERSION"],\n  "migrations": []\n}\n' "$NEWER_VERSION" > "$EVILV_DIR/compatibility.json"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$EVILV_DIR/config/claude/install.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$EVILV_DIR/config/claude/tests/run_all.sh"
+chmod +x "$EVILV_DIR/config/claude/install.sh" "$EVILV_DIR/config/claude/tests/run_all.sh"
+EVILV_TARBALL="$TMP_ROOT/evilverify.tar.gz"
+tar -C "$EVILV_BUILD" -czf "$EVILV_TARBALL" "$EVILV_TOP"
+EVILV_TARGET="$TMP_ROOT/evilverify-target"
+cp -R "$FIXTURES/target-0.9.0" "$EVILV_TARGET"
+evilv_out="$($PLUMBLINE --root "$REPO_DIR" update --target "$EVILV_TARGET" --source "$EVILV_TARBALL")"
+assert "verify falls back to the fixed standard command" "printf '%s\n' '$evilv_out' | grep -q 'status: changed and verified'"
+assert "payload-supplied verifyCommand is NOT executed" "test ! -e '$EVILV_TARGET/EVIL_VERIFY_SENTINEL'"
+assert_eq "evil-verify payload still applies its version" "$NEWER_VERSION" "$($PLUMBLINE --root "$EVILV_TARGET" version)"
+
+# --- SECURITY (MEDIUM-2): non-http(s) API scheme is refused, not opened ------
+if PLUMBLINE_GITHUB_API="file:///tmp" "$PLUMBLINE" --root "$REPO_DIR" update --check >"$TMP_ROOT/scheme.log" 2>&1; then
+  scheme_status=0
+else
+  scheme_status=$?
+fi
+assert_eq "file:// API scheme exits non-zero" "1" "$scheme_status"
+assert "file:// API scheme is refused by name" "grep -qi 'refus' '$TMP_ROOT/scheme.log'"
+assert "file:// API scheme produces no traceback" "! grep -q 'Traceback' '$TMP_ROOT/scheme.log'"
+
+# --- SECURITY (MEDIUM-1): extraction strips setuid (tarfile data filter) -----
+if python3 - "$REPO_DIR" "$TMP_ROOT" >"$TMP_ROOT/setuid.log" 2>&1 <<'PY'
+import sys, io, tarfile
+from pathlib import Path
+repo, tmp = sys.argv[1], sys.argv[2]
+sys.path.insert(0, str(Path(repo) / "config" / "claude" / "lib"))
+import plumbline_update as P
+tar_path = Path(tmp) / "setuid.tar.gz"
+with tarfile.open(tar_path, "w:gz") as t:
+    data = b"#!/bin/sh\n"
+    ti = tarfile.TarInfo("top/payload.sh")
+    ti.size = len(data)
+    ti.mode = 0o4755  # setuid + rwxr-xr-x
+    t.addfile(ti, io.BytesIO(data))
+top = P.safe_extract_tarball(tar_path, Path(tmp) / "setuid-extract")
+mode = (top / "payload.sh").stat().st_mode
+assert mode & 0o4000 == 0, "setuid bit survived extraction: %o" % mode
+print("setuid stripped OK")
+PY
+then setuid_status=0; else setuid_status=$?; fi
+assert_eq "extraction strips setuid bit" "0" "$setuid_status"
+assert "extraction setuid guard confirmed" "grep -q 'setuid stripped OK' '$TMP_ROOT/setuid.log'"
+
 # --- P2: plumbline install subcommand wraps install.sh ----------------------
 assert "install --help exits 0" "$PLUMBLINE --root '$REPO_DIR' install --help"
 INSTALL_HOME="$(mktemp -d)"
