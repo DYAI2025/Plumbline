@@ -439,12 +439,32 @@ def build_parser() -> argparse.ArgumentParser:
     rollback_parser = sub.add_parser("rollback")
     rollback_parser.add_argument("--target", help="target checkout")
     rollback_parser.add_argument("--snapshot", help="specific snapshot path")
+    # `install` forwards every unrecognized flag (including --help, --dry-run,
+    # --copy, --force, --no-*) verbatim to install.sh. add_help=False keeps the
+    # subparser from swallowing --help so the installer prints its own usage.
+    sub.add_parser(
+        "install",
+        help="run config/claude/install.sh, forwarding any extra flags",
+        add_help=False,
+    )
     return parser
+
+
+def cmd_install(args: argparse.Namespace, root: Path, extra: list[str]) -> int:
+    installer = root / "config" / "claude" / "install.sh"
+    if not installer.is_file():
+        raise PlumblineError(f"install.sh not found at {installer}")
+    result = subprocess.run(["bash", str(installer), *extra], cwd=str(root))
+    return result.returncode
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    # `install` forwards arbitrary flags to install.sh, so tolerate unknown args
+    # only for that subcommand; every other command must reject them strictly.
+    args, extra = parser.parse_known_args(argv)
+    if extra and args.command != "install":
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
     root = Path(args.root).resolve() if args.root else repo_root()
     try:
         if args.command == "version":
@@ -459,6 +479,8 @@ def main(argv: list[str] | None = None) -> int:
             return update_apply(args, root)
         if args.command == "rollback":
             return rollback(args, root)
+        if args.command == "install":
+            return cmd_install(args, root, extra)
         parser.error("unknown command")
     except PlumblineError as exc:
         print(f"plumbline: {exc}", file=sys.stderr)

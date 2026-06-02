@@ -229,6 +229,10 @@ register_enforce_hook() {
   fi
 }
 
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "dry-run: no changes will be written (target CLAUDE_HOME=$CLAUDE_HOME)"
+fi
+
 mkdir -p "$CLAUDE_HOME"
 [ "$INSTALL_AGENTS" -eq 1 ] && install_agent_repo
 [ "$INSTALL_COMMANDS" -eq 1 ] && install_commands
