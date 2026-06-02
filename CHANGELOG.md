@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.0](https://github.com/DYAI2025/Plumbline/compare/v0.10.1...v0.11.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** plumbline install subcommand (wraps install.sh) ([a8010a6](https://github.com/DYAI2025/Plumbline/commit/a8010a68954fca13f112e5d7b507bf75fda736d7))
+* **cli:** plumbline update (GitHub-release tarball) + plumbline install ([8ee7959](https://github.com/DYAI2025/Plumbline/commit/8ee79591422c1f6d2fe2ce4928c32c65c207e19d))
+* **cli:** plumbline update fetches + safely-extracts the latest GitHub release tarball ([21c2515](https://github.com/DYAI2025/Plumbline/commit/21c251592cccad40bd808f52cfd7bb8f4d83cd79))
+
 ## [0.10.1](https://github.com/DYAI2025/Plumbline/compare/v0.10.0...v0.10.1) (2026-06-02)
 
 
