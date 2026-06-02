@@ -193,6 +193,29 @@ then setuid_status=0; else setuid_status=$?; fi
 assert_eq "extraction strips setuid bit" "0" "$setuid_status"
 assert "extraction setuid guard confirmed" "grep -q 'setuid stripped OK' '$TMP_ROOT/setuid.log'"
 
+# --- SECURITY (NEW-1): redirect targets are re-validated on every hop --------
+# urllib's own redirect allowlist includes ftp://; the scheme guard must be
+# authoritative on redirects too, not just the initial URL.
+if python3 - "$REPO_DIR" >"$TMP_ROOT/redirect.log" 2>&1 <<'PY'
+import sys, urllib.request
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "config" / "claude" / "lib"))
+import plumbline_update as P
+handler = P._SafeRedirectHandler()
+req = urllib.request.Request("https://example.invalid/start")
+try:
+    handler.redirect_request(req, None, 302, "Found", {}, "ftp://127.0.0.1:1/payload.tar.gz")
+    print("ftp redirect NOT refused")
+except P.PlumblineError:
+    print("ftp redirect refused OK")
+out = handler.redirect_request(req, None, 302, "Found", {}, "https://codeload.example/x")
+print("https redirect allowed OK" if out is not None else "https redirect WRONGLY blocked")
+PY
+then redirect_status=0; else redirect_status=$?; fi
+assert_eq "redirect re-validation runs cleanly" "0" "$redirect_status"
+assert "ftp:// redirect target is refused" "grep -q 'ftp redirect refused OK' '$TMP_ROOT/redirect.log'"
+assert "https:// redirect target stays allowed" "grep -q 'https redirect allowed OK' '$TMP_ROOT/redirect.log'"
+
 # --- P2: plumbline install subcommand wraps install.sh ----------------------
 assert "install --help exits 0" "$PLUMBLINE --root '$REPO_DIR' install --help"
 INSTALL_HOME="$(mktemp -d)"

@@ -164,6 +164,20 @@ def require_safe_url(url: str) -> str:
     return url
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate the scheme on every redirect hop. urllib's own 30x allowlist
+    permits ftp:// targets; this makes `require_safe_url` authoritative across
+    redirects, not just the first URL."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        require_safe_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# Opener that follows redirects only to http(s) targets.
+_SAFE_OPENER = urllib.request.build_opener(_SafeRedirectHandler)
+
+
 def fetch_latest_release(slug: str) -> dict[str, Any]:
     """GET the latest release metadata from the GitHub API (no traceback on failure)."""
     url = require_safe_url(f"{github_api_base()}/repos/{slug}/releases/latest")
@@ -172,7 +186,7 @@ def fetch_latest_release(slug: str) -> dict[str, Any]:
         headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+        with _SAFE_OPENER.open(request, timeout=HTTP_TIMEOUT) as response:
             payload = response.read()
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise PlumblineError(f"could not reach GitHub release API: {exc}") from exc
@@ -188,7 +202,7 @@ def fetch_latest_release(slug: str) -> dict[str, Any]:
 def download_tarball(url: str, dest: Path) -> Path:
     request = urllib.request.Request(require_safe_url(url), headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+        with _SAFE_OPENER.open(request, timeout=HTTP_TIMEOUT) as response:
             data = response.read(MAX_DOWNLOAD_BYTES + 1)
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise PlumblineError(f"could not download release tarball: {exc}") from exc
