@@ -28,6 +28,7 @@ Installs the repo for Claude Code by:
   - installing all vendored commands from config/claude/commands/,
   - installing all vendored skills from config/claude/skills/,
   - registering the sentinel-gated learning-loop Stop hook,
+  - registering the fail-closed PRIL enforcement Stop hook,
   - installing the plumbline CLI into $CLAUDE_HOME/bin/.
 
 Environment:
@@ -172,11 +173,61 @@ register_stop_hook() {
   fi
 }
 
+# Idempotently add the fail-closed PRIL enforcement Stop hook to
+# ~/.claude/settings.json. Mirrors register_stop_hook: it preserves any existing
+# hooks and is dedup-keyed on the hook filename so re-runs never double-register.
+# This is what actually closes C-1 — a fail-closed hook that is never wired into
+# settings.json is inert. It uses a 15s timeout because it shells out to the PRIL
+# CLIs over the real git diff (heavier than the learning-loop hook).
+register_enforce_hook() {
+  local settings="$CLAUDE_HOME/settings.json"
+  local hook_script="$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
+  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/plumbline-enforce.sh" ]; then
+    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/plumbline-enforce.sh"
+  fi
+  local cmd="bash $hook_script"
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "skip enforce-hook: jq not found — install jq and re-run, or add it manually to $settings"
+    return
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_action "would register enforce-hook in $settings with command: $cmd"
+    return
+  fi
+  mkdir -p "$CLAUDE_HOME"
+  [ -f "$settings" ] || echo '{}' > "$settings"
+  if ! jq -e . "$settings" >/dev/null 2>&1; then
+    echo "skip enforce-hook: $settings is not valid JSON — fix it first"
+    return
+  fi
+  if jq -e '[.hooks.Stop[]?.hooks[]? | .command? // ""] | any(test("plumbline-enforce\\.sh"))' \
+       "$settings" >/dev/null 2>&1; then
+    echo "skip enforce-hook: already registered in $settings"
+    return
+  fi
+  local tmp; tmp="$(mktemp)"
+  if jq --arg cmd "$cmd" '
+    .hooks //= {} |
+    .hooks.Stop //= [] |
+    .hooks.Stop += [ { "hooks": [ { "type": "command", "command": $cmd, "timeout": 15 } ] } ]
+  ' "$settings" > "$tmp"; then
+    mv "$tmp" "$settings"
+    echo "registered enforce-hook in $settings"
+  else
+    rm -f "$tmp"
+    echo "skip enforce-hook: jq failed to update $settings" >&2
+  fi
+}
+
 mkdir -p "$CLAUDE_HOME"
 [ "$INSTALL_AGENTS" -eq 1 ] && install_agent_repo
 [ "$INSTALL_COMMANDS" -eq 1 ] && install_commands
 [ "$INSTALL_SKILLS" -eq 1 ] && install_skills
-[ "$INSTALL_HOOK" -eq 1 ] && register_stop_hook
+if [ "$INSTALL_HOOK" -eq 1 ]; then
+  register_stop_hook
+  register_enforce_hook
+fi
 [ "$INSTALL_BIN" -eq 1 ] && install_bin
 
 echo "done. Restart Claude Code (or reload /hooks) so agents, commands, skills, hooks, and plumbline CLI are picked up."

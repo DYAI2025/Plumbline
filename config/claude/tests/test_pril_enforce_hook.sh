@@ -203,4 +203,39 @@ has_marker_write() {
 }
 has_marker_write
 
+# --- 8. install.sh registers the enforce hook (closes Critical C-1). -----------
+# C-1: a fail-closed hook that is never wired into settings.json is inert. After
+# install into an isolated CLAUDE_HOME, plumbline-enforce.sh must be registered in
+# Stop EXACTLY ONCE, the existing stop-learning-loop.sh must STILL be registered
+# exactly once, and the deliberately-inert pretool guard must STILL be absent.
+INSTALL="$REPO_DIR/config/claude/install.sh"
+assert_file "install.sh exists" "$INSTALL"
+
+CH="$(mktemp -d -p "$WORK")"
+# --copy so the agent repo path the hook prefers resolves inside CH (no symlink
+# back into the live repo); --no-skills/--no-bin keep the install fast.
+CLAUDE_HOME="$CH" HOME="$CH" bash "$INSTALL" --copy --no-skills --no-bin \
+  >/dev/null 2>&1
+SETTINGS_OUT="$CH/settings.json"
+
+assert_file "install produced settings.json" "$SETTINGS_OUT"
+
+count_cmd() { # count_cmd <regex> -> count of Stop-hook commands matching it
+  jq "[.hooks.Stop[]?.hooks[]?.command? // \"\" | select(test(\"$1\"))] | length" \
+     "$SETTINGS_OUT" 2>/dev/null
+}
+
+assert_eq "enforce hook registered in Stop exactly once" "1" \
+  "$(count_cmd 'plumbline-enforce\\.sh')"
+assert_eq "stop-learning-loop hook still registered exactly once" "1" \
+  "$(count_cmd 'stop-learning-loop\\.sh')"
+assert_eq "pretool-plumbline-guard.sh is NOT registered" "0" \
+  "$(count_cmd 'pretool-plumbline-guard\\.sh')"
+
+# Idempotency: a second install must NOT double-register the enforce hook.
+CLAUDE_HOME="$CH" HOME="$CH" bash "$INSTALL" --copy --no-skills --no-bin \
+  >/dev/null 2>&1
+assert_eq "second install: enforce hook still registered exactly once" "1" \
+  "$(count_cmd 'plumbline-enforce\\.sh')"
+
 finish "test_pril_enforce_hook"
