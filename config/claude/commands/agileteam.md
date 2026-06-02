@@ -579,6 +579,11 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
 - **METRICS-EMITTER:** write a run record (config_fingerprint + metrics + gate outcomes)
   to `metrics/runs.jsonl` (governance §2). Then **arm the learning loop**:
   `touch ~/.claude/.agileteam-reflection-pending`.
+  Pass **scored** metrics via `--metrics` (allowlisted to `process_health.DIRECTIONS`),
+  operational counts via `--raw`, and cost via `--tokens-total` + `--reqs-accepted`,
+  where **`--reqs-accepted` is the count of REQs whose Reality-Ledger `evidence-class` is
+  at/above the run's `--min-evidence` (validated, not green)** — so `cost_per_req` is cost
+  per *validated* requirement. A non-allowlisted metric key is rejected fail-closed.
 
 ### USER ACCEPTANCE GATE (human)
 Stakeholder sign-off against the traceability matrix. Attach audit artifacts (PRD,
