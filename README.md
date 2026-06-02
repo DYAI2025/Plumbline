@@ -63,10 +63,12 @@ That intellectual honesty — *measuring* our own framework instead of marketing
 
 The oracle above tests one agent in isolation. In **v0.10** we measured the *whole pipeline*: a buried-gap build (`tester → coder → reviewer → production-validator`) run under two arms — the frozen-v3 agents vs. the evolved **Reality-Ledger DNA** — across a weak model (Haiku) and a strong one (Opus), scored by a **blind judge**. Two signals stood out:
 
-- ⚖️ **Half the escapes on a sub-Opus model.** On Haiku, the DNA **halved the boundary-defect escape rate — 67% → 33%**: a third of the defects a frozen pipeline ships blind, the discipline catches.
-- 🎯 **Caught before the code exists.** With the DNA on Opus, **100% of the planted architecture gaps (6/6) were caught at the *earliest* stage — test planning** — before a single line of fake-only code was generated. (The frozen arm caught them too — just later, downstream.)
+We measured **both halves** of the ledger — catch-rate on planted gaps *and* false-positive ("cry-wolf") rate on pure-logic controls — and the honest answer is **not** "strictly better":
 
-> **The scope is the point** — this is Plumbline: `n=6` per cell · **2** boundary-gap tasks · **gap-only** (no false-positive control *yet*) · **12.7M** tokens · **120** coordinated agents. The full powered baseline and the **anti-Goodhart false-positive controls** (which rule out any "cry-wolf" over-sensitivity) are the declared next step. Full, unabridged data + setup → **[the transparent deep-dive →](docs/benchmarks/2026-06-02-full-pipeline.md)**.
+- ✅ **On Opus — a clean win.** Both arms catch every gap, but the frozen pipeline **cries wolf on 67% of pure-logic features** (demanding boundary tests a discount calculator doesn't need); the DNA's *"fires only on genuine boundary features, never on pure logic"* reflex cuts that to **17%**. **Same catch, ~4× less crying wolf.**
+- ⚖️ **On a sub-Opus model — a trade-off, not a free lunch.** On Haiku the DNA **halves the boundary-defect escape rate (67% → 33%)** — but it **also raises the false-positive rate (0% → 33%).** The catch-gain on the weak model *is* partly bought with over-sensitivity. We say so plainly.
+
+> **The scope is the point** — this is Plumbline: `n=6` per cell · 2 gap tasks + 2 control tasks · ~24M tokens across two runs · 240 coordinated agents · judge-scored. "The DNA is strictly better" would be a lie; **"net-positive on Opus, a trade-off on sub-Opus"** is the measured truth. Full ledger + setup → **[the transparent deep-dive →](docs/benchmarks/2026-06-02-full-pipeline.md)**.
 
 ### Built on that finding
 
