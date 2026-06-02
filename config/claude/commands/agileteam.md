@@ -497,6 +497,21 @@ only encodes where the Vision is shown, the start signal, and the bounded autono
    PRD, and Vision all user-confirmed, no unresolved contradictions, Plumbline Watcher
    verdict `pass`); **GO never overrides or bypasses that entry condition** — it is the
    start signal *after* the gate, never a substitute for it.
+   **Arm fail-closed enforcement (PRIL activation marker — ground truth, do this at GO).**
+   At this exact moment — the user's GO that begins development — the orchestrator writes the
+   confirmed feature slug to the ground-truth activation marker so the fail-closed PRIL
+   enforcement Stop hook (`config/claude/hooks/plumbline-enforce.sh`) actually fires for this
+   run in production (the hook activates from this marker, **not** from any environment
+   variable the runtime never sets — no marker means the hook is a no-op):
+
+   ```bash
+   mkdir -p docs/context && printf '%s\n' "<feature>" > docs/context/.active-feature
+   ```
+
+   Write it only after the entry condition is fully met (it is the runtime witness that this
+   confirmed feature is now under active development). When the feature is done/abandoned,
+   clear it (`rm -f docs/context/.active-feature`) so a later non-feature session stays a
+   no-op. The marker carries exactly the confirmed slug — never a guessed or partial name.
 4. **Autonomy is bounded.** That autonomy remains bounded by the Plumbline Watcher escalation rule
    (the per-increment chain + graded escalation defined in the Watcher
    continuation rules and `agileteam/plumbline-watcher.md` — referenced, not restated):

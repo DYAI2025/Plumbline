@@ -120,18 +120,19 @@ run_hook "$plain_repo" ''
 assert_eq "empty stdin: exit 0" "0" "$HOOK_RC"
 
 # --- 4. Marker + planted OUT-OF-SCOPE change (git ground-truth) -> block -------
-# The out-of-scope file (src/billing/charge.py) is changed in the git working
-# tree only; it appears in NO agent-authored list. This proves C2 reads git AND
-# fails closed.
+# The out-of-scope file (src/billing/charge.py) is a real staged git change that
+# appears in NO agent-authored list — only in `git diff --name-only --cached`,
+# part of the C2 surface. This proves C2 reads git ground-truth AND fails closed.
 scope_repo="$(make_feature_repo scopefeat)"
 printf 'scopefeat' >"$scope_repo/docs/context/.active-feature"
 # In-scope committed change on the feature branch.
 printf 'def f():\n    return 1\n' >"$scope_repo/src/feature/impl.py"
 git -C "$scope_repo" add src/feature/impl.py
 git -C "$scope_repo" commit -q -m "in-scope feature work"
-# Out-of-scope unstaged working-tree change (no agent listed it).
+# Out-of-scope staged change (no agent listed it; git ground-truth via --cached).
 mkdir -p "$scope_repo/src/billing"
 printf 'def charge():\n    return 0\n' >"$scope_repo/src/billing/charge.py"
+git -C "$scope_repo" add src/billing/charge.py
 run_hook "$scope_repo" '{}'
 assert_eq "out-of-scope: exit 0 (never non-zero)" "0" "$HOOK_RC"
 
