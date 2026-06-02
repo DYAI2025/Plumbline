@@ -28,8 +28,9 @@ extra=pkg['extra-files']
 assert pkg['release-type']=='simple'
 assert any(item.get('type')=='generic' and item.get('path')=='VERSION' for item in extra)
 assert any(item.get('type')=='json' and item.get('path')=='compatibility.json' and item.get('jsonpath')=='$.version' for item in extra)
-assert manifest['.']=='0.9.0'
-assert compat['version']=='0.9.0'
+version=[l.strip() for l in (root/'VERSION').read_text().splitlines() if l.strip() and not l.startswith('#')][0]
+assert manifest['.']==version, (manifest['.'], version)
+assert compat['version']==version, (compat['version'], version)
 print('release-please JSON OK')
 PY
 assert "release-please JSON wires VERSION and compatibility.json" "grep -q 'release-please JSON OK' /tmp/plumbline_release_please_check.txt"
