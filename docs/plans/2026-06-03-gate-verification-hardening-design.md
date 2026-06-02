@@ -24,15 +24,21 @@ still contains this phrase,"* never that the gate **fires**, stays bounded, paus
 risk, or composes the right team. That is exactly the *"looks done" vs. "actually done"*
 gap this repo exists to expose.
 
-### Two findings that justify the work (measured 2026-06-03)
+### Findings (one self-corrected 2026-06-03)
 
-1. **G4's contract is already violated.** `agileteam.md:347` promises to staff
-   `backend-dev`, `ml-developer`, `mobile-dev`, `system-architect`. **None is declared
-   in-repo** (no `name:` frontmatter); they are pulled "from `~/.claude/agents/`"
-   (`agileteam.md:287`) but Plumbline's own `install.sh` does not ship them. On a clean
-   Plumbline install these dispatches resolve to nothing — the founding incident ("exists
-   in design, never composed in reality"), inside the orchestrator itself. **A G4 contract
-   test goes RED today, and that RED is the point.**
+1. **~~G4's contract is already violated.~~ — CORRECTED: it is NOT.** An earlier step in this
+   brainstorm claimed the four dynamic-add specialists (`backend-dev`, `ml-developer`,
+   `mobile-dev`, `system-architect`) were not shipped in-repo. **That was a verification
+   error** — two greps with the same blind spot: filename ≠ `name`, and the `name:` values
+   are YAML-quoted (`name: "backend-dev"`). They **are** in the repo and valid:
+   `development/backend/dev-backend-api.md`, `data/ml/data-ml-model.md`,
+   `specialized/mobile/spec-mobile-react-native.md`,
+   `architecture/system-design/arch-system-design.md` — vendored from the claude-flow agent
+   base, registered with unique names, passing the frontmatter validator. `install.sh`
+   symlinks the repo into `~/.claude/agents`, so they ship. **G4-C2 is GREEN today.** The G4
+   contract is therefore *drift-protection*, not a live-bug fix. (Separate, minor: those four
+   carry unsanitized claude-flow boilerplate — bash `hooks`, `can_spawn`/`can_delegate_to`
+   refs to agents Plumbline lacks; an optional cleanup, out of this effort's scope.)
 2. **The token bound is aspirational prose.** `"≤ ~15k tokens total"` (note the `~`,
    `concilium.md:29`, `agileteam.md:113,377`) is an *instruction to the model* — there is
    **no runtime mechanism** that counts tokens and stops. Contract can only assert the
@@ -46,8 +52,8 @@ gap this repo exists to expose.
 
 - **Goal:** harden *and verify* (not redesign) the three gates.
 - **Definition of "verified":** two-tier ladder, **staggered** — Contract first, Oracle second.
-- **Sequencing:** **Hybrid** — all three Contract tests now (cheap, immediate, surfaces the
-  G4 RED), then a vertical Oracle pilot on G1, then replicate Oracle to G3/G4.
+- **Sequencing:** **Hybrid** — all three Contract tests now (cheap, immediate drift-guard),
+  then a vertical Oracle pilot on G1, then replicate Oracle to G3/G4.
 
 ---
 
@@ -123,7 +129,7 @@ captures output + token usage, asserts observable behavior mechanically. **Never
   `goal-planner` / `/goal` ruleset (`:502-504`); `docs/vision/<feature>.vision.md`
   consistent between phase table and detail.
 
-### G4 — team composition (goes RED today)
+### G4 — team composition (GREEN today; drift-guard)
 
 Single source of truth: **roster manifest** `config/claude/agileteam-roster.yml`, declaring
 each role `/agileteam` may staff with `source: in-repo | external:<collection>`. A test
@@ -131,13 +137,14 @@ binds manifest ↔ prose so they cannot drift.
 
 - **G4-C1 · Fixed minimum exact.** Manifest minimum = **exactly** {`coder`, `code-reviewer`,
   `tester` (QA), `product-owner`} (set equality, `agileteam.md:343-350`).
-- **G4-C2 · Every role resolves.** Each manifest entry is **either** in-repo (`name:`
-  exists) **or** `external:<collection>` with a documented provider. Neither → **RED**. →
-  the four specialists go RED today until classified.
+- **G4-C2 · Every role resolves.** Each manifest entry resolves to an in-repo agent whose
+  `name:` frontmatter exists (quote-aware YAML parse). Today all four specialists resolve →
+  **GREEN**; the test guards against a future rename/move/delete silently breaking the roster.
 - **G4-C3 · Prose ↔ manifest equality.** Every specialist named in `agileteam.md` is in the
   manifest and vice versa — no silent prose-only role.
-- **G4-C4 · External deps documented in install path.** Each `external:` has a note in
-  `SETUP.md` / `install.sh` so a clean install knows it needs them (wired-in-prod analog).
+- **G4-C4 · (was: external-dep docs) — N/A.** All roster roles ship in-repo; there are no
+  external dependencies to document. This check is retained only if a future role is ever
+  declared external.
 - **G4-C5 · Negative fixture.** A manifest entry naming a non-existent in-repo agent must go RED.
 
 ---
@@ -175,12 +182,12 @@ models, no full-pipeline run).
 
 ## Sequencing (hybrid)
 
-- **PR-1 · Contract tier, all three (must merge green).** `test_gate_contracts.sh` +
+- **PR-1 · Contract tier, all three (merges green).** `test_gate_contracts.sh` +
   `lib/gate_contracts.py` + `agileteam-roster.yml` + negative fixtures under
-  `tests/fixtures/gate_contracts/`, wired into `run_all.sh`. G1/G3 green; **G4-C2 starts
-  RED** (the test-first proof of the gap). Since RED must not merge to `main`, PR-1 carries
-  the **roster decision** (see Open Decisions) to turn C2 green. Commit type **`fix:`**
-  (integrity hardening, changelog-visible).
+  `tests/fixtures/gate_contracts/`, wired into `run_all.sh`. All of G1/G3/G4 are green
+  today; the value is *drift-protection* (each guarded by a negative fixture proving
+  non-vacuity). No vendoring needed — the roster already resolves in-repo. Commit type
+  **`test:`** (adds guards; no behavior change).
 - **PR-2 · Oracle pilot G1 (bench/FULL, not per-commit).** Gate-slice harness + G1 fixture
   + O1–O3 + emission to `runs.jsonl`. No CI-green requirement (model-dependent); instead a
   **documented bench run** with per-model results. If **O1 RED** (bound not held) → a
@@ -199,7 +206,7 @@ models, no full-pipeline run).
   `mergeable`).
 - No hardcoded version numbers in fixtures (read `VERSION` dynamically).
 - `runs.jsonl` accumulates on `agileteam-improved`; `main` stays the frozen baseline.
-- Explorer rebuild **only if** Open Decision resolves to (i) (new agent files); under (ii) it is skipped.
+- Explorer rebuild **not needed** — PR-1 adds no agents (the roster already resolves in-repo).
 - Trace-IDs (G1-C1…, G3-C1…, G4-C1…, O1…) recorded in a small traceability note.
 
 ## Out of scope (YAGNI)
@@ -208,16 +215,16 @@ models, no full-pipeline run).
 - No token hard-stop *implementation* (this design only **measures**; implementing a real
   cutoff is a follow-up triggered iff O1 goes RED).
 
-## Open decisions (to resolve at implementation time)
+## Open decisions
 
-- **OD-1 · The four missing specialists** (`backend-dev`, `ml-developer`, `mobile-dev`,
-  `system-architect`): **(i)** ship them in-repo (Plumbline becomes self-contained; more
-  work; triggers explorer rebuild) **vs. (ii)** declare them `external:<collection>` +
-  document the dependency (cheap, honest; source *to be verified* — likely the claude-flow
-  agent base). **Recommendation: (ii) now, (i) as a later self-containment path.** PR-1
-  cannot merge green until OD-1 is resolved.
+- **OD-1 · ~~The four missing specialists~~ — MOOT (closed 2026-06-03).** The premise was a
+  verification error (see Findings #1): the four specialists already ship in-repo, so there
+  is nothing to vendor or declare external. No decision required. *(Optional and separate
+  from this effort: sanitize the claude-flow boilerplate those four still carry — bash
+  `hooks`, dangling `can_spawn`/`can_delegate_to` refs.)*
 
 ## Next step
 
 Author the implementation plan for **PR-1** with `superpowers:writing-plans` (or run it via
-`/agileteam`), TDD-first, on an isolated branch. Resolve **OD-1** before PR-1 can go green.
+`/agileteam`), TDD-first, on an isolated branch. OD-1 is closed; PR-1 is the three contract
+test modules + roster manifest + negative fixtures — all green from the start.
