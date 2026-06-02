@@ -5,14 +5,23 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 SEMVER_RE = re.compile(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?(?!\d)")
+GITHUB_REMOTE_RE = re.compile(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$")
+HTTP_TIMEOUT = 30
+USER_AGENT = "plumbline-update"
+DEFAULT_REPO_SLUG = "DYAI2025/Plumbline"
 
 
 class PlumblineError(RuntimeError):
@@ -113,10 +122,144 @@ def release_item_version(item: Any, label: str) -> tuple[str, str]:
     return version, label
 
 
+def default_repo_slug(root: Path) -> str:
+    """Derive owner/repo from the git origin remote, with env + literal fallback."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        proc = None
+    if proc is not None and proc.returncode == 0:
+        match = GITHUB_REMOTE_RE.search(proc.stdout.strip())
+        if match:
+            return f"{match.group(1)}/{match.group(2)}"
+    return os.environ.get("PLUMBLINE_REPO", DEFAULT_REPO_SLUG)
+
+
+def github_api_base() -> str:
+    return os.environ.get("PLUMBLINE_GITHUB_API", "https://api.github.com").rstrip("/")
+
+
+def fetch_latest_release(slug: str) -> dict[str, Any]:
+    """GET the latest release metadata from the GitHub API (no traceback on failure)."""
+    url = f"{github_api_base()}/repos/{slug}/releases/latest"
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+            payload = response.read()
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise PlumblineError(f"could not reach GitHub release API: {exc}") from exc
+    try:
+        data = json.loads(payload.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise PlumblineError(f"could not reach GitHub release API: invalid JSON ({exc})") from exc
+    if not isinstance(data, dict):
+        raise PlumblineError("could not reach GitHub release API: unexpected response shape")
+    return data
+
+
+def download_tarball(url: str, dest: Path) -> Path:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+            dest.write_bytes(response.read())
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise PlumblineError(f"could not download release tarball: {exc}") from exc
+    return dest
+
+
+def _member_escapes(member: tarfile.TarInfo, into: Path) -> bool:
+    """True if extracting this member would write/point outside `into`."""
+    base = into.resolve()
+
+    def outside(candidate: str) -> bool:
+        if os.path.isabs(candidate) or candidate.startswith(("/", "\\")):
+            return True
+        target = (base / candidate).resolve()
+        return target != base and base not in target.parents
+
+    if outside(member.name):
+        return True
+    # Link targets are resolved relative to the link's own directory.
+    if member.issym() or member.islnk():
+        link_dir = os.path.dirname(member.name)
+        link_target = os.path.join(link_dir, member.linkname) if not os.path.isabs(member.linkname) else member.linkname
+        if outside(link_target):
+            return True
+    return False
+
+
+def safe_extract_tarball(tar_path: Path, into: Path) -> Path:
+    """Extract a tarball, refusing any member that escapes `into`. Returns the
+    single top-level directory (GitHub tarballs ship exactly one)."""
+    into.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(tar_path, "r:*") as tar:
+        members = tar.getmembers()
+        for member in members:
+            if _member_escapes(member, into):
+                raise PlumblineError(f"unsafe tarball member: {member.name}")
+        tar.extractall(into)  # noqa: S202 - every member validated above
+    tops = sorted({Path(m.name).parts[0] for m in members if m.name not in ("", ".")})
+    if len(tops) == 1:
+        return into / tops[0]
+    return into
+
+
+def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, Path | None]:
+    """Return (payload_dir, tempdir_to_cleanup). tempdir is None for plain dirs."""
+    if args.source:
+        source = Path(args.source)
+        if source.is_dir():
+            return source.resolve(), None
+        if source.is_file() and (source.name.endswith(".tar.gz") or source.name.endswith(".tgz")):
+            tmp = Path(tempfile.mkdtemp(prefix="plumbline-update-"))
+            try:
+                return safe_extract_tarball(source.resolve(), tmp), tmp
+            except Exception:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+        raise PlumblineError(f"unsupported --source payload: {source}")
+    # No --source: fetch the latest published release tarball over the network.
+    slug = getattr(args, "repo", None) or default_repo_slug(root)
+    release = fetch_latest_release(slug)
+    url = release.get("tarball_url")
+    if not url:
+        raise PlumblineError("GitHub release metadata missing tarball_url")
+    tmp = Path(tempfile.mkdtemp(prefix="plumbline-update-"))
+    try:
+        archive = download_tarball(str(url), tmp / "release.tar.gz")
+        return safe_extract_tarball(archive, tmp / "extracted"), tmp
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+
+
 def update_check(args: argparse.Namespace, root: Path) -> int:
     local = read_version(root)
-    source = Path(args.source).resolve() if args.source else root
-    latest, source_label = latest_from_source(source)
+    if args.source:
+        source = Path(args.source)
+        if source.is_file() and (source.name.endswith(".tar.gz") or source.name.endswith(".tgz")):
+            payload, tmp = resolve_payload_source(args, root)
+            try:
+                latest = read_version(payload)
+            finally:
+                if tmp is not None:
+                    shutil.rmtree(tmp, ignore_errors=True)
+            source_label = f"tarball ({source})"
+        else:
+            latest, source_label = latest_from_source(source.resolve())
+    else:
+        slug = getattr(args, "repo", None) or default_repo_slug(root)
+        release = fetch_latest_release(slug)
+        latest, _ = release_item_version(release, f"github:{slug}")
+        source_label = f"github:{slug}"
     cmp = compare_versions(local, latest)
     if cmp < 0:
         state = "update-available"
@@ -196,9 +339,15 @@ def run_migrations(target: Path, previous: str, new: str) -> None:
 
 def update_apply(args: argparse.Namespace, root: Path) -> int:
     target = Path(args.target).resolve() if args.target else root
-    source = Path(args.source).resolve() if args.source else None
-    if source is None:
-        raise PlumblineError("plumbline update currently requires --source <path> for verified local updates")
+    source, tmp = resolve_payload_source(args, root)
+    try:
+        return _apply_from_source(args, target, source)
+    finally:
+        if tmp is not None:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _apply_from_source(args: argparse.Namespace, target: Path, source: Path) -> int:
     previous = read_version(target)
     latest, _ = latest_from_source(source)
     if compare_versions(previous, latest) >= 0 and not args.force:
@@ -281,7 +430,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("honest-status")
     update = sub.add_parser("update")
     update.add_argument("--check", action="store_true", help="only check for latest release")
-    update.add_argument("--source", help="local release metadata or payload source")
+    update.add_argument("--source", help="local release metadata or payload source (dir or .tar.gz)")
+    update.add_argument("--repo", help="GitHub OWNER/REPO to fetch releases from (default: origin remote)")
     update.add_argument("--target", help="target checkout for apply/rollback tests")
     update.add_argument("--verify-cmd", help="verification command after update")
     update.add_argument("--force", action="store_true", help="apply even when versions compare equal")
