@@ -78,4 +78,154 @@ fi
 assert_eq "MAJOR update requires explicit confirmation" "1" "$major_status"
 assert "MAJOR refusal names --yes-major" "grep -q -- '--yes-major' '$TMP_ROOT/major.log'"
 
+# --- P1: tarball payload source (GitHub-release-shaped, fully offline) -------
+# Build a payload tree one minor above the current repo version, wrapped in a
+# single top-level directory exactly like a GitHub source tarball
+# (<owner>-<repo>-<sha>/...). The install.sh stub exits 0 so the apply flow
+# reaches verification without running the real installer.
+TAR_PAYLOAD="$TMP_ROOT/tar-payload"
+TAR_TOP="plumbline-fixture-deadbeef"
+PAYLOAD_DIR="$TAR_PAYLOAD/$TAR_TOP"
+mkdir -p "$PAYLOAD_DIR/config/claude/tests"
+printf '%s\n' "$NEWER_VERSION" > "$PAYLOAD_DIR/VERSION"
+printf '{\n  "version": "%s",\n  "schema": 1,\n  "verifyCommand": "true",\n  "frozenContracts": ["VERSION"],\n  "migrations": []\n}\n' "$NEWER_VERSION" > "$PAYLOAD_DIR/compatibility.json"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$PAYLOAD_DIR/config/claude/install.sh"
+chmod +x "$PAYLOAD_DIR/config/claude/install.sh"
+TARBALL="$TMP_ROOT/payload.tar.gz"
+tar -C "$TAR_PAYLOAD" -czf "$TARBALL" "$TAR_TOP"
+
+tar_check_output="$($PLUMBLINE --root "$REPO_DIR" update --check --source "$TARBALL")"
+assert "tarball --check reports update-available" "printf '%s\n' '$tar_check_output' | grep -q 'status: update-available'"
+assert "tarball --check reports newer latest" "printf '%s\n' '$tar_check_output' | grep -q \"latest: $NEWER_VERSION\""
+
+TAR_TARGET="$TMP_ROOT/tar-target"
+cp -R "$FIXTURES/target-0.9.0" "$TAR_TARGET"
+tar_apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TAR_TARGET" --source "$TARBALL" --verify-cmd true)"
+assert "tarball apply reports verified" "printf '%s\n' '$tar_apply_output' | grep -q 'status: changed and verified'"
+assert_eq "tarball apply installs newer version" "$NEWER_VERSION" "$($PLUMBLINE --root "$TAR_TARGET" version)"
+
+# --- P1: safe-extract rejects path traversal -------------------------------
+# A tarball whose member escapes the extraction root must be refused before any
+# file is written, and nothing may land outside the target.
+EVIL_DIR="$TMP_ROOT/evil-build"
+mkdir -p "$EVIL_DIR"
+printf '%s\n' "owned" > "$EVIL_DIR/evil"
+EVIL_TARBALL="$TMP_ROOT/evil.tar.gz"
+tar -C "$EVIL_DIR" -czf "$EVIL_TARBALL" --transform 's,^evil,../evil,' evil 2>/dev/null \
+  || tar -C "$EVIL_DIR" -czf "$EVIL_TARBALL" -P --absolute-names ../evil-build/evil
+EVIL_TARGET="$TMP_ROOT/evil-target"
+cp -R "$FIXTURES/target-0.9.0" "$EVIL_TARGET"
+EVIL_SENTINEL="$TMP_ROOT/evil"
+rm -f "$EVIL_SENTINEL"
+if "$PLUMBLINE" --root "$REPO_DIR" update --target "$EVIL_TARGET" --source "$EVIL_TARBALL" --verify-cmd true >"$TMP_ROOT/evil.log" 2>&1; then
+  evil_status=0
+else
+  evil_status=$?
+fi
+assert_eq "unsafe tarball exits non-zero" "1" "$evil_status"
+assert "unsafe tarball reports unsafe member" "grep -q 'unsafe tarball' '$TMP_ROOT/evil.log'"
+assert "unsafe tarball writes nothing outside target" "test ! -e '$EVIL_SENTINEL'"
+assert_eq "unsafe tarball leaves target version intact" "0.9.0" "$($PLUMBLINE --root "$EVIL_TARGET" version)"
+
+# --- P1: network failure is a clean message, never a traceback -------------
+# Point the API at a closed port so the fetch fails fast and deterministically.
+if PLUMBLINE_GITHUB_API="http://127.0.0.1:1" "$PLUMBLINE" --root "$REPO_DIR" update --check >"$TMP_ROOT/net.log" 2>&1; then
+  net_status=0
+else
+  net_status=$?
+fi
+assert_eq "network failure exits non-zero" "1" "$net_status"
+assert "network failure reports could-not-reach GitHub" "grep -q 'could not reach GitHub' '$TMP_ROOT/net.log'"
+assert "network failure has no traceback" "! grep -q 'Traceback' '$TMP_ROOT/net.log'"
+
+# --- SECURITY (HIGH-1): payload-supplied verifyCommand is NEVER executed -----
+# A downloaded payload's compatibility.json must not be able to run arbitrary
+# shell via its verifyCommand. Applying WITHOUT --verify-cmd must run the fixed
+# standard verify (the payload's run_all.sh stub), never the payload's string.
+EVILV_TOP="plumbline-evilverify-deadbeef"
+EVILV_BUILD="$TMP_ROOT/evilverify-build"
+EVILV_DIR="$EVILV_BUILD/$EVILV_TOP"
+mkdir -p "$EVILV_DIR/config/claude/tests"
+printf '%s\n' "$NEWER_VERSION" > "$EVILV_DIR/VERSION"
+printf '{\n  "version": "%s",\n  "schema": 1,\n  "verifyCommand": "touch EVIL_VERIFY_SENTINEL",\n  "frozenContracts": ["VERSION"],\n  "migrations": []\n}\n' "$NEWER_VERSION" > "$EVILV_DIR/compatibility.json"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$EVILV_DIR/config/claude/install.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$EVILV_DIR/config/claude/tests/run_all.sh"
+chmod +x "$EVILV_DIR/config/claude/install.sh" "$EVILV_DIR/config/claude/tests/run_all.sh"
+EVILV_TARBALL="$TMP_ROOT/evilverify.tar.gz"
+tar -C "$EVILV_BUILD" -czf "$EVILV_TARBALL" "$EVILV_TOP"
+EVILV_TARGET="$TMP_ROOT/evilverify-target"
+cp -R "$FIXTURES/target-0.9.0" "$EVILV_TARGET"
+evilv_out="$($PLUMBLINE --root "$REPO_DIR" update --target "$EVILV_TARGET" --source "$EVILV_TARBALL")"
+assert "verify falls back to the fixed standard command" "printf '%s\n' '$evilv_out' | grep -q 'status: changed and verified'"
+assert "payload-supplied verifyCommand is NOT executed" "test ! -e '$EVILV_TARGET/EVIL_VERIFY_SENTINEL'"
+assert_eq "evil-verify payload still applies its version" "$NEWER_VERSION" "$($PLUMBLINE --root "$EVILV_TARGET" version)"
+
+# --- SECURITY (MEDIUM-2): non-http(s) API scheme is refused, not opened ------
+if PLUMBLINE_GITHUB_API="file:///tmp" "$PLUMBLINE" --root "$REPO_DIR" update --check >"$TMP_ROOT/scheme.log" 2>&1; then
+  scheme_status=0
+else
+  scheme_status=$?
+fi
+assert_eq "file:// API scheme exits non-zero" "1" "$scheme_status"
+assert "file:// API scheme is refused by name" "grep -qi 'refus' '$TMP_ROOT/scheme.log'"
+assert "file:// API scheme produces no traceback" "! grep -q 'Traceback' '$TMP_ROOT/scheme.log'"
+
+# --- SECURITY (MEDIUM-1): extraction strips setuid (tarfile data filter) -----
+if python3 - "$REPO_DIR" "$TMP_ROOT" >"$TMP_ROOT/setuid.log" 2>&1 <<'PY'
+import sys, io, tarfile
+from pathlib import Path
+repo, tmp = sys.argv[1], sys.argv[2]
+sys.path.insert(0, str(Path(repo) / "config" / "claude" / "lib"))
+import plumbline_update as P
+tar_path = Path(tmp) / "setuid.tar.gz"
+with tarfile.open(tar_path, "w:gz") as t:
+    data = b"#!/bin/sh\n"
+    ti = tarfile.TarInfo("top/payload.sh")
+    ti.size = len(data)
+    ti.mode = 0o4755  # setuid + rwxr-xr-x
+    t.addfile(ti, io.BytesIO(data))
+top = P.safe_extract_tarball(tar_path, Path(tmp) / "setuid-extract")
+mode = (top / "payload.sh").stat().st_mode
+assert mode & 0o4000 == 0, "setuid bit survived extraction: %o" % mode
+print("setuid stripped OK")
+PY
+then setuid_status=0; else setuid_status=$?; fi
+assert_eq "extraction strips setuid bit" "0" "$setuid_status"
+assert "extraction setuid guard confirmed" "grep -q 'setuid stripped OK' '$TMP_ROOT/setuid.log'"
+
+# --- SECURITY (NEW-1): redirect targets are re-validated on every hop --------
+# urllib's own redirect allowlist includes ftp://; the scheme guard must be
+# authoritative on redirects too, not just the initial URL.
+if python3 - "$REPO_DIR" >"$TMP_ROOT/redirect.log" 2>&1 <<'PY'
+import sys, urllib.request
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "config" / "claude" / "lib"))
+import plumbline_update as P
+handler = P._SafeRedirectHandler()
+req = urllib.request.Request("https://example.invalid/start")
+try:
+    handler.redirect_request(req, None, 302, "Found", {}, "ftp://127.0.0.1:1/payload.tar.gz")
+    print("ftp redirect NOT refused")
+except P.PlumblineError:
+    print("ftp redirect refused OK")
+out = handler.redirect_request(req, None, 302, "Found", {}, "https://codeload.example/x")
+print("https redirect allowed OK" if out is not None else "https redirect WRONGLY blocked")
+PY
+then redirect_status=0; else redirect_status=$?; fi
+assert_eq "redirect re-validation runs cleanly" "0" "$redirect_status"
+assert "ftp:// redirect target is refused" "grep -q 'ftp redirect refused OK' '$TMP_ROOT/redirect.log'"
+assert "https:// redirect target stays allowed" "grep -q 'https redirect allowed OK' '$TMP_ROOT/redirect.log'"
+
+# --- P2: plumbline install subcommand wraps install.sh ----------------------
+assert "install --help exits 0" "$PLUMBLINE --root '$REPO_DIR' install --help"
+INSTALL_HOME="$(mktemp -d)"
+if CLAUDE_HOME="$INSTALL_HOME" "$PLUMBLINE" --root "$REPO_DIR" install --dry-run --no-agents --no-commands --no-skills --no-hook --no-bin >"$TMP_ROOT/install-sub.log" 2>&1; then
+  install_sub_status=0
+else
+  install_sub_status=$?
+fi
+rm -rf "$INSTALL_HOME"
+assert_eq "install subcommand exits 0" "0" "$install_sub_status"
+assert "install subcommand shows dry-run marker" "grep -q 'dry-run' '$TMP_ROOT/install-sub.log'"
+
 finish "update layer tests"

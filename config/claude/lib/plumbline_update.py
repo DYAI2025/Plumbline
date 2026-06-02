@@ -5,14 +5,35 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 SEMVER_RE = re.compile(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?(?!\d)")
+GITHUB_REMOTE_RE = re.compile(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$")
+HTTP_TIMEOUT = 30
+USER_AGENT = "plumbline-update"
+DEFAULT_REPO_SLUG = "DYAI2025/Plumbline"
+# Only ever fetch over http(s); a malicious/compromised release pointing
+# tarball_url at file://, ftp://, gopher:// etc. must be refused, not opened.
+ALLOWED_URL_SCHEMES = ("http", "https")
+# Self-update payloads for this repo are small; cap to refuse decompression
+# bombs and runaway downloads (fail-closed, generous headroom).
+MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
+MAX_EXTRACT_BYTES = 256 * 1024 * 1024
+# The fixed, repo-pinned verification command. Plumbline NEVER executes a
+# verifyCommand string lifted from a (possibly untrusted) downloaded payload;
+# the operator's --verify-cmd or this fixed command runs instead.
+DEFAULT_VERIFY = "bash config/claude/tests/run_all.sh"
 
 
 class PlumblineError(RuntimeError):
@@ -113,10 +134,186 @@ def release_item_version(item: Any, label: str) -> tuple[str, str]:
     return version, label
 
 
+def default_repo_slug(root: Path) -> str:
+    """Derive owner/repo from the git origin remote, with env + literal fallback."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        proc = None
+    if proc is not None and proc.returncode == 0:
+        match = GITHUB_REMOTE_RE.search(proc.stdout.strip())
+        if match:
+            return f"{match.group(1)}/{match.group(2)}"
+    return os.environ.get("PLUMBLINE_REPO", DEFAULT_REPO_SLUG)
+
+
+def github_api_base() -> str:
+    return os.environ.get("PLUMBLINE_GITHUB_API", "https://api.github.com").rstrip("/")
+
+
+def require_safe_url(url: str) -> str:
+    """Refuse any URL that is not http(s) (blocks file://, ftp://, etc.)."""
+    scheme = urllib.parse.urlparse(url).scheme.lower()
+    if scheme not in ALLOWED_URL_SCHEMES:
+        raise PlumblineError(f"refusing non-http(s) URL: {url}")
+    return url
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate the scheme on every redirect hop. urllib's own 30x allowlist
+    permits ftp:// targets; this makes `require_safe_url` authoritative across
+    redirects, not just the first URL."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        require_safe_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# Opener that follows redirects only to http(s) targets.
+_SAFE_OPENER = urllib.request.build_opener(_SafeRedirectHandler)
+
+
+def fetch_latest_release(slug: str) -> dict[str, Any]:
+    """GET the latest release metadata from the GitHub API (no traceback on failure)."""
+    url = require_safe_url(f"{github_api_base()}/repos/{slug}/releases/latest")
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with _SAFE_OPENER.open(request, timeout=HTTP_TIMEOUT) as response:
+            payload = response.read()
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise PlumblineError(f"could not reach GitHub release API: {exc}") from exc
+    try:
+        data = json.loads(payload.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise PlumblineError(f"could not reach GitHub release API: invalid JSON ({exc})") from exc
+    if not isinstance(data, dict):
+        raise PlumblineError("could not reach GitHub release API: unexpected response shape")
+    return data
+
+
+def download_tarball(url: str, dest: Path) -> Path:
+    request = urllib.request.Request(require_safe_url(url), headers={"User-Agent": USER_AGENT})
+    try:
+        with _SAFE_OPENER.open(request, timeout=HTTP_TIMEOUT) as response:
+            data = response.read(MAX_DOWNLOAD_BYTES + 1)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise PlumblineError(f"could not download release tarball: {exc}") from exc
+    if len(data) > MAX_DOWNLOAD_BYTES:
+        raise PlumblineError(f"release tarball exceeds {MAX_DOWNLOAD_BYTES} byte limit")
+    dest.write_bytes(data)
+    return dest
+
+
+def _member_escapes(member: tarfile.TarInfo, into: Path) -> bool:
+    """True if extracting this member would write/point outside `into`."""
+    base = into.resolve()
+
+    def outside(candidate: str) -> bool:
+        if os.path.isabs(candidate) or candidate.startswith(("/", "\\")):
+            return True
+        target = (base / candidate).resolve()
+        return target != base and base not in target.parents
+
+    if outside(member.name):
+        return True
+    # Link targets are resolved relative to the link's own directory.
+    if member.issym() or member.islnk():
+        link_dir = os.path.dirname(member.name)
+        link_target = os.path.join(link_dir, member.linkname) if not os.path.isabs(member.linkname) else member.linkname
+        if outside(link_target):
+            return True
+    return False
+
+
+def safe_extract_tarball(tar_path: Path, into: Path) -> Path:
+    """Extract a tarball, refusing any member that escapes `into`. Returns the
+    single top-level directory (GitHub tarballs ship exactly one)."""
+    into.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(tar_path, "r:*") as tar:
+        members = tar.getmembers()
+        total = 0
+        for member in members:
+            if _member_escapes(member, into):
+                raise PlumblineError(f"unsafe tarball member: {member.name}")
+            total += max(member.size, 0)
+            if total > MAX_EXTRACT_BYTES:
+                raise PlumblineError(f"tarball expands beyond {MAX_EXTRACT_BYTES} byte limit")
+        # `filter="data"` is the second, independent guard: it strips setuid/
+        # setgid/sticky bits and refuses device/special-file members that the
+        # name-only check above does not inspect.
+        try:
+            tar.extractall(into, filter="data")  # noqa: S202 - every member validated above
+        except tarfile.FilterError as exc:
+            raise PlumblineError(f"unsafe tarball member: {exc}") from exc
+    tops = sorted({Path(m.name).parts[0] for m in members if m.name not in ("", ".")})
+    if len(tops) == 1:
+        return into / tops[0]
+    return into
+
+
+def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, Path | None]:
+    """Return (payload_dir, tempdir_to_cleanup). tempdir is None for plain dirs."""
+    if args.source:
+        source = Path(args.source)
+        if source.is_dir():
+            return source.resolve(), None
+        if source.is_file() and (source.name.endswith(".tar.gz") or source.name.endswith(".tgz")):
+            tmp = Path(tempfile.mkdtemp(prefix="plumbline-update-"))
+            try:
+                return safe_extract_tarball(source.resolve(), tmp), tmp
+            except Exception:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+        raise PlumblineError(f"unsupported --source payload: {source}")
+    # No --source: fetch the latest published release tarball over the network.
+    slug = getattr(args, "repo", None) or default_repo_slug(root)
+    release = fetch_latest_release(slug)
+    url = release.get("tarball_url")
+    if not url:
+        raise PlumblineError("GitHub release metadata missing tarball_url")
+    # Provenance: show exactly what will be downloaded and applied. `plumbline
+    # update` runs the downloaded release's installer, so the operator must see
+    # the source. There is no signature verification yet (declared limitation):
+    # only update from releases you trust, over verified TLS, from this slug.
+    tag = release.get("tag_name") or release.get("name") or "?"
+    print(f"fetching release {tag} from github:{slug}")
+    print(f"tarball: {url}")
+    tmp = Path(tempfile.mkdtemp(prefix="plumbline-update-"))
+    try:
+        archive = download_tarball(str(url), tmp / "release.tar.gz")
+        return safe_extract_tarball(archive, tmp / "extracted"), tmp
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+
+
 def update_check(args: argparse.Namespace, root: Path) -> int:
     local = read_version(root)
-    source = Path(args.source).resolve() if args.source else root
-    latest, source_label = latest_from_source(source)
+    if args.source:
+        source = Path(args.source)
+        if source.is_file() and (source.name.endswith(".tar.gz") or source.name.endswith(".tgz")):
+            payload, tmp = resolve_payload_source(args, root)
+            try:
+                latest = read_version(payload)
+            finally:
+                if tmp is not None:
+                    shutil.rmtree(tmp, ignore_errors=True)
+            source_label = f"tarball ({source})"
+        else:
+            latest, source_label = latest_from_source(source.resolve())
+    else:
+        slug = getattr(args, "repo", None) or default_repo_slug(root)
+        release = fetch_latest_release(slug)
+        latest, _ = release_item_version(release, f"github:{slug}")
+        source_label = f"github:{slug}"
     cmp = compare_versions(local, latest)
     if cmp < 0:
         state = "update-available"
@@ -196,9 +393,15 @@ def run_migrations(target: Path, previous: str, new: str) -> None:
 
 def update_apply(args: argparse.Namespace, root: Path) -> int:
     target = Path(args.target).resolve() if args.target else root
-    source = Path(args.source).resolve() if args.source else None
-    if source is None:
-        raise PlumblineError("plumbline update currently requires --source <path> for verified local updates")
+    source, tmp = resolve_payload_source(args, root)
+    try:
+        return _apply_from_source(args, target, source)
+    finally:
+        if tmp is not None:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _apply_from_source(args: argparse.Namespace, target: Path, source: Path) -> int:
     previous = read_version(target)
     latest, _ = latest_from_source(source)
     if compare_versions(previous, latest) >= 0 and not args.force:
@@ -220,7 +423,13 @@ def update_apply(args: argparse.Namespace, root: Path) -> int:
                 raise PlumblineError("install.sh dry-run failed")
         new = read_version(target)
         run_migrations(target, previous, new)
-        verify = args.verify_cmd or str(load_compatibility(target).get("verifyCommand", "bash config/claude/tests/run_all.sh"))
+        # Validate the payload's contract (fail-closed on a malformed
+        # compatibility.json), but NEVER execute its verifyCommand string — a
+        # downloaded payload must not be able to run arbitrary shell. The
+        # operator's --verify-cmd or the fixed repo-pinned command runs instead.
+        load_compatibility(target)
+        verify = args.verify_cmd or DEFAULT_VERIFY
+        print(f"verify: {verify}")
         result = run_command(verify, target)
         print(result.stdout, end="")
         if result.returncode != 0:
@@ -281,7 +490,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("honest-status")
     update = sub.add_parser("update")
     update.add_argument("--check", action="store_true", help="only check for latest release")
-    update.add_argument("--source", help="local release metadata or payload source")
+    update.add_argument("--source", help="local release metadata or payload source (dir or .tar.gz)")
+    update.add_argument("--repo", help="GitHub OWNER/REPO to fetch releases from (default: origin remote)")
     update.add_argument("--target", help="target checkout for apply/rollback tests")
     update.add_argument("--verify-cmd", help="verification command after update")
     update.add_argument("--force", action="store_true", help="apply even when versions compare equal")
@@ -289,12 +499,32 @@ def build_parser() -> argparse.ArgumentParser:
     rollback_parser = sub.add_parser("rollback")
     rollback_parser.add_argument("--target", help="target checkout")
     rollback_parser.add_argument("--snapshot", help="specific snapshot path")
+    # `install` forwards every unrecognized flag (including --help, --dry-run,
+    # --copy, --force, --no-*) verbatim to install.sh. add_help=False keeps the
+    # subparser from swallowing --help so the installer prints its own usage.
+    sub.add_parser(
+        "install",
+        help="run config/claude/install.sh, forwarding any extra flags",
+        add_help=False,
+    )
     return parser
+
+
+def cmd_install(args: argparse.Namespace, root: Path, extra: list[str]) -> int:
+    installer = root / "config" / "claude" / "install.sh"
+    if not installer.is_file():
+        raise PlumblineError(f"install.sh not found at {installer}")
+    result = subprocess.run(["bash", str(installer), *extra], cwd=str(root))
+    return result.returncode
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    # `install` forwards arbitrary flags to install.sh, so tolerate unknown args
+    # only for that subcommand; every other command must reject them strictly.
+    args, extra = parser.parse_known_args(argv)
+    if extra and args.command != "install":
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
     root = Path(args.root).resolve() if args.root else repo_root()
     try:
         if args.command == "version":
@@ -309,6 +539,8 @@ def main(argv: list[str] | None = None) -> int:
             return update_apply(args, root)
         if args.command == "rollback":
             return rollback(args, root)
+        if args.command == "install":
+            return cmd_install(args, root, extra)
         parser.error("unknown command")
     except PlumblineError as exc:
         print(f"plumbline: {exc}", file=sys.stderr)
