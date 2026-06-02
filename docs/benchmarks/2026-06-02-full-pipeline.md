@@ -42,5 +42,5 @@ Stage ordinal (lower = caught earlier): `tester=1 · coder=2 · reviewer=3 · va
 ## Reproduce
 Arms are git refs: `git show ee77e4c:core/tester.md` (baseline) vs `git show HEAD:core/tester.md` (dna), likewise `code-reviewer.md`, `testing/validation/production-validator.md`; shared `core/coder.md`. Rubric: `metrics/corpus/bench-core-v1/rubric.md`. Full per-cell verdicts: workflow `wf_a4af4142-a90`. Raw record: `metrics/bench-2026-06-02-fullpipe-slice.md`.
 
-## Honest next step
-The **full powered baseline** (all 12 tasks incl. the false-positive controls × 2 arms × 2 models × n≥3 ≈ **~76M tokens**) is **not yet run**. Until it is, treat the above as a *directional* result, not a settled benchmark.
+## Honest next step — the anti-Goodhart false-positive controls
+A catch-rate is only half the ledger. The corpus's **anti-Goodhart law** is explicit: *a high catch-rate bought with a high false-positive-rate is not an improvement.* So the next run adds the **control tasks** (well-specified, pure-logic features with **no** planted gap) to measure each arm's **false-positive — "cry-wolf" — rate**, ruling out that the DNA's catch-gain on the gaps is merely over-sensitivity. The **full powered baseline** (all 12 tasks incl. those controls × 2 arms × 2 models × n≥3 ≈ **~76M tokens**, **120+ coordinated agents per run**) is **not yet run**. Until it is, treat the above as a *directional* result, not a settled benchmark.

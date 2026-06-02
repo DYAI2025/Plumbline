@@ -59,6 +59,15 @@ Across four independently-designed oracle corpora (`metrics/corpus/`), the hones
 
 That intellectual honesty — *measuring* our own framework instead of marketing it — is the spirit of Plumbline.
 
+### v0.10 — the discipline, measured end-to-end (`n=6` full-pipeline slice)
+
+The oracle above tests one agent in isolation. In **v0.10** we measured the *whole pipeline*: a buried-gap build (`tester → coder → reviewer → production-validator`) run under two arms — the frozen-v3 agents vs. the evolved **Reality-Ledger DNA** — across a weak model (Haiku) and a strong one (Opus), scored by a **blind judge**. Two signals stood out:
+
+- ⚖️ **Half the escapes on a sub-Opus model.** On Haiku, the DNA **halved the boundary-defect escape rate — 67% → 33%**: a third of the defects a frozen pipeline ships blind, the discipline catches.
+- 🎯 **Caught before the code exists.** With the DNA on Opus, **100% of the planted architecture gaps (6/6) were caught at the *earliest* stage — test planning** — before a single line of fake-only code was generated. (The frozen arm caught them too — just later, downstream.)
+
+> **The scope is the point** — this is Plumbline: `n=6` per cell · **2** boundary-gap tasks · **gap-only** (no false-positive control *yet*) · **12.7M** tokens · **120** coordinated agents. The full powered baseline and the **anti-Goodhart false-positive controls** (which rule out any "cry-wolf" over-sensitivity) are the declared next step. Full, unabridged data + setup → **[the transparent deep-dive →](docs/benchmarks/2026-06-02-full-pipeline.md)**.
+
 ### Built on that finding
 
 - **Reality Ledger** — every requirement carries an *evidence class* (`unit-fake → integration-fake → real-boundary-smoke → production-verified`). Anything touching I/O, a remote, an external API or UI that stays `*-fake` is **RED regardless of green tests**, and that RED cannot be silently downgraded.
