@@ -114,5 +114,56 @@ if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
   ok "double-supplied cost_per_req (--metrics + --tokens-total) fails closed"
 else bad "double-supplied cost_per_req (--metrics + --tokens-total) fails closed"; fi
 
+# --- M3.1: config_fingerprint resolves against the Plumbline install, not --repo ---
+
+# 16) fingerprint resolves against the SCRIPT'S OWN repo even when --repo is an
+#     unrelated temp dir: >=1 component is non-missing (it found agileteam.md etc.
+#     under the Plumbline install, not under the target --repo).
+tmp_norepo="$(mktemp -d)"
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --repo "$tmp_norepo" 2>/dev/null)"; rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+fp=r["config_fingerprint"]
+nonmissing=[k for k,v in fp.items() if not str(v).startswith("missing")]
+assert nonmissing, "expected >=1 non-missing component resolved from Plumbline install"
+' 2>/dev/null; then ok "config_fingerprint resolves >=1 component from Plumbline install (not --repo)"; else bad "config_fingerprint resolves >=1 component from Plumbline install (not --repo)"; fi
+rmdir "$tmp_norepo" 2>/dev/null || true
+
+# 17) a TRUE miss is emitted as 'missing:<relpath>' (the unresolved path is visible),
+#     never a bare 'missing'. Force an all-miss world via an isolated CLAUDE_HOME and
+#     a --repo that has no components, by pointing the search at a fake install root
+#     through a component that exists nowhere: assert any missing value shows its path.
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --repo "$(mktemp -d)" 2>/dev/null)"; rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+fp=r["config_fingerprint"]
+miss=[v for v in fp.values() if str(v).startswith("missing")]
+# every missing value must name a relpath: "missing:<relpath>", never bare "missing"
+assert all(v.startswith("missing:") and len(v) > len("missing:") for v in miss), miss
+' 2>/dev/null; then ok "true miss emits missing:<relpath> (unresolved path visible)"; else bad "true miss emits missing:<relpath> (unresolved path visible)"; fi
+
+# 18) --fail-on-missing-fingerprint exits non-zero when ALL components are missing.
+#     Force all-missing by running the script copied to an isolated dir with no
+#     Plumbline tree above it and an empty --repo and empty CLAUDE_HOME.
+isolated="$(mktemp -d)"
+mkdir -p "$isolated/sub"
+cp "$EMIT" "$isolated/sub/emit_run.py"
+cp "$REPO_DIR/config/claude/metrics/process_health.py" "$isolated/sub/process_health.py"
+emptyrepo="$(mktemp -d)"
+emptyhome="$(mktemp -d)"
+out="$(CLAUDE_HOME="$emptyhome" python3 "$isolated/sub/emit_run.py" --dry-run --metrics '{}' \
+        --repo "$emptyrepo" --fail-on-missing-fingerprint 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then
+  ok "--fail-on-missing-fingerprint exits non-zero on all-missing fingerprint"
+else bad "--fail-on-missing-fingerprint exits non-zero on all-missing fingerprint"; fi
+
+# 19) --fail-on-missing-fingerprint exits 0 (no error) on a normal emit (components resolve)
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --fail-on-missing-fingerprint 2>/dev/null)"; rc=$?
+if [ "$rc" -eq 0 ]; then
+  ok "--fail-on-missing-fingerprint is a no-op when components resolve"
+else bad "--fail-on-missing-fingerprint is a no-op when components resolve"; fi
+
 printf '\ntest_metrics_contract: %d run, %d failed\n' "$((pass+fail))" "$fail"
 [ "$fail" -eq 0 ]

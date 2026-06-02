@@ -107,7 +107,7 @@ schneller machen, gut, während die Präzision driftet.
 | Human-Override-Quote | `Overrides an Gates / Gates` | ↓ (stabil) | Vertrauensverlust / Fehljustierung |
 | Eskalationsrate | `Eskalationen / Lauf` (Loop-Grenzen erreicht) | ↓ | strukturelle Sackgassen |
 | Kosten pro akzeptierter REQ | `tokens_total / REQ_accepted` | ↓ (stabil) | ineffiziente Selbst-Modifikation |
-| Spec-Sanity-Findings | BLOCKER-Funde in Phase 0.5 / Lauf | ↓ über Zeit | Reifegrad der Anforderungsarbeit |
+| Spec-Sanity-Findings | BLOCKER-Funde im Spec-Sanity-Gate (Command-Pipeline: Phase 0.7; in spec-v3: 0.5) / Lauf | ↓ über Zeit | Reifegrad der Anforderungsarbeit |
 
 > Praktische Mindestauswahl, falls ihr klein anfangt: **First-pass-Erfolg,
 > Escaped-Defect-Rate, Mutation-Score, Ungeprüfte-Claim-Quote, Cycle Time,

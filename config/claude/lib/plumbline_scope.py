@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +15,42 @@ EXIT_VIOLATION = 3
 EXIT_MALFORMED = 4
 
 SECTION_NAMES = ("allowed change scope", "allowed changes", "change scope")
+
+
+def _is_broad_pattern(pattern: str) -> bool:
+    """A pattern is "broad" if it has no concrete path segment to anchor on.
+
+    A self-authored scope must not legitimize *every* path with a single
+    wildcard line: a bare ``*``, ``**``, ``.``, ``/`` or ``**/*`` matches the
+    whole repo and silently defeats the scope guard. ``fnmatch`` treats ``*``
+    AND ``?`` AND character classes (``[a-z]``, ``[!/]`` …) as wildcards that
+    cross ``/``, so ``?*``, ``[!/]*`` and friends also match the whole repo —
+    they are just as broad as a bare ``*`` and must be refused too. We treat a
+    pattern as broad when, after removing every glob metacharacter (character
+    classes, ``*``, ``?``) and ``.``, no literal path segment remains.
+    Legitimate patterns keep a concrete anchor: ``src/billing/**`` ->
+    ``src``/``billing``; ``config/claude/*.py`` -> ``config``/``claude``/``py``;
+    ``file[0-9].txt`` -> ``file``/``txt`` (the class spans away but the literals
+    remain).
+    """
+    candidate = pattern.strip().strip("/")
+    if not candidate:
+        return True
+    # Neutralize ``[...]`` character-class spans FIRST, on the whole pattern,
+    # before splitting on ``/`` — a class may legitimately contain ``/`` (e.g.
+    # ``[!/]*``), so stripping classes after the split would leave a class's
+    # contents (``!``, ``/`` …) misread as a literal anchor.
+    declassed = re.sub(r"\[.*?\]", "", candidate)
+    for segment in declassed.split("/"):
+        # A segment contributes a concrete anchor iff some literal character
+        # remains after removing the remaining glob metacharacters (``*``,
+        # ``?``) and ``.``. If nothing literal is left, the segment is
+        # non-anchoring (so ``*``, ``**``, ``?``, ``?*``, ``[a-z]*``, ``[!/]*``
+        # are NOT anchors, but ``*.py`` / ``file[0-9].txt`` are).
+        seg = segment.replace("*", "").replace("?", "").replace(".", "")
+        if seg.strip():
+            return False
+    return True
 
 
 def _rel(path: Path, repo: Path) -> str:
@@ -122,21 +159,38 @@ def _patterns_from_json(scope_json: Path) -> tuple[int, list[str]]:
     return (EXIT_PASS if patterns else EXIT_MISSING), patterns
 
 
+def _reject_broad(patterns: list[str]) -> int | None:
+    """Return EXIT_MALFORMED (fail closed) if any pattern is overly broad."""
+    broad = [p for p in patterns if _is_broad_pattern(p)]
+    if broad:
+        print(
+            "ERROR: allowed-scope pattern is too broad and would legitimize every "
+            f"path: {broad[0]!r}; use a pattern with a concrete path segment "
+            "(e.g. 'src/feature/**')",
+            file=sys.stderr,
+        )
+        return EXIT_MALFORMED
+    return None
+
+
 def load_allowed_scope(repo: Path, feature: str) -> tuple[int, list[str]]:
     canvas = repo / "docs" / "canvas" / f"{feature}.canvas.md"
     status, patterns = _patterns_from_canvas(canvas)
     if status == EXIT_PASS:
-        return status, patterns
+        broad = _reject_broad(patterns)
+        return (broad, []) if broad is not None else (status, patterns)
     if status == EXIT_MALFORMED:
         return status, []
 
     trace_patterns = _patterns_from_traceability(repo / "docs" / "traceability.md", feature)
     if trace_patterns:
-        return EXIT_PASS, trace_patterns
+        broad = _reject_broad(trace_patterns)
+        return (broad, []) if broad is not None else (EXIT_PASS, trace_patterns)
 
     json_status, json_patterns = _patterns_from_json(repo / "docs" / "scope" / f"{feature}.scope.json")
     if json_status == EXIT_PASS:
-        return json_status, json_patterns
+        broad = _reject_broad(json_patterns)
+        return (broad, []) if broad is not None else (json_status, json_patterns)
     if json_status == EXIT_MALFORMED:
         return json_status, []
 
