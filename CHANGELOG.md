@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/DYAI2025/Plumbline/compare/v0.10.0...v0.10.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **tests:** version-agnostic update/release-please tests (un-break main after 0.10.0) ([126d329](https://github.com/DYAI2025/Plumbline/commit/126d3296e71acaa933bea94f9e6b726091af5984))
+
 ## [0.10.0](https://github.com/DYAI2025/Plumbline/compare/v0.9.0...v0.10.0) (2026-06-02)
 
 
