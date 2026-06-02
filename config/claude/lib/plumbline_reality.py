@@ -10,6 +10,12 @@ from typing import Any
 
 RANKS = {
     "fake-only": 0,
+    # Workflow-documented Reality Ledger classes.
+    "unit-fake": 1,
+    "integration-fake": 2,
+    "real-boundary-smoke": 3,
+    "production-verified": 4,
+    # Backward-compatible class names accepted by earlier PRIL fixtures/docs.
     "unit-only": 1,
     "integration": 2,
     "browser-live": 3,

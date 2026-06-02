@@ -76,6 +76,8 @@ assert_file "context-pass Vision exists" "$FIXTURES/context-pass/docs/vision/dem
 assert_file "context-pass traceability exists" "$FIXTURES/context-pass/docs/traceability.md"
 assert_file "reality fake-only fixture exists" "$FIXTURES/reality-fake-only/docs/reality/demo.evidence.jsonl"
 assert_file "reality integration fixture exists" "$FIXTURES/reality-integration-pass/docs/reality/demo.evidence.jsonl"
+assert_file "reality production-verified fixture exists" "$FIXTURES/reality-production-verified/docs/reality/demo.evidence.jsonl"
+assert_file "reality real-boundary-smoke fixture exists" "$FIXTURES/reality-real-boundary-smoke/docs/reality/demo.evidence.jsonl"
 
 # G1-REQ-001 / G1-REQ-002: confirmed context is mandatory.
 assert_exit "context-pass exits 0" 0 \
@@ -94,6 +96,10 @@ assert_nonzero "fake-only reality evidence fails" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-fake-only" --feature demo --min-evidence integration
 assert_exit "integration reality evidence passes" 0 \
   "$REALITY_BIN" --repo "$FIXTURES/reality-integration-pass" --feature demo --min-evidence integration
+assert_exit "production-verified reality evidence passes documented workflow minimum" 0 \
+  "$REALITY_BIN" --repo "$FIXTURES/reality-production-verified" --feature demo --min-evidence integration
+assert_exit "real-boundary-smoke reality evidence passes documented workflow minimum" 0 \
+  "$REALITY_BIN" --repo "$FIXTURES/reality-real-boundary-smoke" --feature demo --min-evidence integration
 assert_nonzero "invalid JSONL reality evidence fails closed" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-invalid-jsonl" --feature demo --min-evidence integration
 assert_nonzero "missing reality evidence ledger fails closed" \
@@ -109,6 +115,8 @@ has "/agileteam requires reality before Gate C/D completion" "$CMD" "before Gate
 has "Watcher references plumbline-context-check" "$WATCHER" "plumbline-context-check"
 has "Watcher references plumbline-reality-check" "$WATCHER" "plumbline-reality-check"
 has "Watcher blocks pass on PRIL fail" "$WATCHER" "PRIL fail means Watcher verdict cannot be pass"
+has "Reality evidence schema accepts real-boundary-smoke" "$T_REALITY_SCHEMA" "real-boundary-smoke"
+has "Reality evidence schema accepts production-verified" "$T_REALITY_SCHEMA" "production-verified"
 has "True-Line template has PRIL output field" "$T_TRUE_LINE" "PRIL check output:"
 
 finish "test_runtime_integrity_layer"
