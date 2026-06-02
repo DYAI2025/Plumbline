@@ -3,15 +3,44 @@
   "title": "Plumbline Reality Ledger Evidence Entry",
   "type": "object",
   "additionalProperties": true,
-  "required": ["feature", "requirement_id", "evidence_class", "evidence_ref", "verified_by"],
+  "required": [
+    "feature",
+    "requirement_id",
+    "evidence_class",
+    "evidence_ref",
+    "verified_by"
+  ],
   "properties": {
-    "feature": { "type": "string", "minLength": 1 },
-    "requirement_id": { "type": "string", "minLength": 1 },
+    "feature": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requirement_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "evidence_class": {
       "type": "string",
-      "enum": ["fake-only", "unit-only", "integration", "browser-live", "production-observed", "user-confirmed"]
+      "enum": [
+        "fake-only",
+        "unit-fake",
+        "integration-fake",
+        "real-boundary-smoke",
+        "production-verified",
+        "unit-only",
+        "integration",
+        "browser-live",
+        "production-observed",
+        "user-confirmed"
+      ]
     },
-    "evidence_ref": { "type": "string", "minLength": 1 },
-    "verified_by": { "type": "string", "minLength": 1 }
+    "evidence_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verified_by": {
+      "type": "string",
+      "minLength": 1
+    }
   }
 }

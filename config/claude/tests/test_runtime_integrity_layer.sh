@@ -110,6 +110,10 @@ assert_nonzero "fake-only reality evidence fails" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-fake-only" --feature demo --min-evidence integration
 assert_exit "integration reality evidence passes" 0 \
   "$REALITY_BIN" --repo "$FIXTURES/reality-integration-pass" --feature demo --min-evidence integration
+assert_exit "production-verified reality evidence passes documented workflow minimum" 0 \
+  "$REALITY_BIN" --repo "$FIXTURES/reality-production-verified" --feature demo --min-evidence integration
+assert_exit "real-boundary-smoke reality evidence passes documented workflow minimum" 0 \
+  "$REALITY_BIN" --repo "$FIXTURES/reality-real-boundary-smoke" --feature demo --min-evidence integration
 assert_nonzero "invalid JSONL reality evidence fails closed" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-invalid-jsonl" --feature demo --min-evidence integration
 assert_nonzero "missing reality evidence ledger fails closed" \
