@@ -1,0 +1,21 @@
+{
+  "version": "0.10.1",
+  "schema": 1,
+  "minimumInstalledVersion": "0.9.0",
+  "compatibleMajor": 0,
+  "commands": [
+    "plumbline version",
+    "plumbline doctor",
+    "plumbline honest-status",
+    "plumbline update --check",
+    "plumbline update",
+    "plumbline rollback"
+  ],
+  "verifyCommand": "bash config/claude/tests/run_all.sh",
+  "frozenContracts": [
+    "config/claude/install.sh",
+    "VERSION",
+    "config/claude/tests/run_all.sh"
+  ],
+  "migrations": []
+}

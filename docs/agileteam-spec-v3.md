@@ -177,6 +177,9 @@ Modell / adversariale Rolle.
     │   │            + USER GATE → danach Spec einfrieren (frozen baseline)
     │   └─ ultrathink wird hier NICHT erneut aufgerufen
     │   ⚠ Grenze: prüft Reasoning-Qualität & Claim-Herkunft, NICHT Funktionskorrektheit
+    │   ℹ Hinweis: in der Command-Pipeline (agileteam.md) laufen davor PRIL
+    │     Context Integrity (0.5) und Scope Guard (0.6); das Spec-Sanity-Gate
+    │     trägt dort die Nummer 0.7. In diesem Spec-v3 (ohne PRIL) bleibt es 0.5.
     │
     ├─ USER GATE: DoD + Matrix + Spec-Findings zeigen, bevor implementiert wird
     │
@@ -309,7 +312,7 @@ Drift-vs-Präzision-Vergleich: fixer Korpus + vorab definierte Metriken, main
 | Phase 0 (optional) | `/product-management:write-spec` | dialogisch | n.a. |
 | Phase 0 (Pflicht) | `/ai-native-prd-architect` | voll | bis DoR erfüllt |
 | Phase 0 (je Lücke) | `/brainstorming` | dialogisch | bis Lücke geschlossen |
-| Phase 0.5 | `/ultrathink-craftsmanship` (+ `/konfabulations-audit`) | voll | **EINMAL**, kein Re-Run |
+| Phase 0.5 (Command-Pipeline: 0.7, nach PRIL 0.5/0.6) | `/ultrathink-craftsmanship` (+ `/konfabulations-audit`) | voll | **EINMAL**, kein Re-Run |
 | Phase 2 (≥2× Bug) | `/root-cause-tracing` (5-Why) | — | vor jedem weiteren Fix |
 | Phase 2 (bei Fail) | `systematic-debugging` | — | ≤ MAX_QA_RETURNS |
 | Phase 3 / Gate D | `/ultrathink-craftsmanship` (+ `/konfabulations-audit`) | kurz/kurz+ | **EINMAL/Iteration**, kein Re-Run |

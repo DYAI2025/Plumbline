@@ -1,0 +1,7 @@
+{
+  "feature": "demo",
+  "allowed_change_scope": [
+    "src/json/**",
+    "docs/json.md"
+  ]
+}

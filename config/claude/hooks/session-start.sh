@@ -50,6 +50,22 @@ else
   echo "agileteam session-start: bootstrap reported an issue (non-fatal) — see SETUP.md" >&2
 fi
 
+# Optional, non-fatal update check. This is deliberately opt-in and check-only:
+# set PLUMBLINE_AUTO_UPDATE_CHECK=1 and PLUMBLINE_UPDATE_SOURCE=<local release metadata>
+# to surface available MINOR/PATCH releases. MAJOR updates are never applied here.
+if [ "${PLUMBLINE_AUTO_UPDATE_CHECK:-}" = "1" ]; then
+  update_source="${PLUMBLINE_UPDATE_SOURCE:-}"
+  if [ -n "$update_source" ] && [ -x "$PROJECT_DIR/config/claude/bin/plumbline" ]; then
+    if "$PROJECT_DIR/config/claude/bin/plumbline" --root "$PROJECT_DIR" update --check --source "$update_source" 1>&2; then
+      echo "plumbline session-start: update check completed (check-only; MAJOR requires confirmation)" >&2
+    else
+      echo "plumbline session-start: update check failed (non-fatal)" >&2
+    fi
+  else
+    echo "plumbline session-start: auto update check requested but PLUMBLINE_UPDATE_SOURCE or plumbline CLI is missing" >&2
+  fi
+fi
+
 # Ask Claude Code to rescan skills + commands now, so what we just copied is
 # usable in THIS session rather than only the next one. Prefer jq; fall back to
 # a literal so a missing jq can't suppress the rescan.
