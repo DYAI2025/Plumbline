@@ -50,7 +50,7 @@ Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challe
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
-Phase 0.5  User confirmation of PRD + Vision  +  PRIL Context Integrity gate  +  spec-sanity audit
+Phase 0.5  User confirmation of PRD + Vision  +  PRIL Context Integrity gate  +  spec-sanity audit (Phase 0.7)
 Vision GO gate  Present saved docs/vision/<feature>.vision.md → explicit initial GO → from GO it runs autonomously/iteratively per the /goal skill, bounded by the Watcher (may pause; user is final authority)
 Phase 1    TDD & QA setup                    (+ True-Line Gate Check from here on)
 Phase 2    Implementation (coder/reviewer loop)
@@ -231,7 +231,7 @@ The pause is reserved for genuine risk of MISSING the Vision goal — not routin
 
 Default mode is **CORE**. Select with `--mode=core|full`.
 
-- **CORE** — the runnable, safe baseline. Mandatory: Phase 0 + gap rule, Phase 0.5
+- **CORE** — the runnable, safe baseline. Mandatory: Phase 0 + gap rule, Phase 0.7
   spec-sanity, Phase 1, Phase 2 (coder + code-reviewer TDD loop), Gate A
   (typecheck/lint/unit/integration/e2e + coverage), Gate C (validation against the
   matrix), and the human acceptance gate. **Opt-in / skip-if-unavailable:** Gate B
@@ -258,6 +258,9 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 - Resolve project parameters (typecheck/lint/unit/integration/e2e/mutation/coverage/
   SAST/dep-scan/secrets commands, hermetic runner, loop limits). Mark unknowns as
   `MISSING` and propose a conservative default as `ASSUMPTION` — never silently invent.
+- **Loop caps (defaults, overridable at invocation):** `MAX_DEVREVIEW_LOOPS=4`,
+  `MAX_QA_RETURNS=3` (from `docs/agileteam-spec-v3.md`). A standalone invocation of
+  this command must use these unless the user overrides them — never run unbounded.
 - Create the task backbone in **kanban-md** (preferred) or `TodoWrite`, mirroring the
   phases below, and keep it updated. With kanban-md, agents claim work via
   `kanban-md pick --claim <agent> --move in-progress`; humans watch via `kanban-md tui`.
@@ -455,7 +458,7 @@ config/claude/bin/plumbline-redact --mode auto < <candidate-artifact.txt>
 Secret-like data, credential environment dumps, invalid JSONL, or oversized input are fail-closed.
 Persist only the redacted output or stop for user review.
 
-### Phase 0.5 — Spec-sanity gate (ultrathink, ONCE)
+### Phase 0.7 — Spec-sanity gate (ultrathink, ONCE)
 1. Dispatch `spec-auditor`. Run Skill `ultrathink-craftsmanship` in **full** mode
    **exactly once** (no re-run — expensive): bias hooks + failure-mode chain, coupled to
    Skill `konfabulations-audit` (every external claim → belegt | ableitbar | ungeprüft |
@@ -579,6 +582,11 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
 - **METRICS-EMITTER:** write a run record (config_fingerprint + metrics + gate outcomes)
   to `metrics/runs.jsonl` (governance §2). Then **arm the learning loop**:
   `touch ~/.claude/.agileteam-reflection-pending`.
+  Pass **scored** metrics via `--metrics` (allowlisted to `process_health.DIRECTIONS`),
+  operational counts via `--raw`, and cost via `--tokens-total` + `--reqs-accepted`,
+  where **`--reqs-accepted` is the count of REQs whose Reality-Ledger `evidence-class` is
+  at/above the run's `--min-evidence` (validated, not green)** — so `cost_per_req` is cost
+  per *validated* requirement. A non-allowlisted metric key is rejected fail-closed.
 
 ### USER ACCEPTANCE GATE (human)
 Stakeholder sign-off against the traceability matrix. Attach audit artifacts (PRD,

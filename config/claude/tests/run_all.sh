@@ -73,6 +73,9 @@ stage "metrics scripts compile"
 python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/lib/plumbline_update.py \
   && echo "py_compile OK" || fail=1
 
+stage "metrics contract round-trip"
+bash config/claude/tests/test_metrics_contract.sh || fail=1
+
 stage "settings JSON validity (.claude/settings.json)"
 jq -e . .claude/settings.json >/dev/null && echo ".claude/settings.json OK" || fail=1
 
