@@ -17,6 +17,8 @@
 
 **[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 87 agents in your browser, nothing to install
 
+[![Sponsor Plumbline — fund the token costs of the benchmarks](https://img.shields.io/badge/Sponsor-fund%20the%20benchmarks-ff5fa2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/DYAI2025)
+
 <br/>
 
 ![Plumbline Agent Explorer — searching, filtering and inspecting the colour-coded subagent library](docs/images/explorer-demo.gif)
@@ -255,6 +257,22 @@ web bootstrap, and (if installed) shell scripts via `shellcheck`.
 - **Independence matters** — review, test, security and product judgment must not just echo the coder's perspective.
 - **Human gates stay** — especially for requirements, product decisions, and persistent self-improvement.
 - **Version prompts like code** — every agent change gets a diff, review, and validation.
+
+---
+
+## Support / sponsor the benchmarks
+
+Plumbline's central claims are *measured*, not asserted — and measuring them costs real model tokens. Every oracle corpus run re-executes agent variants, **secretly sabotages the code**, and counts which tests turn red (caught) vs. stay green (escaped), across Haiku, Sonnet and Opus. Sponsorship goes straight into that compute, so the empirical instrument stays honest, reproducible, and able to grow new corpora.
+
+[![Sponsor Plumbline](https://img.shields.io/badge/Sponsor-fund%20the%20benchmarks-ff5fa2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/DYAI2025)
+
+| Tier | What your contribution funds |
+|---|---|
+| **Haiku Supporter** · 5 €/mo | The daily smoke tests — keeps the repo's CORE oracle checks green every day. |
+| **Opus Validator** · 25 €/mo | A compute-heavy `FULL`-mode deep evaluation run — including the *provided-fake* trap that **only Opus** catches (0/3 escaped) while Sonnet and Haiku escape it 3/3. |
+| **Enterprise Governance Patron** · 100 €/mo | For teams running Plumbline in production — sustained benchmarking plus a seat at the table for governance / Reality-Ledger priorities. |
+
+Sponsorship is best-effort support for an open-source project — not a paid product, SLA, or feature guarantee. Thank you for helping keep the line true.
 
 ---
 
