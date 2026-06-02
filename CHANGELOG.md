@@ -9,6 +9,13 @@
 * **cli:** plumbline update (GitHub-release tarball) + plumbline install ([8ee7959](https://github.com/DYAI2025/Plumbline/commit/8ee79591422c1f6d2fe2ce4928c32c65c207e19d))
 * **cli:** plumbline update fetches + safely-extracts the latest GitHub release tarball ([21c2515](https://github.com/DYAI2025/Plumbline/commit/21c251592cccad40bd808f52cfd7bb8f4d83cd79))
 
+
+### Security
+
+* **cli:** `plumbline update` no longer executes a payload-supplied `verifyCommand`; verification runs `--verify-cmd` or the fixed `bash config/claude/tests/run_all.sh`, and the downloaded `compatibility.json` is validated but never `eval`'d ([addf962](https://github.com/DYAI2025/Plumbline/commit/addf9628be09422842211d01db0dd61ce9106b95))
+* **cli:** tarball extraction adds the `data` filter (strips setuid/setgid, refuses device/special files) on top of the path-traversal guard, plus download (64 MiB) and extraction (256 MiB) size caps against decompression bombs ([addf962](https://github.com/DYAI2025/Plumbline/commit/addf9628be09422842211d01db0dd61ce9106b95))
+* **cli:** release fetch + download are restricted to http(s) and re-validated on every redirect hop, closing an `ftp://`-redirect bypass ([fd2e47e](https://github.com/DYAI2025/Plumbline/commit/fd2e47ed28af170f1c26bf59f031b90f40b6df26))
+
 ## [0.10.1](https://github.com/DYAI2025/Plumbline/compare/v0.10.0...v0.10.1) (2026-06-02)
 
 
