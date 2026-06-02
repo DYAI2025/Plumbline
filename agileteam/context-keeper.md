@@ -31,6 +31,17 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
 - `docs/architecture/adr-*.md` — Architecture Decision Records.
 - `docs/context/state.md` — living snapshot of the overall context.
 - `docs/context/decision-log.md` — append-only chronological changes + rationale.
+- `docs/context/<feature>.run-ledger.jsonl` — the **resumable run-ledger** you own
+  (managed via `config/claude/bin/plumbline-run-ledger`). One append-only JSONL row per
+  gate event `{repo, feature, gate, status (CLEARED|PENDING|PAUSED), artifact_hash, at}`,
+  so an interrupted /agileteam run can resume deterministically instead of restarting or
+  trusting a stale clear. `at` is supplied by the caller (no wall-clock), keeping the
+  ledger replayable. On (re-)invocation for the same feature the orchestrator reads this
+  ledger: `resume-point` gives the first gate whose latest status is not `CLEARED`, and a
+  human gate is trusted only if `revalidate` passes (its recorded `artifact_hash` still
+  matches the current artifact — a changed artifact forces a re-ask). It fails **closed**:
+  a missing / empty / corrupt ledger resumes from the beginning (Phase 0), never "all
+  cleared". Record each gate's CLEARED/PENDING/PAUSED transition here as it happens.
 
 You also own the iteration/Kanban progress state (G7), so the orchestrator can give the
 user CLI iteration visibility at each iteration boundary. (Concretely: context-keeper

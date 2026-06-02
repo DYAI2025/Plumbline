@@ -250,6 +250,16 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 
 ## Guard clause (do this first)
 
+- **Resume protocol (re-invocation for the same feature).** If this is a re-invocation for
+  a feature that already has a run-ledger (`docs/context/<feature>.run-ledger.jsonl`, owned
+  by `context-keeper`, managed via `config/claude/bin/plumbline-run-ledger`), do NOT restart
+  from scratch. Read the ledger and resume at its `resume-point` — the first gate whose
+  latest status is not `CLEARED`. A previously-cleared **human gate is trusted only if
+  `revalidate --gate G --current-hash H` passes**; if the gate's artifact changed since it
+  was cleared (hash mismatch), re-ask the human — a stale clear is never honoured. The
+  ledger fails **closed**: a missing / empty / corrupt ledger resumes from the beginning
+  (Phase 0), never "all cleared". Record each gate's CLEARED/PENDING/PAUSED transition to
+  the ledger (via `context-keeper`) as the run proceeds, so the next invocation can resume.
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
 - Identify the **target repo**. If the change is non-trivial and you are on a default
