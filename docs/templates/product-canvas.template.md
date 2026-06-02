@@ -107,6 +107,18 @@ Answer:
 
 ---
 
+## Allowed change scope
+
+List the only repo-relative files, directories, or glob patterns that implementation agents may edit for this feature. Keep this narrow and user-confirmed with the canvas. Examples: `src/<feature>/**`, `docs/<feature>.md`, `tests/<feature>/**`.
+
+Status: MISSING | OPEN QUESTION | CONFIRMED
+
+Allowed change scope:
+
+- `MISSING`
+
+---
+
 ## 10. Traceability links
 
 PRD:
