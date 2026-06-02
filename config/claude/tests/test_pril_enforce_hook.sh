@@ -47,7 +47,6 @@ run_hook() {
   CLAUDE_PROJECT_DIR="$project" bash "$HOOK" >"$outf" 2>"$errf" <<<"$stdin_payload"
   HOOK_RC=$?
   HOOK_OUT="$(cat "$outf")"
-  HOOK_ERR="$(cat "$errf")"
   rm -f "$outf" "$errf"
 }
 

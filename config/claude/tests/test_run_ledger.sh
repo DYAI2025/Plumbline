@@ -117,23 +117,20 @@ mkdir -p "$hrepo/docs/context"
 python3 "$LEDGER" record --repo "$hrepo" --feature demo \
   --gate usergate --status CLEARED --artifact-hash hOLD \
   --at 2026-06-02T10:00:00Z >/dev/null 2>&1
-python3 "$LEDGER" revalidate --repo "$hrepo" --feature demo \
-  --gate usergate --current-hash hNEW >/dev/null 2>&1
-if [ "$?" -ne 0 ]; then
+if ! python3 "$LEDGER" revalidate --repo "$hrepo" --feature demo \
+  --gate usergate --current-hash hNEW >/dev/null 2>&1; then
   ok "revalidate of a CLEARED gate with a changed hash exits non-zero (stale)"
 else bad "revalidate of a CLEARED gate with a changed hash exits non-zero (stale)"; fi
 
 # 10) revalidate: CLEARED human gate with the SAME hash => exit 0 (trusted)
-python3 "$LEDGER" revalidate --repo "$hrepo" --feature demo \
-  --gate usergate --current-hash hOLD >/dev/null 2>&1
-if [ "$?" -eq 0 ]; then
+if python3 "$LEDGER" revalidate --repo "$hrepo" --feature demo \
+  --gate usergate --current-hash hOLD >/dev/null 2>&1; then
   ok "revalidate of a CLEARED gate with an unchanged hash exits 0 (trusted)"
 else bad "revalidate of a CLEARED gate with an unchanged hash exits 0 (trusted)"; fi
 
 # 11) revalidate: a gate that is NOT latest-CLEARED => non-zero (must re-run)
-python3 "$LEDGER" revalidate --repo "$hrepo" --feature demo \
-  --gate neverseen --current-hash hX >/dev/null 2>&1
-if [ "$?" -ne 0 ]; then
+if ! python3 "$LEDGER" revalidate --repo "$hrepo" --feature demo \
+  --gate neverseen --current-hash hX >/dev/null 2>&1; then
   ok "revalidate of a non-cleared/unknown gate exits non-zero (fail-closed)"
 else bad "revalidate of a non-cleared/unknown gate exits non-zero (fail-closed)"; fi
 
@@ -155,9 +152,8 @@ if [ "$rc" -eq 0 ] && [ -x "$WRAP" ] && [ "$rpw" = "phase0" ]; then
 else bad "plumbline-run-ledger wrapper is executable and forwards to the lib"; fi
 
 # 14) record fails closed on a bad --status (no silent default)
-python3 "$LEDGER" record --repo "$wrap_repo" --feature demo \
-  --gate phase0 --status BOGUS --artifact-hash h --at 2026-06-02T00:00:00Z >/dev/null 2>&1
-if [ "$?" -ne 0 ]; then
+if ! python3 "$LEDGER" record --repo "$wrap_repo" --feature demo \
+  --gate phase0 --status BOGUS --artifact-hash h --at 2026-06-02T00:00:00Z >/dev/null 2>&1; then
   ok "record rejects an unknown --status (fail-closed, no silent default)"
 else bad "record rejects an unknown --status (fail-closed, no silent default)"; fi
 
