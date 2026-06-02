@@ -148,3 +148,15 @@ Prefer A over B over C; always preview diffs before writing shared/global config
   `bash config/claude/tests/run_all.sh` before committing.
 - Evidence over vibes: back claims with code/tests/logs or an explicit assumption; mark
   absent tooling `MISSING` rather than pretending it passes.
+
+## Process guidelines (learned — bench, release, merge safety)
+
+Hard-won rules from the v0.10 milestone — each from a real incident this repo hit. Binding for benchmark/eval runs and release work here.
+
+- **Benchmark/eval isolation — never run builder agents in-tree.** A full-pipeline bench whose `coder`/builder sub-agents have file tools + the repo cwd *will* pollute the tree: ours wrote real files into `metrics/corpus/**`, and its staged arm-prompt copies tripped the frontmatter validator's duplicate-`name:` scan (it globs `**/*.md`) — turning `run_all.sh` **RED, twice**. So: (a) **stage all bench inputs OUTSIDE the repo** (`/tmp/…` or a dedicated worktree), never in a tracked dir; (b) **hard-constrain builder agents to TEXT-ONLY output** ("respond with code as text; do NOT Write/Edit/Bash any files"); (c) **after every bench run, verify `git status` is clean and `run_all.sh` is green**, and revert any stray files before continuing.
+- **No hardcoded version numbers in tests/fixtures — read `VERSION` dynamically.** Tests that pinned the release-please-managed version broke the instant the repo released past their literal (`expected '0.9.0', got '0.10.0'`; a fixture "latest" of `v0.10.0` that the repo caught up to). A hardcoded version in a test is a time-bomb that fails on the next release. Instead: read the version from `VERSION` at runtime (or assert *consistency* — CLI/manifest must match `VERSION`); synthesize any "newer" fixture relative to the current version (e.g. minor+1) so the suite survives every bump.
+- **Verify the CI conclusion before merging — `mergeable`/`CLEAN` ≠ tested.** A release PR merged on `mergeable=CLEAN` landed version-hardcoded test failures on `main` (briefly RED). `status=CLEAN`/`mergeable=MERGEABLE` only means "no *failing required* check" — and a release-please branch pushed by `GITHUB_TOKEN` gets **no CI run at all** (GitHub suppresses workflow-triggered workflows). So before merging to a shared branch: confirm the actual `ci` workflow conclusion is `success`; if the branch has no CI run, **run `run_all.sh` on the branch locally first**. Never merge to `main` on `mergeable` alone.
+
+## Benchmark-claim honesty (learned)
+
+When publishing benchmark results (README/docs), a claim must carry its own scope and **both** anti-Goodhart metrics. The v0.10 n=6 slice showed catch-rate and false-positive-rate can move in *opposite* directions (the DNA was net-positive on Opus but a catch-vs-cry-wolf trade-off on sub-Opus). So: never headline catch-rate alone ("DNA halves escapes") without the cry-wolf number beside it; keep `n=`, task count, and model scope visible; "strictly better" is a claim that needs *both* metrics to support it. Any cost-optimization lever (M7) is promoted only when it holds catch **and** does not raise cry-wolf — gated on **BOTH**.
