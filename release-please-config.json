@@ -1,0 +1,18 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "VERSION"
+        },
+        {
+          "type": "json",
+          "path": "compatibility.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}

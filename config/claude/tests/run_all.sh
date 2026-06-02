@@ -70,7 +70,7 @@ if bad or nodesc or dupes:
 PY
 
 stage "metrics scripts compile"
-python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py \
+python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/lib/plumbline_update.py \
   && echo "py_compile OK" || fail=1
 
 stage "settings JSON validity (.claude/settings.json)"
@@ -90,6 +90,12 @@ bash config/claude/tests/test_product_canvas_gate.sh || fail=1
 
 stage "runtime integrity layer tests"
 bash config/claude/tests/test_runtime_integrity_layer.sh || fail=1
+
+stage "release-please tests"
+bash config/claude/tests/test_release_please.sh || fail=1
+
+stage "update layer tests"
+bash config/claude/tests/test_update_layer.sh || fail=1
 
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
