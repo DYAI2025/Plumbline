@@ -14,18 +14,34 @@ Usage
   emit_run.py --metrics-file run-metrics.json [options]
   emit_run.py --metrics '{"first_pass":0.72,"mutation":0.81}' [options]
 
+All JSON-bearing arguments (--metrics, --metrics-file, --raw, --gate-outcomes) are
+validated fail-closed: invalid JSON or a non-object value is rejected with an ERROR on
+stderr and a non-zero exit, never a raw traceback or a silently-written bad record.
+
 Options
 -------
-  --metrics JSON          inline metrics object
+  --metrics JSON          inline metrics object (must be a JSON object)
   --metrics-file PATH     metrics object as a JSON file (overrides --metrics)
+  --raw JSON              free-form diagnostic counts; recorded under record["raw"],
+                          NOT scored/allowlisted (must be a JSON object)
+  --tokens-total N        total output tokens for the run; numerator of cost_per_req
+                          (must be >= 0). Conflicts with cost_per_req in --metrics.
+  --reqs-accepted N       count of VALIDATED REQs (evidence_class >= min-evidence) —
+                          the cost_per_req denominator (must be >= 0)
   --corpus-id ID          fixed task-corpus id (default: "adhoc")
   --mode core|full        operating mode the run used (default: "core")
   --gate-outcomes JSON    e.g. '{"A":"pass","B":"skip","C":"pass","D":"skip"}'
+                          (must be a JSON object)
   --human-overrides N     count of human overrides at gates (default: 0)
   --baseline              tag this run as part of the baseline window
   --repo PATH             repo root to fingerprint (default: auto-detect)
   --out PATH              output jsonl (default: <repo>/metrics/runs.jsonl)
   --dry-run               print the record, do not append
+
+Record fields (selected)
+------------------------
+  metrics_schema_version  version of the scored-metrics allowlist contract (int)
+  raw                     the validated --raw object (diagnostic, never scored)
 """
 import argparse
 import datetime as dt
@@ -98,12 +114,36 @@ def fingerprint(repo):
             for name, rel in COMPONENTS.items()}
 
 
+class InputError(Exception):
+    """A user-input problem that must fail closed with a clean ERROR (no traceback)."""
+
+
+def parse_json_object(text, flag):
+    """Parse `text` as JSON and require a JSON object.
+
+    Fail closed: raise InputError (caught in main -> stderr ERROR + exit 2) on either
+    a JSONDecodeError or a non-object (list/scalar/null) value. Centralising this means
+    every JSON-bearing flag gets the same rigor the metric-key allowlist already has.
+    """
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise InputError(f"invalid JSON for {flag}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise InputError(f"{flag} must be a JSON object")
+    return value
+
+
 def load_metrics(args):
     if args.metrics_file:
-        with open(args.metrics_file, encoding="utf-8") as fh:
-            return json.load(fh)
+        try:
+            with open(args.metrics_file, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError as exc:
+            raise InputError(f"cannot read --metrics-file: {exc}") from exc
+        return parse_json_object(text, "--metrics-file")
     if args.metrics:
-        return json.loads(args.metrics)
+        return parse_json_object(args.metrics, "--metrics")
     return {}
 
 
@@ -126,9 +166,24 @@ def apply_cost(metrics, raw, tokens_total, reqs_accepted):
     at/above the run's min-evidence (the Reality-Ledger validated count) — NOT
     the count of green tests. tokens_total is the run's output-token total.
     Denominator floored at 1 so a zero-validated run cannot divide by zero.
+
+    Fails closed (InputError) on:
+      * negative --tokens-total or --reqs-accepted — a negative numerator slips past
+        the max(reqs, 1) floor and yields a negative cost_per_req that corrupts the
+        SPC baseline/attribution math in process_health.py.
+      * cost_per_req already present in --metrics — refuse to silently overwrite a
+        user-supplied value with the computed one (conflicting input).
     """
     if tokens_total is None:
         return
+    if tokens_total < 0:
+        raise InputError("--tokens-total must be >= 0")
+    if reqs_accepted is not None and reqs_accepted < 0:
+        raise InputError("--reqs-accepted must be >= 0")
+    if "cost_per_req" in metrics:
+        raise InputError(
+            "cost_per_req supplied both via --metrics and computed from --tokens-total"
+        )
     reqs = reqs_accepted if reqs_accepted is not None else 0
     metrics["cost_per_req"] = tokens_total / max(reqs, 1)
     raw["tokens_total"] = tokens_total
@@ -164,12 +219,13 @@ def main(argv=None):
     branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD") or "unknown"
     short = git(repo, "rev-parse", "--short", "HEAD") or "nogit"
 
-    metrics = load_metrics(args)
-    raw = json.loads(args.raw)
-    apply_cost(metrics, raw, args.tokens_total, args.reqs_accepted)
     try:
+        metrics = load_metrics(args)
+        raw = parse_json_object(args.raw, "--raw")
+        gate_outcomes = parse_json_object(args.gate_outcomes, "--gate-outcomes")
+        apply_cost(metrics, raw, args.tokens_total, args.reqs_accepted)
         validate_metrics(metrics)
-    except ValueError as exc:
+    except (InputError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
@@ -184,7 +240,7 @@ def main(argv=None):
         "config_fingerprint": fingerprint(repo),
         "metrics": metrics,
         "raw": raw,
-        "gate_outcomes": json.loads(args.gate_outcomes),
+        "gate_outcomes": gate_outcomes,
         "human_overrides": args.human_overrides,
     }
 

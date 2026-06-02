@@ -60,5 +60,59 @@ assert json.load(sys.stdin)["metrics"]["cost_per_req"]==1000.0
 out="$(python3 "$EMIT" --dry-run --metrics '{"cost_per_req":1234.5}' 2>/dev/null)"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "scored key cost_per_req is allowlisted (allowlist==DIRECTIONS)"; else bad "scored key cost_per_req is allowlisted (allowlist==DIRECTIONS)"; fi
 
+# 7) --raw must be a JSON OBJECT: a JSON array (non-object) fails closed
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --raw '[1,2,3]' 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  ok "--raw non-object (array) fails closed with ERROR"
+else bad "--raw non-object (array) fails closed with ERROR"; fi
+
+# 8) invalid JSON for --raw fails closed with ERROR, NOT a Python traceback
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --raw 'notjson' 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR' && ! printf '%s' "$out" | grep -q 'Traceback'; then
+  ok "--raw invalid JSON fails closed with ERROR and no Traceback"
+else bad "--raw invalid JSON fails closed with ERROR and no Traceback"; fi
+
+# 9) invalid JSON for --metrics fails closed with ERROR, NOT a Python traceback
+out="$(python3 "$EMIT" --dry-run --metrics 'notjson' 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR' && ! printf '%s' "$out" | grep -q 'Traceback'; then
+  ok "--metrics invalid JSON fails closed with ERROR and no Traceback"
+else bad "--metrics invalid JSON fails closed with ERROR and no Traceback"; fi
+
+# 10) --metrics non-object (array) fails closed with ERROR
+out="$(python3 "$EMIT" --dry-run --metrics '[1,2,3]' 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  ok "--metrics non-object (array) fails closed with ERROR"
+else bad "--metrics non-object (array) fails closed with ERROR"; fi
+
+# 11) --gate-outcomes invalid JSON fails closed with ERROR, NOT a Python traceback
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --gate-outcomes 'notjson' 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR' && ! printf '%s' "$out" | grep -q 'Traceback'; then
+  ok "--gate-outcomes invalid JSON fails closed with ERROR and no Traceback"
+else bad "--gate-outcomes invalid JSON fails closed with ERROR and no Traceback"; fi
+
+# 12) --gate-outcomes non-object (array) fails closed with ERROR
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --gate-outcomes '[1,2,3]' 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  ok "--gate-outcomes non-object (array) fails closed with ERROR"
+else bad "--gate-outcomes non-object (array) fails closed with ERROR"; fi
+
+# 13) negative --tokens-total is rejected (would corrupt SPC baseline via negative cost)
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --tokens-total -5 --reqs-accepted 2 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  ok "negative --tokens-total rejected with ERROR"
+else bad "negative --tokens-total rejected with ERROR"; fi
+
+# 14) negative --reqs-accepted is rejected
+out="$(python3 "$EMIT" --dry-run --metrics '{}' --tokens-total 100 --reqs-accepted -1 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  ok "negative --reqs-accepted rejected with ERROR"
+else bad "negative --reqs-accepted rejected with ERROR"; fi
+
+# 15) cost_per_req supplied BOTH via --metrics AND computed from --tokens-total -> conflict, fail closed
+out="$(python3 "$EMIT" --dry-run --metrics '{"cost_per_req":1.0}' --tokens-total 100 --reqs-accepted 2 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  ok "double-supplied cost_per_req (--metrics + --tokens-total) fails closed"
+else bad "double-supplied cost_per_req (--metrics + --tokens-total) fails closed"; fi
+
 printf '\ntest_metrics_contract: %d run, %d failed\n' "$((pass+fail))" "$fail"
 [ "$fail" -eq 0 ]
