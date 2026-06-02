@@ -76,6 +76,7 @@ assert_file "context-pass Vision exists" "$FIXTURES/context-pass/docs/vision/dem
 assert_file "context-pass traceability exists" "$FIXTURES/context-pass/docs/traceability.md"
 assert_file "reality fake-only fixture exists" "$FIXTURES/reality-fake-only/docs/reality/demo.evidence.jsonl"
 assert_file "reality integration fixture exists" "$FIXTURES/reality-integration-pass/docs/reality/demo.evidence.jsonl"
+assert_file "reality integration-fake fixture exists" "$FIXTURES/reality-integration-fake/docs/reality/demo.evidence.jsonl"
 assert_file "reality production-verified fixture exists" "$FIXTURES/reality-production-verified/docs/reality/demo.evidence.jsonl"
 assert_file "reality real-boundary-smoke fixture exists" "$FIXTURES/reality-real-boundary-smoke/docs/reality/demo.evidence.jsonl"
 
@@ -96,6 +97,8 @@ assert_nonzero "fake-only reality evidence fails" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-fake-only" --feature demo --min-evidence integration
 assert_exit "integration reality evidence passes" 0 \
   "$REALITY_BIN" --repo "$FIXTURES/reality-integration-pass" --feature demo --min-evidence integration
+assert_exit "integration-fake reality evidence fails documented workflow minimum" 3 \
+  "$REALITY_BIN" --repo "$FIXTURES/reality-integration-fake" --feature demo --min-evidence integration
 assert_exit "production-verified reality evidence passes documented workflow minimum" 0 \
   "$REALITY_BIN" --repo "$FIXTURES/reality-production-verified" --feature demo --min-evidence integration
 assert_exit "real-boundary-smoke reality evidence passes documented workflow minimum" 0 \
