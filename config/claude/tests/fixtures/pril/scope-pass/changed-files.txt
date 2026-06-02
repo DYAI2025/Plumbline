@@ -1,0 +1,3 @@
+src/demo/app.py
+docs/demo.md
+config/claude/lib/plumbline_scope.py
