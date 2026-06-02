@@ -30,8 +30,22 @@ Options
                           the cost_per_req denominator (must be >= 0)
   --corpus-id ID          fixed task-corpus id (default: "adhoc")
   --mode core|full        operating mode the run used (default: "core")
-  --gate-outcomes JSON    e.g. '{"A":"pass","B":"skip","C":"pass","D":"skip"}'
-                          (must be a JSON object)
+  --gate-outcomes JSON    per-gate outcome map (must be a JSON object). The
+                          canonical keys actually emitted by the /agileteam pipeline
+                          (use these so process_health analysis does not drift) are:
+                            phase0_5_spec_sanity  spec-sanity audit (Phase 0.7, run
+                                                  inside Phase 0.5 confirmation)
+                            gateA_verification    Gate A — typecheck/lint/unit/
+                                                  integration/e2e + coverage
+                            gateB_security        Gate B — SAST/deps/secrets/threat
+                            gateC_validation      Gate C — production-validator vs the
+                                                  acceptance matrix
+                            gateD_judgment        Gate D — ultrathink product-owner
+                                                  judgment
+                          each value is a short outcome token, e.g. "pass"/"skip"/
+                          "fail". The keys are documentary: process_health.py does not
+                          consume gate_outcomes, so unknown keys are recorded as-is.
+                          e.g. '{"gateA_verification":"pass","gateB_security":"skip"}'
   --human-overrides N     count of human overrides at gates (default: 0)
   --active-rules JSON     JSON array of approved-rule ids active during this run;
                           stored verbatim under record["active_rules"] (default []).
@@ -291,7 +305,11 @@ def parse_args(argv):
                    help="count of VALIDATED REQs (evidence_class >= min-evidence) — the denominator")
     p.add_argument("--corpus-id", default="adhoc")
     p.add_argument("--mode", default="core", choices=["core", "full"])
-    p.add_argument("--gate-outcomes", default="{}")
+    p.add_argument("--gate-outcomes", default="{}",
+                   help="per-gate outcome map (JSON object). Canonical keys: "
+                        "phase0_5_spec_sanity, gateA_verification, gateB_security, "
+                        "gateC_validation, gateD_judgment (documentary; "
+                        "process_health.py does not consume gate_outcomes)")
     p.add_argument("--active-rules", default="[]",
                    help="JSON array of rule_ids active during this run "
                         "(recorded under record['active_rules']; default [])")
