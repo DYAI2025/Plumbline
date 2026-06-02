@@ -36,6 +36,15 @@ import subprocess
 import sys
 import uuid
 
+# Single source of truth for which metrics are SCORED. Importing DIRECTIONS from
+# process_health (same directory) makes the emit-side allowlist incapable of
+# drifting from the analyse-side scorer — the exact drift this contract closes.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from process_health import DIRECTIONS  # noqa: E402
+
+ALLOWED_METRICS = frozenset(DIRECTIONS)
+METRICS_SCHEMA_VERSION = 1
+
 # Logical component -> path relative to repo root. Keep in sync with the workflow.
 COMPONENTS = {
     "command.agileteam":      "config/claude/commands/agileteam.md",
@@ -98,10 +107,44 @@ def load_metrics(args):
     return {}
 
 
+def validate_metrics(metrics):
+    """Fail closed on any metric key not in the scored allowlist (DIRECTIONS)."""
+    unknown = sorted(k for k in metrics if k not in ALLOWED_METRICS)
+    if unknown:
+        raise ValueError(
+            "non-allowlisted metric key(s): " + ", ".join(unknown)
+            + "\nallowed (process_health.DIRECTIONS): "
+            + ", ".join(sorted(ALLOWED_METRICS))
+            + "\nput operational counts under --raw instead."
+        )
+
+
+def apply_cost(metrics, raw, tokens_total, reqs_accepted):
+    """Emit cost-per-VALIDATED-req, not per green req.
+
+    The caller passes reqs_accepted = the count of REQs whose evidence_class is
+    at/above the run's min-evidence (the Reality-Ledger validated count) — NOT
+    the count of green tests. tokens_total is the run's output-token total.
+    Denominator floored at 1 so a zero-validated run cannot divide by zero.
+    """
+    if tokens_total is None:
+        return
+    reqs = reqs_accepted if reqs_accepted is not None else 0
+    metrics["cost_per_req"] = tokens_total / max(reqs, 1)
+    raw["tokens_total"] = tokens_total
+    raw["reqs_accepted"] = reqs
+
+
 def parse_args(argv):
     p = argparse.ArgumentParser(description="Append one /agileteam run record.")
     p.add_argument("--metrics")
     p.add_argument("--metrics-file")
+    p.add_argument("--raw", default="{}",
+                   help="free-form diagnostic counts (recorded, NOT scored/allowlisted)")
+    p.add_argument("--tokens-total", type=int, default=None,
+                   help="total output tokens for the run (numerator of cost_per_req)")
+    p.add_argument("--reqs-accepted", type=int, default=None,
+                   help="count of VALIDATED REQs (evidence_class >= min-evidence) — the denominator")
     p.add_argument("--corpus-id", default="adhoc")
     p.add_argument("--mode", default="core", choices=["core", "full"])
     p.add_argument("--gate-outcomes", default="{}")
@@ -121,15 +164,26 @@ def main(argv=None):
     branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD") or "unknown"
     short = git(repo, "rev-parse", "--short", "HEAD") or "nogit"
 
+    metrics = load_metrics(args)
+    raw = json.loads(args.raw)
+    apply_cost(metrics, raw, args.tokens_total, args.reqs_accepted)
+    try:
+        validate_metrics(metrics)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
     record = {
         "run_id": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                   + "-" + uuid.uuid4().hex[:6],
+        "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "corpus_id": args.corpus_id,
         "mode": args.mode,
         "baseline": bool(args.baseline),
         "process_branch": f"{branch}@{short}",
         "config_fingerprint": fingerprint(repo),
-        "metrics": load_metrics(args),
+        "metrics": metrics,
+        "raw": raw,
         "gate_outcomes": json.loads(args.gate_outcomes),
         "human_overrides": args.human_overrides,
     }
