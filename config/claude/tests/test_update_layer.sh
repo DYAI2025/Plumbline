@@ -21,6 +21,18 @@ assert "update --check reads GitHub release tag fixture" "printf '%s\n' '$check_
 assert "doctor validates frozen contracts" "$PLUMBLINE --root '$REPO_DIR' doctor"
 assert "honest-status keeps Plumbline language" "$PLUMBLINE --root '$REPO_DIR' honest-status | grep -q 'changed, not yet verified'"
 
+SYMLINK_HOME="$TMP_ROOT/install-symlink-home"
+CLAUDE_HOME="$SYMLINK_HOME" "$REPO_DIR/config/claude/install.sh" --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/install-symlink.log"
+assert_file "install creates symlinked plumbline wrapper" "$SYMLINK_HOME/bin/plumbline"
+assert_file "install creates symlinked plumbline library" "$SYMLINK_HOME/lib/plumbline_update.py"
+assert_eq "installed symlink wrapper resolves library" "0.9.0" "$("$SYMLINK_HOME/bin/plumbline" --root "$REPO_DIR" version)"
+
+COPY_HOME="$TMP_ROOT/install-copy-home"
+CLAUDE_HOME="$COPY_HOME" "$REPO_DIR/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/install-copy.log"
+assert_file "install creates copied plumbline wrapper" "$COPY_HOME/bin/plumbline"
+assert_file "install creates copied plumbline library" "$COPY_HOME/lib/plumbline_update.py"
+assert_eq "installed copy wrapper resolves library" "0.9.0" "$("$COPY_HOME/bin/plumbline" --root "$REPO_DIR" version)"
+
 TARGET="$TMP_ROOT/target"
 cp -R "$FIXTURES/target-0.9.0" "$TARGET"
 apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TARGET" --source "$FIXTURES/source-0.9.1" --verify-cmd 'bash config/claude/tests/run_all.sh')"

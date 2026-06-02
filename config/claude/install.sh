@@ -29,7 +29,7 @@ Installs the repo for Claude Code by:
   - installing all vendored skills from config/claude/skills/,
   - registering the sentinel-gated learning-loop Stop hook,
   - registering the fail-closed PRIL enforcement Stop hook,
-  - installing the plumbline CLI into $CLAUDE_HOME/bin/.
+  - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its Python libraries in $CLAUDE_HOME/lib/.
 
 Environment:
   CLAUDE_HOME  Override target Claude home (default: $HOME/.claude)
@@ -122,12 +122,21 @@ install_skills() {
   done < <(find "$src_dir" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
 }
 
+install_bin_libs() {
+  local src_dir="$REPO_DIR/config/claude/lib"
+  [ -d "$src_dir" ] || return 0
+  while IFS= read -r -d '' lib; do
+    transfer "$lib" "$CLAUDE_HOME/lib/$(basename "$lib")"
+  done < <(find "$src_dir" -maxdepth 1 -type f -name '*.py' -print0 | sort -z)
+}
+
 install_bin() {
   local src_dir="$REPO_DIR/config/claude/bin"
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' tool; do
     transfer "$tool" "$CLAUDE_HOME/bin/$(basename "$tool")"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
+  install_bin_libs
 }
 
 # Idempotently add the learning-loop Stop hook to ~/.claude/settings.json,
