@@ -12,11 +12,21 @@ TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 assert "plumbline CLI exists" "test -x '$PLUMBLINE'"
-assert_eq "version reads release-please-managed VERSION" "0.9.0" "$($PLUMBLINE --root "$REPO_DIR" version)"
+# Version is release-please-managed; assert the CLI reports whatever VERSION holds
+# (not a hardcoded number that breaks the suite on every release bump).
+REPO_VERSION="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' "$REPO_DIR/VERSION" | head -1)"
+assert_eq "version reads release-please-managed VERSION" "$REPO_VERSION" "$($PLUMBLINE --root "$REPO_DIR" version)"
 
-check_output="$($PLUMBLINE --root "$REPO_DIR" update --check --source "$FIXTURES/latest-minor")"
+# Synthesize a "latest release" one minor above the current version so update-available
+# stays valid across every release bump (not pinned to a literal the repo catches up to).
+NEWER_VERSION="$(awk -F. -v OFS=. '{print $1, $2+1, 0}' <<<"$REPO_VERSION")"
+LATEST_SRC="$TMP_ROOT/latest-newer"
+mkdir -p "$LATEST_SRC"
+printf '{\n  "tag_name": "v%s",\n  "draft": false,\n  "prerelease": false\n}\n' "$NEWER_VERSION" > "$LATEST_SRC/latest-release.json"
+
+check_output="$($PLUMBLINE --root "$REPO_DIR" update --check --source "$LATEST_SRC")"
 assert "update --check reports newer release" "printf '%s\n' '$check_output' | grep -q 'status: update-available'"
-assert "update --check reads GitHub release tag fixture" "printf '%s\n' '$check_output' | grep -q 'latest: 0.10.0'"
+assert "update --check reads GitHub release tag fixture" "printf '%s\n' '$check_output' | grep -q \"latest: $NEWER_VERSION\""
 
 assert "doctor validates frozen contracts" "$PLUMBLINE --root '$REPO_DIR' doctor"
 assert "honest-status keeps Plumbline language" "$PLUMBLINE --root '$REPO_DIR' honest-status | grep -q 'changed, not yet verified'"
@@ -25,13 +35,13 @@ SYMLINK_HOME="$TMP_ROOT/install-symlink-home"
 CLAUDE_HOME="$SYMLINK_HOME" "$REPO_DIR/config/claude/install.sh" --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/install-symlink.log"
 assert_file "install creates symlinked plumbline wrapper" "$SYMLINK_HOME/bin/plumbline"
 assert_file "install creates symlinked plumbline library" "$SYMLINK_HOME/lib/plumbline_update.py"
-assert_eq "installed symlink wrapper resolves library" "0.9.0" "$("$SYMLINK_HOME/bin/plumbline" --root "$REPO_DIR" version)"
+assert_eq "installed symlink wrapper resolves library" "$REPO_VERSION" "$("$SYMLINK_HOME/bin/plumbline" --root "$REPO_DIR" version)"
 
 COPY_HOME="$TMP_ROOT/install-copy-home"
 CLAUDE_HOME="$COPY_HOME" "$REPO_DIR/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/install-copy.log"
 assert_file "install creates copied plumbline wrapper" "$COPY_HOME/bin/plumbline"
 assert_file "install creates copied plumbline library" "$COPY_HOME/lib/plumbline_update.py"
-assert_eq "installed copy wrapper resolves library" "0.9.0" "$("$COPY_HOME/bin/plumbline" --root "$REPO_DIR" version)"
+assert_eq "installed copy wrapper resolves library" "$REPO_VERSION" "$("$COPY_HOME/bin/plumbline" --root "$REPO_DIR" version)"
 
 TARGET="$TMP_ROOT/target"
 cp -R "$FIXTURES/target-0.9.0" "$TARGET"

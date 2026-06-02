@@ -103,6 +103,9 @@ bash config/claude/tests/test_evidence_vocab.sh || fail=1
 stage "rule-ledger provenance tests"
 bash config/claude/tests/test_rule_ledger.sh || fail=1
 
+stage "run-ledger resume tests"
+bash config/claude/tests/test_run_ledger.sh || fail=1
+
 stage "release-please tests"
 bash config/claude/tests/test_release_please.sh || fail=1
 

@@ -28,6 +28,7 @@ Installs the repo for Claude Code by:
   - installing all vendored commands from config/claude/commands/,
   - installing all vendored skills from config/claude/skills/,
   - registering the sentinel-gated learning-loop Stop hook,
+  - registering the fail-closed PRIL enforcement Stop hook,
   - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its Python libraries in $CLAUDE_HOME/lib/.
 
 Environment:

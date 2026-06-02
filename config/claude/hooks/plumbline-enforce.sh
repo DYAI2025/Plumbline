@@ -87,7 +87,7 @@ fi
 # flag, is a tampered/suspicious marker (not a blank one) — also BLOCK rather than
 # risk it or silently ignore an armed marker.
 case "$feat" in
-  */*|*'\'*|.|..|-*)
+  */*|*\\*|.|..|-*)
     emit_block "PRIL enforcement: active-feature marker present but malformed (slug '$feat' is not a safe feature name). Restore the confirmed feature slug in docs/context/.active-feature or remove the marker."
     exit 0
     ;;

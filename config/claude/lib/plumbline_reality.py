@@ -10,9 +10,10 @@ from typing import Any
 
 RANKS = {
     "fake-only": 0,
-    # Workflow-documented Reality Ledger classes.
-    "unit-fake": 1,
-    "integration-fake": 2,
+    # Workflow-documented Reality Ledger classes. Keep *-fake evidence
+    # below the legacy integration gate used by /agileteam Gate C/D.
+    "unit-fake": 0,
+    "integration-fake": 1,
     "real-boundary-smoke": 3,
     "production-verified": 4,
     # Backward-compatible class names accepted by earlier PRIL fixtures/docs.

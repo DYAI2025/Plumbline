@@ -110,6 +110,8 @@ assert_nonzero "fake-only reality evidence fails" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-fake-only" --feature demo --min-evidence integration
 assert_exit "integration reality evidence passes" 0 \
   "$REALITY_BIN" --repo "$FIXTURES/reality-integration-pass" --feature demo --min-evidence integration
+assert_exit "integration-fake reality evidence fails documented workflow minimum" 3 \
+  "$REALITY_BIN" --repo "$FIXTURES/reality-integration-fake" --feature demo --min-evidence integration
 assert_exit "production-verified reality evidence passes documented workflow minimum" 0 \
   "$REALITY_BIN" --repo "$FIXTURES/reality-production-verified" --feature demo --min-evidence integration
 assert_exit "real-boundary-smoke reality evidence passes documented workflow minimum" 0 \

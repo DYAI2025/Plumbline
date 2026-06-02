@@ -59,6 +59,17 @@ Across four independently-designed oracle corpora (`metrics/corpus/`), the hones
 
 That intellectual honesty — *measuring* our own framework instead of marketing it — is the spirit of Plumbline.
 
+### v0.10 — the discipline, measured end-to-end (`n=6` full-pipeline slice)
+
+The oracle above tests one agent in isolation. In **v0.10** we measured the *whole pipeline*: a buried-gap build (`tester → coder → reviewer → production-validator`) run under two arms — the frozen-v3 agents vs. the evolved **Reality-Ledger DNA** — across a weak model (Haiku) and a strong one (Opus), scored by a **blind judge**. Two signals stood out:
+
+We measured **both halves** of the ledger — catch-rate on planted gaps *and* false-positive ("cry-wolf") rate on pure-logic controls — and the honest answer is **not** "strictly better":
+
+- ✅ **On Opus — a clean win.** Both arms catch every gap, but the frozen pipeline **cries wolf on 67% of pure-logic features** (demanding boundary tests a discount calculator doesn't need); the DNA's *"fires only on genuine boundary features, never on pure logic"* reflex cuts that to **17%**. **Same catch, ~4× less crying wolf.**
+- ⚖️ **On a sub-Opus model — a trade-off, not a free lunch.** On Haiku the DNA **halves the boundary-defect escape rate (67% → 33%)** — but it **also raises the false-positive rate (0% → 33%).** The catch-gain on the weak model *is* partly bought with over-sensitivity. We say so plainly.
+
+> **The scope is the point** — this is Plumbline: `n=6` per cell · 2 gap tasks + 2 control tasks · ~24M tokens across two runs · 240 coordinated agents · judge-scored. "The DNA is strictly better" would be a lie; **"net-positive on Opus, a trade-off on sub-Opus"** is the measured truth. Full ledger + setup → **[the transparent deep-dive →](docs/benchmarks/2026-06-02-full-pipeline.md)**.
+
 ### Built on that finding
 
 - **Reality Ledger** — every requirement carries an *evidence class* (`unit-fake → integration-fake → real-boundary-smoke → production-verified`). Anything touching I/O, a remote, an external API or UI that stays `*-fake` is **RED regardless of green tests**, and that RED cannot be silently downgraded.

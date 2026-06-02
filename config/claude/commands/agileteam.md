@@ -250,6 +250,16 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 
 ## Guard clause (do this first)
 
+- **Resume protocol (re-invocation for the same feature).** If this is a re-invocation for
+  a feature that already has a run-ledger (`docs/context/<feature>.run-ledger.jsonl`, owned
+  by `context-keeper`, managed via `config/claude/bin/plumbline-run-ledger`), do NOT restart
+  from scratch. Read the ledger and resume at its `resume-point` — the first gate whose
+  latest status is not `CLEARED`. A previously-cleared **human gate is trusted only if
+  `revalidate --gate G --current-hash H` passes**; if the gate's artifact changed since it
+  was cleared (hash mismatch), re-ask the human — a stale clear is never honoured. The
+  ledger fails **closed**: a missing / empty / corrupt ledger resumes from the beginning
+  (Phase 0), never "all cleared". Record each gate's CLEARED/PENDING/PAUSED transition to
+  the ledger (via `context-keeper`) as the run proceeds, so the next invocation can resume.
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
 - Identify the **target repo**. If the change is non-trivial and you are on a default
@@ -269,6 +279,7 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   (a) The **pending Kanban tasks for the current iteration** — the still-open tickets for this iteration only.
   (b) An **overall iteration counter**, stated as the **iteration counter in `N/M` form (e.g. `3/5`)**, where N = current iteration and M = total planned iterations.
   Render this as a short `Iteration N/M` header followed by the current iteration's open task list.
+  (c) **`/honest-status` panel (show-when-red).** Immediately after the `Iteration N/M` header + open-task list, the orchestrator also renders a compact `/honest-status` panel (the command lives at `config/claude/commands/honest-status.md`) computed from the Reality-Ledger / traceability matrix's `evidence-class` + `wired-in-prod?` columns — so the operator sees *looks-done-vs-is-done* mid-run, not only at the end. **This panel is shown ONLY when something is RED:** an I/O / remote / UI / external-API feature still carrying `*-fake` evidence-class, or any REQ that is not wired-in-prod (`wired-in-prod? = no`). When every REQ is green (no `*-fake` on a boundary feature and all wired-in-prod), the panel is omitted entirely — near-zero overhead on a healthy iteration, an unmissable mid-run flag the moment a finished-looking task is not actually done. The RED items are surfaced verbatim from the columns (a `*-fake`/not-wired finding is never silently downgraded); only the user reclassifies one.
   Source it from **kanban-md where available, falling back to TodoWrite (per the Guard clause)** — reuse the task-backbone fallback established above, do not re-implement it.
   The iteration/Kanban progress state (N, M, and the remaining tasks for the current iteration) is owned by `context-keeper`, not held in the orchestrator's own context window.
   **No fake denominator:** M (total planned iterations) is derived from the planner's atomic task / milestone breakdown (the Phase 1 `planner` output), never invented to look definite. If the plan is re-scoped, a re-scope of the plan updates M and is shown to the user (e.g. `3/5` -> `3/7` is never silent), so the counter never misleads about remaining duration.
