@@ -36,17 +36,32 @@ gate to pass:
 config/claude/bin/plumbline-context-check --repo <repo> --feature <feature-slug>
 ```
 
+Before implementation changes are accepted, require the scope guard to pass against the
+confirmed Canvas `Allowed change scope` and the actual repo-relative changed-files list:
+
+```bash
+config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --changed-files <changed-files.txt>
+```
+
 Before any Gate C/D completion or done claim, require the reality evidence gate to pass:
 
 ```bash
 config/claude/bin/plumbline-reality-check --repo <repo> --feature <feature-slug> --min-evidence integration
 ```
 
-PRIL fail means Watcher verdict cannot be pass. If either command is missing, returns
-non-zero, reports missing/unconfirmed product context, or reports fake-only/mock-only/
-placeholder/unverified/below-minimum evidence, the Watcher must return `blocked` or
-`pause` and name the failing PRIL output. Do not convert a PRIL failure into a warning
-without explicit user confirmation.
+Before metrics, watcher notes, logs, JSONL, or other persistent artifacts are written,
+require redaction checking or automatic redaction:
+
+```bash
+config/claude/bin/plumbline-redact --mode check < <candidate-artifact.jsonl>
+config/claude/bin/plumbline-redact --mode auto < <candidate-artifact.txt>
+```
+
+PRIL fail means Watcher verdict cannot be pass. scope/redaction failure means Watcher verdict cannot be pass. If any command is missing, returns
+non-zero, reports missing/unconfirmed product context, reports out-of-scope edits, reports
+secret-like persistent data, or reports fake-only/mock-only/placeholder/unverified/
+below-minimum evidence, the Watcher must return `blocked` or `pause` and name the failing
+PRIL output. Do not convert a PRIL failure into a warning without explicit user confirmation.
 
 ## Required inputs
 
