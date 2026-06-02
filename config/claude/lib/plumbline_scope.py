@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -21,20 +22,33 @@ def _is_broad_pattern(pattern: str) -> bool:
 
     A self-authored scope must not legitimize *every* path with a single
     wildcard line: a bare ``*``, ``**``, ``.``, ``/`` or ``**/*`` matches the
-    whole repo and silently defeats the scope guard. We treat a pattern as broad
-    when, after stripping glob tokens (``*``, ``**``), separators and ``.``, no
-    literal path segment remains. Legitimate patterns keep a concrete anchor:
-    ``src/billing/**`` -> ``src``/``billing``; ``config/claude/*.py`` ->
-    ``config``/``claude``/``.py``.
+    whole repo and silently defeats the scope guard. ``fnmatch`` treats ``*``
+    AND ``?`` AND character classes (``[a-z]``, ``[!/]`` …) as wildcards that
+    cross ``/``, so ``?*``, ``[!/]*`` and friends also match the whole repo —
+    they are just as broad as a bare ``*`` and must be refused too. We treat a
+    pattern as broad when, after removing every glob metacharacter (character
+    classes, ``*``, ``?``) and ``.``, no literal path segment remains.
+    Legitimate patterns keep a concrete anchor: ``src/billing/**`` ->
+    ``src``/``billing``; ``config/claude/*.py`` -> ``config``/``claude``/``py``;
+    ``file[0-9].txt`` -> ``file``/``txt`` (the class spans away but the literals
+    remain).
     """
     candidate = pattern.strip().strip("/")
     if not candidate:
         return True
-    for segment in candidate.split("/"):
-        # A segment contributes a concrete anchor iff it has any non-glob,
-        # non-dot character (so ``*``, ``**`` and ``.`` are NOT anchors, but
-        # ``*.py`` is, via its ``py`` literal).
-        if segment.replace("*", "").replace(".", "").strip():
+    # Neutralize ``[...]`` character-class spans FIRST, on the whole pattern,
+    # before splitting on ``/`` — a class may legitimately contain ``/`` (e.g.
+    # ``[!/]*``), so stripping classes after the split would leave a class's
+    # contents (``!``, ``/`` …) misread as a literal anchor.
+    declassed = re.sub(r"\[.*?\]", "", candidate)
+    for segment in declassed.split("/"):
+        # A segment contributes a concrete anchor iff some literal character
+        # remains after removing the remaining glob metacharacters (``*``,
+        # ``?``) and ``.``. If nothing literal is left, the segment is
+        # non-anchoring (so ``*``, ``**``, ``?``, ``?*``, ``[a-z]*``, ``[!/]*``
+        # are NOT anchors, but ``*.py`` / ``file[0-9].txt`` are).
+        seg = segment.replace("*", "").replace("?", "").replace(".", "")
+        if seg.strip():
             return False
     return True
 

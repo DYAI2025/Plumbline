@@ -144,6 +144,22 @@ assert_output_contains "broad scope error names the rejected pattern" "too broad
 # A normal scoped canvas must STILL pass (legitimate `src/...**` patterns work).
 assert_exit "normal scoped canvas still passes after broad-pattern guard" 0 \
   "$SCOPE_BIN" --repo "$FIXTURES/scope-pass" --feature demo --changed-files "$FIXTURES/scope-pass/changed-files.txt"
+# Residual H-2: glob character-classes and `?` wildcards (`?*`, `[a-z]*`, `[!/]*`,
+# `[0-9a-zA-Z_]*`, …) also match EVERY repo path via fnmatch, yet the old anchor
+# test only stripped `*`/`.` and misread them as a concrete anchor. These must
+# ALSO be refused (fail closed) when loading scope.
+assert_nonzero "broad ?* scope pattern fails closed" \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad-qstar" --feature demo --changed-files "$FIXTURES/scope-broad-qstar/changed-files.txt"
+assert_output_contains "broad ?* scope error names too-broad pattern" "too broad" \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad-qstar" --feature demo --changed-files "$FIXTURES/scope-broad-qstar/changed-files.txt"
+assert_nonzero "broad [a-z]* glob-class scope pattern fails closed" \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad-class" --feature demo --changed-files "$FIXTURES/scope-broad-class/changed-files.txt"
+assert_output_contains "broad [a-z]* scope error names too-broad pattern" "too broad" \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad-class" --feature demo --changed-files "$FIXTURES/scope-broad-class/changed-files.txt"
+# A glob character-class that still carries a literal anchor (`file[0-9].txt` ->
+# `file`/`.txt`) is legitimately scoped and must STILL pass.
+assert_exit "literal-anchored glob-class scope still passes" 0 \
+  "$SCOPE_BIN" --repo "$FIXTURES/scope-broad-literalclass" --feature demo --changed-files "$FIXTURES/scope-broad-literalclass/changed-files.txt"
 
 # G2-REQ-002: redaction rejects unsafe persistence and can produce a safe redacted stream.
 assert_exit "redaction safe JSONL check exits 0" 0 \
