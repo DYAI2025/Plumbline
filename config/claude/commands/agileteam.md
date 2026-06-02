@@ -258,6 +258,9 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
 - Resolve project parameters (typecheck/lint/unit/integration/e2e/mutation/coverage/
   SAST/dep-scan/secrets commands, hermetic runner, loop limits). Mark unknowns as
   `MISSING` and propose a conservative default as `ASSUMPTION` — never silently invent.
+- **Loop caps (defaults, overridable at invocation):** `MAX_DEVREVIEW_LOOPS=4`,
+  `MAX_QA_RETURNS=3` (from `docs/agileteam-spec-v3.md`). A standalone invocation of
+  this command must use these unless the user overrides them — never run unbounded.
 - Create the task backbone in **kanban-md** (preferred) or `TodoWrite`, mirroring the
   phases below, and keep it updated. With kanban-md, agents claim work via
   `kanban-md pick --claim <agent> --move in-progress`; humans watch via `kanban-md tui`.
