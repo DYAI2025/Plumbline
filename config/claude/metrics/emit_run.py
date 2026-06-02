@@ -176,18 +176,19 @@ def apply_cost(metrics, raw, tokens_total, reqs_accepted):
     """
     if tokens_total is None:
         return
+    if reqs_accepted is None:
+        raise InputError("--reqs-accepted is required when --tokens-total is provided")
     if tokens_total < 0:
         raise InputError("--tokens-total must be >= 0")
-    if reqs_accepted is not None and reqs_accepted < 0:
+    if reqs_accepted < 0:
         raise InputError("--reqs-accepted must be >= 0")
     if "cost_per_req" in metrics:
         raise InputError(
             "cost_per_req supplied both via --metrics and computed from --tokens-total"
         )
-    reqs = reqs_accepted if reqs_accepted is not None else 0
-    metrics["cost_per_req"] = tokens_total / max(reqs, 1)
+    metrics["cost_per_req"] = tokens_total / max(reqs_accepted, 1)
     raw["tokens_total"] = tokens_total
-    raw["reqs_accepted"] = reqs
+    raw["reqs_accepted"] = reqs_accepted
 
 
 def parse_args(argv):
