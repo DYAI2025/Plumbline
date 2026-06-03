@@ -471,6 +471,12 @@ def doctor(_args: argparse.Namespace, root: Path) -> int:
     for name, ok in checks:
         print(f"{name}: {'ok' if ok else 'fail'}")
     print(f"version: {version}")
+    # PATH discoverability of the installed CLI — the 'command not found' self-diagnosis.
+    bindir = Path(os.environ.get("CLAUDE_HOME", str(Path.home() / ".claude"))) / "bin"
+    on_path = str(bindir) in os.environ.get("PATH", "").split(os.pathsep)
+    print(f"PATH: {bindir} {'on' if on_path else 'NOT on'} $PATH")
+    if not on_path:
+        print(f'  fix: export PATH="{bindir}:$PATH"  (add to your shell rc, then restart the shell)')
     return 0 if all(ok for _, ok in checks) else 1
 
 
