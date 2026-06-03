@@ -233,27 +233,47 @@ def _member_escapes(member: tarfile.TarInfo, into: Path) -> bool:
     return False
 
 
+def _is_apple_double(name: str) -> bool:
+    """True for macOS metadata members: AppleDouble (`._*`) and `__MACOSX/`.
+
+    macOS `tar`/`bsdtar` injects these into archives it writes (e.g. a GitHub
+    source tarball downloaded and re-packed on a Mac, or a fixture built with
+    the system tar). They are not part of the payload tree, and a top-level
+    `._<dir>` member sorts before the real top-level directory — which would
+    otherwise break single-top-level-dir detection and make apply silently
+    no-op. Match at any depth so both `._top` and `top/._VERSION` are caught.
+    """
+    return any(part == "__MACOSX" or part.startswith("._") for part in Path(name).parts)
+
+
 def safe_extract_tarball(tar_path: Path, into: Path) -> Path:
     """Extract a tarball, refusing any member that escapes `into`. Returns the
-    single top-level directory (GitHub tarballs ship exactly one)."""
+    single top-level directory (GitHub tarballs ship exactly one). macOS
+    AppleDouble / __MACOSX metadata members are skipped (not payload, and a
+    top-level `._<dir>` entry would corrupt top-level-dir detection)."""
     into.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tar_path, "r:*") as tar:
         members = tar.getmembers()
         total = 0
+        # Escape and size guards run over EVERY member (security is never
+        # relaxed for `._*` names — an attacker could hide `../` behind one).
         for member in members:
             if _member_escapes(member, into):
                 raise PlumblineError(f"unsafe tarball member: {member.name}")
             total += max(member.size, 0)
             if total > MAX_EXTRACT_BYTES:
                 raise PlumblineError(f"tarball expands beyond {MAX_EXTRACT_BYTES} byte limit")
+        # Payload = everything except macOS metadata. Only payload members are
+        # written and only they count toward top-level-dir detection.
+        payload = [m for m in members if not _is_apple_double(m.name)]
         # `filter="data"` is the second, independent guard: it strips setuid/
         # setgid/sticky bits and refuses device/special-file members that the
         # name-only check above does not inspect.
         try:
-            tar.extractall(into, filter="data")  # noqa: S202 - every member validated above
+            tar.extractall(into, members=payload, filter="data")  # noqa: S202 - every member validated above
         except tarfile.FilterError as exc:
             raise PlumblineError(f"unsafe tarball member: {exc}") from exc
-    tops = sorted({Path(m.name).parts[0] for m in members if m.name not in ("", ".")})
+    tops = sorted({Path(m.name).parts[0] for m in payload if m.name not in ("", ".")})
     if len(tops) == 1:
         return into / tops[0]
     return into

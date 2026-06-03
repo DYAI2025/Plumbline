@@ -11,6 +11,16 @@ FIXTURES="$HERE/fixtures/update"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
+# Best-effort request that Apple's tar omit AppleDouble (._*) metadata members
+# from the fixture tarballs (documented in Apple's tar(1); harmless unknown-var
+# no-op on GNU tar / Linux). Whether macOS tar emits ._* at all is xattr- and
+# filesystem-dependent (nondeterministic between runs), so this is a belt only:
+# correctness does NOT rely on it. The production extractor is independently
+# hardened to ignore AppleDouble / __MACOSX members whatever the source tar did
+# (see the AppleDouble regression test below, which synthesizes the members via
+# Python tarfile so it triggers on every platform regardless of this var).
+export COPYFILE_DISABLE=1
+
 assert "plumbline CLI exists" "test -x '$PLUMBLINE'"
 # Version is release-please-managed; assert the CLI reports whatever VERSION holds
 # (not a hardcoded number that breaks the suite on every release bump).
@@ -103,6 +113,40 @@ cp -R "$FIXTURES/target-0.9.0" "$TAR_TARGET"
 tar_apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TAR_TARGET" --source "$TARBALL" --verify-cmd true)"
 assert "tarball apply reports verified" "printf '%s\n' '$tar_apply_output' | grep -q 'status: changed and verified'"
 assert_eq "tarball apply installs newer version" "$NEWER_VERSION" "$($PLUMBLINE --root "$TAR_TARGET" version)"
+
+# --- P1: AppleDouble (macOS metadata) tarball still applies -----------------
+# Regression for the macOS bug where bsdtar injects a top-level `._<dir>`
+# AppleDouble member that sorts before the real top dir and broke single-top-
+# level-dir detection (apply silently no-op'd, version stayed at base). The
+# fixture is synthesized with Python tarfile so the `._*` members exist on EVERY
+# platform (Linux/macOS/Windows), making this a deterministic cross-platform
+# guard rather than something that only triggers on a Mac.
+AD_TARBALL="$TMP_ROOT/appledouble.tar.gz"
+python3 - "$AD_TARBALL" "$NEWER_VERSION" <<'PY'
+import io, sys, tarfile
+tarball, version = sys.argv[1], sys.argv[2]
+TOP = "plumbline-appledouble-deadbeef"
+def add(t, name, data, mode=0o644):
+    ti = tarfile.TarInfo(name); ti.size = len(data); ti.mode = mode
+    t.addfile(ti, io.BytesIO(data))
+compat = ('{ "version": "%s", "schema": 1, "verifyCommand": "true", '
+          '"frozenContracts": ["VERSION"], "migrations": [] }\n' % version).encode()
+with tarfile.open(tarball, "w:gz") as t:
+    # AppleDouble for the top dir itself — the member that sorts FIRST and broke detection.
+    add(t, "._" + TOP, b"Mac OS X AppleDouble\n")
+    add(t, f"{TOP}/VERSION", (version + "\n").encode())
+    add(t, f"{TOP}/._VERSION", b"Mac OS X AppleDouble\n")
+    add(t, f"{TOP}/compatibility.json", compat)
+    add(t, f"{TOP}/config/claude/install.sh", b"#!/usr/bin/env bash\nexit 0\n", mode=0o755)
+PY
+AD_TARGET="$TMP_ROOT/appledouble-target"
+cp -R "$FIXTURES/target-0.9.0" "$AD_TARGET"
+ad_check="$($PLUMBLINE --root "$REPO_DIR" update --check --source "$AD_TARBALL" 2>&1)"
+assert "AppleDouble tarball --check reports update-available" "printf '%s\n' '$ad_check' | grep -q 'status: update-available'"
+ad_apply="$($PLUMBLINE --root "$REPO_DIR" update --target "$AD_TARGET" --source "$AD_TARBALL" --verify-cmd true 2>&1)"
+assert "AppleDouble tarball apply reports verified" "printf '%s\n' '$ad_apply' | grep -q 'status: changed and verified'"
+assert_eq "AppleDouble tarball installs newer version" "$NEWER_VERSION" "$($PLUMBLINE --root "$AD_TARGET" version)"
+assert "AppleDouble metadata is not written to target" "test ! -e '$AD_TARGET/._plumbline-appledouble-deadbeef'"
 
 # --- P1: safe-extract rejects path traversal -------------------------------
 # A tarball whose member escapes the extraction root must be refused before any
