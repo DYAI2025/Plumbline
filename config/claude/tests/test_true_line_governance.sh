@@ -96,13 +96,13 @@ for field in vision-link value-check-id true-line-status contradiction-id user-d
 done
 has "TEST-008 fields template lists true-line-status" "$T_FIELDS" "true-line-status"
 
-# --- TEST-009: token-bounded council challenge gate (Phase 0.16, G1) -------
+# --- TEST-009: structurally bounded council challenge gate (Phase 0.16, G1) -------
 has "TEST-009 command has council challenge gate section"   "$CMD"  "Council challenge gate"
 has "TEST-009 gate is Phase 0.16"                           "$CMD"  "Phase 0.16"
 has "TEST-009 gate runs after Canvas-confirm"               "$CMD"  "after the Product Canvas is user-confirmed"
 has "TEST-009 gate runs before PRD finalization"            "$CMD"  "before the PRD is finalized"
-has "TEST-009 gate is token-bounded with explicit cap"      "$CMD"  "token-bounded"
-has "TEST-009 gate states concrete token cap"               "$CMD"  "15k tokens"
+has "TEST-009 gate is structurally bounded"                 "$CMD"  "structurally bounded"
+has "TEST-009 false token figure withdrawn, bench-cited"    "$CMD"  "bench-2026-06-03-challenge-token-oracle"
 has "TEST-009 gate produces user-facing summary"            "$CMD"  "user-facing"
 has "TEST-009 summary is at most one page"                  "$CMD"  "1-page"
 has "TEST-009 orchestrator asks user about amending request" "$CMD" "asks the user whether any legitimate point changes the product request"
@@ -120,7 +120,7 @@ has "TEST-009b challenge mode is the three-role gate"       "$CONC" "Challenge m
 has "TEST-009b challenge mode names Challenger"             "$CONC" "Challenger"
 has "TEST-009b challenge mode names Advisor"                "$CONC" "Advisor"
 has "TEST-009b challenge mode names Critic"                 "$CONC" "Critic"
-has "TEST-009b challenge mode is token-bounded"             "$CONC" "token-bounded"
+has "TEST-009b challenge mode is structurally bounded"      "$CONC" "structurally bounded"
 has "TEST-009b default 4-body council unchanged"           "$CONC" "Distribution Realist"
 
 # --- TEST-010: Vision-GO gate + autonomous /goal handoff (G3) ---------------

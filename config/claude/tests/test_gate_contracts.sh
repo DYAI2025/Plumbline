@@ -50,11 +50,21 @@ EOF
 assert "G4-C5 resolve-roster reddens on unresolved role" "! python3 '$GC' resolve-roster '$FIX/g4_unresolved_roster.yml' '$REPO'"
 
 # ---- G1: council challenge gate ----
-# G1-C1: token bound present, parseable, and EQUAL across both files
-g1_conc="$(python3 "$GC" token-bound "$CONC" 2>/dev/null)"
-g1_cmd="$(python3 "$GC" token-bound "$CMD" 2>/dev/null)"
-assert_eq "G1-C1 token bound equal across concilium.md and agileteam.md" "$g1_conc" "$g1_cmd"
-assert "G1-C1 token bound is a positive integer" "[ \"\${g1_conc:-0}\" -gt 0 ]"
+# G1-C1: structural bound present + consistent across both files. The earlier numeric
+# token-bound check was RETIRED: the "~15k tokens total" figure was measured FALSE and
+# withdrawn (metrics/bench-2026-06-03-challenge-token-oracle.md). The real, enforced bound
+# is structural — per-role word cap (G1-C2) + collision-round cap (here).
+has "G1-C1 collision-round bound in concilium.md" "$CONC" "2 collision rounds"
+has "G1-C1 collision-round bound in agileteam.md" "$CMD"  "2 collision rounds"
+# G1-C1b: the withdrawn token figure is framed as withdrawn AND bench-cited in BOTH files
+# (guards the honest re-baseline against silent reinstatement of a guessed token cap).
+has "G1-C1b token figure withdrawn (concilium)" "$CONC" "withdrawn"
+has "G1-C1b token figure withdrawn (agileteam)" "$CMD"  "withdrawn"
+has "G1-C1b bench evidence cited (concilium)"   "$CONC" "bench-2026-06-03-challenge-token-oracle"
+has "G1-C1b bench evidence cited (agileteam)"   "$CMD"  "bench-2026-06-03-challenge-token-oracle"
+# G1-C1c: the cited evidence must actually RESOLVE on this branch — not a dangling
+# cross-branch reference (a string-presence check alone would pass on a missing file).
+assert_file "G1-C1c cited bench evidence resolves" "$REPO/metrics/bench-2026-06-03-challenge-token-oracle.md"
 
 # G1-C2: per-round word cap present in both
 has "G1-C2 word cap in concilium.md"  "$CONC" "180 words per role"
@@ -82,8 +92,8 @@ has "G1-C5 challenge mode (concilium)"  "$CONC" "--mode=challenge"
 # G1-C6: intent invariant — friction not approval, one-page summary
 has "G1-C6 friction-not-approval" "$CMD" "friction, not approval"
 
-# G1-C7 (negative fixture): token-bound fails closed when no cap is present
-assert "G1-C7 token-bound fails closed on capless fixture" "! python3 '$GC' token-bound '$FIX/g1_no_cap.md'"
+# (G1-C7 retired with the numeric token-bound check; g1_no_cap.md fixture removed —
+# the withdrawn token figure is no longer a contract surface. See G1-C1/C1b above.)
 
 # ---- G3: vision-GO -> autonomous run, final human gate preserved ----
 # G3-C1: BOTH bookends exist — initial GO and the final acceptance gate
