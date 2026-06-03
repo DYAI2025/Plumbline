@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.1](https://github.com/DYAI2025/Plumbline/compare/v0.13.0...v0.13.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* harden update layer + fingerprint for macOS / cross-platform CI ([aa1e4e5](https://github.com/DYAI2025/Plumbline/commit/aa1e4e5603696795c58998f481a328d11faa75e7))
+* macOS / cross-platform portability for update layer + config_fingerprint ([d56f0bd](https://github.com/DYAI2025/Plumbline/commit/d56f0bdcf8f541a185518f77c97be0ab520e9195))
+
 ## [0.13.0](https://github.com/DYAI2025/Plumbline/compare/v0.12.0...v0.13.0) (2026-06-03)
 
 
