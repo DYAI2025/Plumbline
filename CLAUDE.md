@@ -75,6 +75,13 @@ applied by the current Claude Code runtime — only an explicit dispatch paramet
 effect, so model control lives in the orchestrator, transparently. After editing any
 agent, run `build-explorer.sh` and the frontmatter validator before committing.
 
+**Resolving whether an agent exists — quote-aware, by `name:` not filename.** Agent files
+are named by topic, not by their `name:` value (e.g. `name: "backend-dev"` lives in
+`development/backend/dev-backend-api.md`), and `name:` is often YAML-quoted. `find -name
+"<role>.md"` and `grep '^name: <role>$'` both miss these — resolve with a quote-aware scan
+(`grep -rlE '^name: *"?<role>"?[[:space:]]*$' --include='*.md'`) before claiming an agent
+is absent.
+
 ## Core invariants (don't violate these)
 
 - **True-Line governance** — Plumbline optimizes for staying true to confirmed human
