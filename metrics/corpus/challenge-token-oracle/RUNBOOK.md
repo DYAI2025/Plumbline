@@ -21,7 +21,9 @@ The scorer computes two v1 verdicts from captured run-data:
   *with* the measured total beside it, never as a bare "passes".
 - **O3 — the three role outputs are DISTINCT** (max pairwise Jaccard ≤ 0.6). Guards
   against consensus-theater: a gate whose three roles parrot each other produces no
-  friction even if it is cheap.
+  friction even if it is cheap. **Read this verdict through the shared-base lens below —
+  the faithful mapping reuses one body across two roles, so a high Challenger↔Critic
+  similarity is structurally EXPECTED, not a defect.**
 
 **O2 ("≤1-page summary") is intentionally NOT scored** in v1. The one-pager is the
 gate's *distilled* output (produced by the orchestrator after the role rounds), not the
@@ -32,6 +34,43 @@ to keep the pilot lean and the measurement valid.
 **Reach honesty.** A few runs on one model can *refute* "the bound always holds" (a
 single over-bound run does that) but cannot *establish* it generally. Report `n`, the
 model, and the distribution — never generalize from a small sample.
+
+---
+
+## Reading O3 under the shared-base confound (MANDATORY when scoring)
+
+The faithful `concilium.md` mapping reuses **one body** — `concilium-skeptic` — for BOTH
+**Challenger** (requirement lens) and **Critic** (concept lens). Two roles driven by the
+same body share vocabulary, framing, and stock phrasing, so their **lexical (Jaccard)
+similarity is structurally elevated even on a perfectly healthy run**. This is a known
+confound of measuring distinctness on a gate that intentionally DRYs two roles onto one
+body — not evidence of consensus-theater.
+
+How to read the verdict (use the scorer's `pairwise_similarity` object — the three pairs
+`challenger_advisor`, `challenger_critic`, `advisor_critic`):
+
+- **`challenger_critic` (shared `concilium-skeptic` base) — elevated is EXPECTED.** A high
+  value here is the structural baseline of the faithful gate. Do **not** read it as a
+  defect, and do **not** read it as consensus-theater.
+- **Genuine consensus-theater shows on a CROSS-body pair** — `challenger_advisor` or
+  `advisor_critic` (skeptic vs. tech-arbiter, different bodies). If a *cross-body* pair is
+  high, the roles are converging despite different bodies — that is the real theater signal
+  worth flagging.
+- **Interpreting `O3_roles_distinct == false` (max pairwise > cap):** do **not**
+  auto-treat it as a gate failure. First inspect `pairwise_similarity`:
+  - If the over-cap pair is **`challenger_critic`** → it is most likely the **shared-base
+    artifact**. Report O3 as *false-with-shared-base-caveat*: "max similarity driven by the
+    Challenger↔Critic pair, which share the `concilium-skeptic` body by design; not read as
+    consensus-theater." Note it; do not headline it as a gate defect.
+  - If the over-cap pair is a **cross-body pair** (`challenger_advisor` /
+    `advisor_critic`) → that **is** a genuine distinctness concern and should be flagged as
+    such.
+  - In the report, always quote the per-pair numbers, name which pair drove `max`, and
+    state the shared-base caveat explicitly so the O3 verdict is never read out of context.
+
+(The earlier "use three distinct bodies so O3 isn't biased" plan tried to *engineer away*
+this confound — but doing so changes the gate under test. The honest move is to measure the
+real gate and *interpret* O3 with the shared-base caveat, which is what this section does.)
 
 ---
 
@@ -74,30 +113,42 @@ git -C <repo> describe --tags --always
 ```
 
 The measured gate behaviour belongs to *that* snapshot of `concilium/skeptic.md`,
-`concilium/market-realist.md`, `concilium/tech-arbiter.md`, and `commands/concilium.md`.
-Agent files keep evolving on `main`; a comparison or re-run must pin the same snapshot.
+`concilium/tech-arbiter.md`, and `commands/concilium.md`. Agent files keep evolving on
+`main`; a comparison or re-run must pin the same snapshot.
 
 ### 2. Dispatch the three REAL challenge-mode roles — TEXT-ONLY
 
-Dispatch the three real concilium challenge-mode body prompts, each against this
+Dispatch the three real concilium challenge-mode body prompts **exactly as the canonical
+`concilium.md` §"Challenge mode" table prescribes** (this is the gate Finding #2 is
+about — we measure the ACTUAL gate, not a more-favorable variant), each against this
 directory's `CANVAS.md` + `IDEA.md`, honoring the gate's per-round cap
 (**≤180 words per role per round, ≤2 collision rounds** — see `concilium.md`):
 
-| Role (challenge mode) | Agent body prompt        | Pulls toward |
-|-----------------------|--------------------------|--------------|
-| **Challenger**        | `concilium-skeptic`      | "is this the right ask?" — is the stated problem/user the real one? |
-| **Advisor**           | `concilium-market-realist` | a materially better approach / distribution lens on the build |
-| **Critic**            | `concilium-tech-arbiter` | implementation fragility — "should it exist as built?" |
+| Role (challenge mode) | Agent body (REAL gate)   | Lens / pulls toward |
+|-----------------------|--------------------------|---------------------|
+| **Challenger**        | `concilium-skeptic`      | on the *requirement* — "is this the **right ask**?" |
+| **Advisor**           | `concilium-tech-arbiter` | (+ distribution lens) on the *build* — "a **materially better approach**?" |
+| **Critic**            | `concilium-skeptic`      | (+ market lens) on the *concept* — "**should it exist**?" |
 
-> **Documented deviation from the canonical mapping.** `concilium.md`'s challenge-mode
-> table currently aliases Challenger→`concilium-skeptic`, Advisor→`concilium-tech-arbiter`,
-> Critic→`concilium-skeptic`(+market lens). This runbook follows the **PR-2 plan's**
-> mapping (Challenger→skeptic, Advisor→market-realist, Critic→tech-arbiter), which uses
-> three *distinct* agent bodies — preferable for the O3 distinctness check, since reusing
-> one body for two roles would bias O3 toward "too similar". Before running, reconcile
-> with the live `concilium.md` table and record in the report which mapping was actually
-> dispatched; the scorer is agnostic to role-name semantics (it only sees three labelled
-> outputs).
+> **Faithful to `concilium.md` (no deviation).** This runbook dispatches the canonical
+> challenge-mode mapping verbatim: the real gate reuses only **two distinct bodies** —
+> `concilium-skeptic` plays BOTH Challenger and Critic (different lenses: requirement vs.
+> concept), `concilium-tech-arbiter` plays Advisor, and `concilium-market-realist` is
+> **NOT** dispatched (market is only a *lens* the Critic applies, not a separate body).
+> **Correction note:** an earlier PR-2 *plan* had an inaccurate mapping
+> (Challenger→skeptic, Advisor→`market-realist`, Critic→`tech-arbiter` — three distinct
+> bodies, justified as "better for O3"). That was unfaithful: it would have measured a
+> more-favorable *variant* of the gate, not the gate itself. This runbook supersedes that
+> plan and dispatches the real mapping. The scorer is agnostic to role-name semantics (it
+> only sees three labelled outputs), so the operator MUST map the labels per the table
+> above and record the pinned `concilium.md` mapping in the report.
+>
+> *Optional, clearly-labelled extra arm (NOT the Finding #2 measurement):* if you want to
+> probe how much the shared-skeptic base inflates Challenger↔Critic similarity, you MAY
+> run a separate **distinct-body variant** (Critic→`concilium-tech-arbiter` or
+> `concilium-market-realist`) and label it as such. Never report this variant as the
+> headline Finding #2 result — it is a sensitivity check on the O3 confound below, not the
+> real gate.
 
 **Bench-isolation (binding):** every role subagent is **TEXT-ONLY**. Instruct each
 explicitly: *"Respond with your challenge as text only; do NOT Write, Edit, or run Bash
@@ -144,7 +195,9 @@ python3 config/claude/metrics/challenge_token_oracle.py score /tmp/run-data.json
 ```
 
 Capture the full JSON verdict (it includes `total_tokens`, `O1_token_bound_hold`,
-`max_pairwise_similarity`, `O3_roles_distinct`).
+`pairwise_similarity` (the three per-pair Jaccard values), `max_pairwise_similarity`, and
+`O3_roles_distinct`). When O3 is `false`, inspect `pairwise_similarity` per the
+shared-base section above before calling it a gate failure.
 
 ### 6. Repeat N=3 per model; report the distribution
 
@@ -171,14 +224,20 @@ and a real figure cannot be obtained, record the gate outcome as `MISSING`, not 
 
 Write `metrics/bench-<date>-challenge-token-oracle.md` (on `agileteam-improved`)
 containing:
-- The pinned agent snapshot SHA and the role→agent mapping actually dispatched.
+- The pinned agent snapshot SHA and the role→agent mapping actually dispatched — which
+  MUST be the canonical `concilium.md` mapping (Challenger & Critic both
+  `concilium-skeptic`, Advisor `concilium-tech-arbiter`). If any optional distinct-body
+  variant was also run, report it separately and clearly labelled, never as Finding #2.
 - Model + `n` per arm; the `total_tokens` distribution (min/median/max) and bound-hold
-  count; the O3 distinctness verdict.
+  count; the O3 distinctness verdict **with the per-pair `pairwise_similarity` numbers and
+  the shared-base caveat** — name which pair drove `max`, and if it is the shared-base
+  Challenger↔Critic pair say so explicitly (an elevated value there is expected, not
+  consensus-theater).
 - The explicit answer to Finding #2: *does the real challenge gate stay ≤15k, on which
   model, over how many runs — or does the bound need a real hard-stop?*
-- Every limitation / confound / leak consideration, and the reach statement (§"What this
-  measures"). A "the bound does NOT hold" result is a **success of the instrument** and
-  triggers the follow-up "real token hard-stop" ticket.
+- Every limitation / confound / leak consideration (including the shared-base O3 confound),
+  and the reach statement (§"What this measures"). A "the bound does NOT hold" result is a
+  **success of the instrument** and triggers the follow-up "real token hard-stop" ticket.
 
 ### 9. Isolation check (binding)
 
