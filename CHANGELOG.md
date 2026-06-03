@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.13.0](https://github.com/DYAI2025/Plumbline/compare/v0.12.0...v0.13.0) (2026-06-03)
+
+
+### Features
+
+* **doctor:** surface the resolved update slug + fork upstream-override hint (F6 discoverability) ([55cca18](https://github.com/DYAI2025/Plumbline/commit/55cca1871eb85deff924d88aaab7b8feecd35508))
+
+
+### Bug Fixes
+
+* **docs:** derive README agent count from the explorer (86, not 87); recast vendored agents as a tested-workload dependency + drift-guard ([ffd1b5a](https://github.com/DYAI2025/Plumbline/commit/ffd1b5a74bb756261c88a84aaf546c050afe0851))
+* **install:** make the plumbline CLI discoverable on PATH (doctor PATH check + install.sh export box) ([7464dc3](https://github.com/DYAI2025/Plumbline/commit/7464dc30686cad987ca544eb33d22669dbea3f9c))
+* rename product-management skill to hyphen form (colon is plugin-namespace syntax) + colon guard ([dc276b5](https://github.com/DYAI2025/Plumbline/commit/dc276b578cae0b315d40d6b2ee6a4f35e2be915a))
+* **test:** MCP-disclosure guard also catches underscore family forms (review fix I-1) ([5b8a219](https://github.com/DYAI2025/Plumbline/commit/5b8a219f52d5e09c67911a97e236aef93c26c4dc))
+* **test:** portable update-layer evil-tarball fixture (Python tarfile, not GNU-only tar) ([675665d](https://github.com/DYAI2025/Plumbline/commit/675665dab2743b2a173e9d01453ebc36096d6a0b))
+
 ## [0.12.0](https://github.com/DYAI2025/Plumbline/compare/v0.11.0...v0.12.0) (2026-06-03)
 
 
