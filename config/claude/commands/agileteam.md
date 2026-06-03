@@ -46,7 +46,7 @@ in German; otherwise default to English.
 Phase 0.0  First-run orientation
 Phase 0.1  Minimal product idea intake
 Phase 0.15 Product Canvas drafting + user confirmation  (requirements-analyst → docs/canvas/<feature>.canvas.md)  ← mandatory gate, blocks everything below
-Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challenger · Advisor · Critic; token-bounded; user-facing summary; user steers)  ← runs after Canvas-confirm, before the PRD is finalized
+Phase 0.16 Council challenge gate            (concilium --mode=challenge: Challenger · Advisor · Critic; structurally bounded (≤180 words/role, ≤2 rounds); user-facing summary; user steers)  ← runs after Canvas-confirm, before the PRD is finalized
 Phase 0.2  PRD drafting                     (requirements-analyst)
 Phase 0.3  Bounded brainstorming for gaps   (≤2 rounds, ≤5 questions/round)
 Phase 0.4  Product Vision drafting          (product-owner → docs/vision/<feature>.vision.md)
@@ -92,7 +92,7 @@ risks, non-goals, and required evidence are clear.
 ### Council challenge gate (Phase 0.16 — runs after Canvas-confirm, before PRD finalize)
 
 This gate runs **after the Product Canvas is user-confirmed** and **before the PRD is
-finalized**: a **token-bounded council challenge gate**. Its purpose is friction, not approval: a thin
+finalized**: a **structurally bounded council challenge gate**. Its purpose is friction, not approval: a thin
 three-role council stress-tests the *confirmed Canvas + the raw idea* so a wrong or weak
 product request is caught **before** the team invests in a PRD and a build.
 
@@ -110,9 +110,13 @@ gate uses only the thin challenge mode). The three explicit roles:
 Run it **friction-driven, ≤2 collision rounds** (same diminishing-returns loop limit as
 `/concilium`).
 
-**Token-bounded (hard cap).** This gate is **token-bounded**: ≤ ~15k tokens total;
-≤180 words per role per round; on reaching the cap → **stop and summarize** with whatever
-friction has surfaced. The gate must never grow unbounded — a pre-PRD challenge that costs
+**Structurally bounded.** This gate is bounded by **≤180 words per role per round; ≤2
+collision rounds; on reaching that bound → stop and summarize** with whatever friction has
+surfaced. *("Tokens total" = the gate's real consumed cost — body system prompts + model
+reasoning + output + distillation; the earlier `≤ ~15k tokens total` figure was
+**withdrawn** as measured-false: a single-round Opus floor is ~103k tokens,
+`metrics/bench-2026-06-03-challenge-token-oracle.md`. A hard token cap would need a real
+counter, not prose.)* The gate must never grow unbounded — a pre-PRD challenge that costs
 more than the PRD defeats its purpose.
 
 **User-facing summary.** The orchestrator distils the council into a **user-facing
@@ -132,8 +136,8 @@ council (a council recommendation is a suggestion, never an authority).
 
 **Additive only.** This gate does not weaken or make optional the Canvas, Product Vision,
 Reality Ledger, Plumbline Watcher, or Gates A–D; each still runs exactly as before. A
-token-cap abort is *not* a pass of any later gate — it only bounds the cost of this
-pre-PRD challenge.
+stop-and-summarize on reaching the structural bound is *not* a pass of any later gate — it
+only bounds the cost of this pre-PRD challenge.
 
 ### Development entry condition (hard gate)
 
@@ -374,8 +378,10 @@ parameter — that section is the single source of truth for the per-role model 
    `concilium --mode=challenge` on the confirmed Canvas + the raw idea — **Challenger**
    (right ask?), **Advisor** (materially better approach?), **Critic** (should the concept
    exist?). Friction-driven, ≤2 collision rounds.
-2. Enforce the **token budget**: ≤ ~15k tokens total; ≤180 words per role per round; on
-   cap → stop and summarize.
+2. Enforce the **structural bound**: ≤180 words per role per round; ≤2 collision rounds; on
+   reaching it → stop and summarize. (The earlier `≤ ~15k tokens total` figure is withdrawn
+   as measured-false — see `metrics/bench-2026-06-03-challenge-token-oracle.md`; "tokens
+   total" = real consumed cost, ~103k/round on Opus (single-round floor).)
 3. Distil a **user-facing ≤1-page summary** (top legitimate challenges + better-implementation
    proposals + concept risks) and **ask the user whether any legitimate point changes the
    product request**. On adopt → **amend the Canvas and re-confirm** (user only); on

@@ -4,9 +4,6 @@
 No model calls. Exits non-zero on parse failure so the bash harness can assert.
 
 Subcommands:
-  token-bound <file>
-      Print the challenge-gate token cap as an int (e.g. 15000) parsed from text
-      like "<= ~15k tokens total". Exit 1 if no parseable cap is found.
   roster-roles <manifest> [minimum|specialists|all]
       Print roster roles (default all), one per line, sorted. Exit 1 if malformed.
   prose-specialists <agileteam.md>
@@ -31,18 +28,6 @@ except ImportError:  # pragma: no cover - PyYAML is a repo dependency
 def _read(path):
     with open(path, encoding="utf-8") as fh:
         return fh.read()
-
-
-def token_bound(path):
-    # Require the 'k' suffix so only "Nk tokens" (the real "≤ ~15k tokens total"
-    # phrasing) matches; a stray "N tokens" sentence must NOT be picked up.
-    m = re.search(r"(\d+)\s*[kK]\s+tokens", _read(path))
-    if not m:
-        print(f"no parseable token cap in {path}", file=sys.stderr)
-        return 1
-    value = int(m.group(1)) * 1000
-    print(value)
-    return 0
 
 
 def _load_manifest(path):
@@ -117,8 +102,6 @@ def main(argv):
         return 2
     cmd, rest = argv[1], argv[2:]
     try:
-        if cmd == "token-bound" and len(rest) == 1:
-            return token_bound(rest[0])
         if cmd == "roster-roles" and len(rest) in (1, 2):
             return roster_roles(rest[0], rest[1] if len(rest) == 2 else "all")
         if cmd == "prose-specialists" and len(rest) == 1:
