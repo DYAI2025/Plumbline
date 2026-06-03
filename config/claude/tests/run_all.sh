@@ -70,7 +70,7 @@ if bad or nodesc or dupes:
 PY
 
 stage "metrics scripts compile"
-python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/lib/plumbline_update.py config/claude/lib/gate_contracts.py \
+python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/metrics/challenge_token_oracle.py config/claude/lib/plumbline_update.py config/claude/lib/gate_contracts.py \
   && echo "py_compile OK" || fail=1
 
 stage "metrics contract round-trip"
