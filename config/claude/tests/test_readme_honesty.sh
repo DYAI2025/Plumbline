@@ -35,4 +35,10 @@ assert_eq "README-honesty: no agent count drifts from the derived $N" "" "$misma
 # Vendored agents must be framed honestly, not as bare "ready-to-use" marketing.
 assert "README-honesty: vendored agents framed as a tested-workload dependency" "grep -qF 'tested-workload' '$README'"
 
+# A5: the README states the honest install model and links the boundary doc, so a user
+# who expects /plugin install or an MCP server is told the truth up front.
+assert "README-honesty: links the DEPENDENCIES.md boundary doc" "grep -qF 'DEPENDENCIES.md' '$README'"
+assert "README-honesty: states install model (not a plugin)"    "grep -qiE 'not a (claude code )?plugin' '$README'"
+assert "README-honesty: states install model (no MCP server)"   "grep -qiE 'no mcp server|ships no mcp' '$README'"
+
 finish "readme honesty tests"
