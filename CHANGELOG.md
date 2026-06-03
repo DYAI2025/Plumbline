@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.12.0](https://github.com/DYAI2025/Plumbline/compare/v0.11.0...v0.12.0) (2026-06-03)
+
+
+### Features
+
+* add /merge-when-true — merge gate on TRUE-green (not test-green) ([972eacf](https://github.com/DYAI2025/Plumbline/commit/972eacfc85b8db0e79447777d8559baaf7f7a208))
+* add /merge-when-true command (merge gate on TRUE-green, not test-green) ([0b362b1](https://github.com/DYAI2025/Plumbline/commit/0b362b14823f9e60e36abe30b1a2c1c3804b827a))
+* **metrics:** add deterministic challenge-gate token oracle scorer ([edc7115](https://github.com/DYAI2025/Plumbline/commit/edc71152637ff9a890b71905f3260cd2adbb07d6))
+* **metrics:** challenge-gate token oracle instrument (Finding [#2](https://github.com/DYAI2025/Plumbline/issues/2), Part 1) ([cc42573](https://github.com/DYAI2025/Plumbline/commit/cc42573f1cd536c51b291df3f82be5aca7539719))
+* **metrics:** expose per-pair similarity in challenge-token-oracle scorer ([11fddac](https://github.com/DYAI2025/Plumbline/commit/11fddac242c9a848bedadea7e06303a3841a0572))
+* **metrics:** register challenge_gate_tokens as a scored metric ([a7eed8b](https://github.com/DYAI2025/Plumbline/commit/a7eed8b8b857f1e97aaba2d97ba52d0c07fd94e2))
+
+
+### Bug Fixes
+
+* **challenge-gate:** land cited bench evidence on-branch + assert it resolves (review fix) ([0d0d38d](https://github.com/DYAI2025/Plumbline/commit/0d0d38d48d4679d7f96f95767336024718b2ea62))
+* **challenge-gate:** withdraw measured-false ~15k token bound; define 'tokens total', keep structural bound ([5aaa8f9](https://github.com/DYAI2025/Plumbline/commit/5aaa8f985494c6bba2f7b066ae01aefd97c0bd93))
+* **challenge-gate:** withdraw measured-false ~15k token bound; define + structurally re-baseline ([5eca1cb](https://github.com/DYAI2025/Plumbline/commit/5eca1cb95d3a41751a879c2a1912aaa811b7206a))
+
 ## [0.11.0](https://github.com/DYAI2025/Plumbline/compare/v0.10.1...v0.11.0) (2026-06-02)
 
 
