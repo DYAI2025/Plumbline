@@ -6,7 +6,7 @@
 
 **A defense-in-depth agent framework for Claude Code — built around one obsession: proving that work is *actually* done, not that it merely *looks* done.**
 
-`87 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
+`86 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
 
 **An agile AI agent framework for Claude Code: a self-learning, customer-value-governed agentic team that builds software with TDD gates, Kaizen retrospectives, and a defense-in-depth quality pipeline.**
 
@@ -15,7 +15,7 @@
 > ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
 > Then we shipped the honest result anyway. **That** is Plumbline.
 
-**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 87 agents in your browser, nothing to install
+**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 86 agents in your browser, nothing to install
 
 [![Sponsor Plumbline — fund the token costs of the benchmarks](https://img.shields.io/badge/Sponsor-fund%20the%20benchmarks-ff5fa2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/DYAI2025)
 
@@ -91,7 +91,7 @@ Plumbline even ships its own honesty as commands: **`/honest-status`** (separate
 - 🪜 **Defense-in-depth quality gates** — many diverse, uncorrelated checks (Gates A–E) so a defect must survive several independent reviewers, not one.
 - 🔬 **Reality Ledger** — every requirement carries an evidence class; anything that stays fake/mock is **RED regardless of green tests**, and can't be silently downgraded.
 - 📊 **Empirically benchmarked** — a deterministic mutation-oracle harness measures the agents themselves; we published the honest negative result, not just the wins.
-- 🧩 **87 ready-to-use Claude Code subagents + 16 vendored skills** across 21 categories — coding, review, security, SPARC, swarm, hive-mind, consensus, GitHub automation, and more.
+- 🧩 **86 Claude Code subagents + 16 vendored skills** across 21 categories. Honest split: a small **Plumbline-engineered core** (~16 — the `/agileteam` pipeline, the `/concilium` council, the core TDD/governance roles) does the differentiating work; the majority (~70) are **vendored from the claude-flow agent base and shipped as a tested-workload dependency — prompts only, not individually benchmarked**, not "team members". (Count derived from the explorer extractor and drift-guarded; see `config/claude/tests/test_readme_honesty.sh`.)
 - 🖥️ **Live Agent Explorer** — a zero-install web UI to search, filter, and inspect every agent ([live demo](https://dyai2025.github.io/Plumbline/)).
 - 🛠️ **Portable & self-contained** — vendored skills + commands install with one script; works locally and in Claude Code on the web.
 

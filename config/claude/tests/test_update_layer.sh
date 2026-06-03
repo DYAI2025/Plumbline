@@ -111,8 +111,17 @@ EVIL_DIR="$TMP_ROOT/evil-build"
 mkdir -p "$EVIL_DIR"
 printf '%s\n' "owned" > "$EVIL_DIR/evil"
 EVIL_TARBALL="$TMP_ROOT/evil.tar.gz"
-tar -C "$EVIL_DIR" -czf "$EVIL_TARBALL" --transform 's,^evil,../evil,' evil 2>/dev/null \
-  || tar -C "$EVIL_DIR" -czf "$EVIL_TARBALL" -P --absolute-names ../evil-build/evil
+# Portable across GNU and BSD/macOS tar: build the path-traversal member with Python's
+# tarfile (macOS BSD tar lacks --transform / --absolute-names, which falsely RED-ed the
+# whole suite on macOS). The member name "../evil" is the attack the production extractor
+# must refuse; the production code itself uses portable tarfile, so this only fixes the
+# fixture, not the behaviour under test.
+python3 - "$EVIL_TARBALL" "$EVIL_DIR/evil" <<'PY'
+import sys, tarfile
+tarball, payload = sys.argv[1], sys.argv[2]
+with tarfile.open(tarball, "w:gz") as t:
+    t.add(payload, arcname="../evil")
+PY
 EVIL_TARGET="$TMP_ROOT/evil-target"
 cp -R "$FIXTURES/target-0.9.0" "$EVIL_TARGET"
 EVIL_SENTINEL="$TMP_ROOT/evil"
