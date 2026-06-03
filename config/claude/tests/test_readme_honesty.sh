@@ -11,6 +11,18 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$DIR/../../.." && pwd)"
 README="$REPO/README.md"
 
+# The extractor parses agent frontmatter with PyYAML. On a system whose `python3`
+# cannot import yaml (e.g. a PEP-668 externally-managed interpreter without it),
+# the agent count cannot be derived. Skip cleanly with a visible notice — like the
+# `shellcheck skipped` gate — instead of RED-ing the suite on a missing optional
+# test dependency. PyYAML is documented in DEPENDENCIES.md; CI installs it so the
+# count-drift guard runs there. A skip is honest (not a false pass): it states
+# plainly that the check did not run.
+if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+  printf '=== readme honesty skipped (PyYAML not importable by system python3; see DEPENDENCIES.md) ===\n'
+  exit 0
+fi
+
 # Derive the canonical agent count from the explorer extractor — same source the
 # Agent Explorer / GitHub Pages demo use, so the README can never drift from reality.
 N="$(python3 "$REPO/explorer/extract-agents.py" "$REPO" 2>/dev/null \
