@@ -62,6 +62,9 @@ has "G1-C1b token figure withdrawn (concilium)" "$CONC" "withdrawn"
 has "G1-C1b token figure withdrawn (agileteam)" "$CMD"  "withdrawn"
 has "G1-C1b bench evidence cited (concilium)"   "$CONC" "bench-2026-06-03-challenge-token-oracle"
 has "G1-C1b bench evidence cited (agileteam)"   "$CMD"  "bench-2026-06-03-challenge-token-oracle"
+# G1-C1c: the cited evidence must actually RESOLVE on this branch — not a dangling
+# cross-branch reference (a string-presence check alone would pass on a missing file).
+assert_file "G1-C1c cited bench evidence resolves" "$REPO/metrics/bench-2026-06-03-challenge-token-oracle.md"
 
 # G1-C2: per-round word cap present in both
 has "G1-C2 word cap in concilium.md"  "$CONC" "180 words per role"

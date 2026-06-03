@@ -31,7 +31,7 @@ Product Canvas + the raw idea. It is **structurally bounded** by design: ≤180 
 total" means:* the gate's real cost is the total tokens its role dispatches consume (each
 body's system prompt + model reasoning + output, plus distillation), not just visible
 output. An earlier `≤ ~15k tokens total` figure was aspirational and is **withdrawn** as
-measured-false — a single-round / three-role Opus floor is ~100k+ tokens
+measured-false — a single-round / three-role Opus floor is ~103k tokens
 (`metrics/bench-2026-06-03-challenge-token-oracle.md`). The structural limits above are
 the real bound; a hard token cap, if ever needed, requires a real token counter, not prose. The three roles (reusing the existing body prompts under role-aliases
 where sensible — DRY):

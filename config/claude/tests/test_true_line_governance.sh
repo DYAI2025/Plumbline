@@ -96,7 +96,7 @@ for field in vision-link value-check-id true-line-status contradiction-id user-d
 done
 has "TEST-008 fields template lists true-line-status" "$T_FIELDS" "true-line-status"
 
-# --- TEST-009: token-bounded council challenge gate (Phase 0.16, G1) -------
+# --- TEST-009: structurally bounded council challenge gate (Phase 0.16, G1) -------
 has "TEST-009 command has council challenge gate section"   "$CMD"  "Council challenge gate"
 has "TEST-009 gate is Phase 0.16"                           "$CMD"  "Phase 0.16"
 has "TEST-009 gate runs after Canvas-confirm"               "$CMD"  "after the Product Canvas is user-confirmed"

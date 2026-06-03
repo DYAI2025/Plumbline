@@ -114,7 +114,7 @@ Run it **friction-driven, ≤2 collision rounds** (same diminishing-returns loop
 collision rounds; on reaching that bound → stop and summarize** with whatever friction has
 surfaced. *("Tokens total" = the gate's real consumed cost — body system prompts + model
 reasoning + output + distillation; the earlier `≤ ~15k tokens total` figure was
-**withdrawn** as measured-false: a single-round Opus floor is ~100k+ tokens,
+**withdrawn** as measured-false: a single-round Opus floor is ~103k tokens,
 `metrics/bench-2026-06-03-challenge-token-oracle.md`. A hard token cap would need a real
 counter, not prose.)* The gate must never grow unbounded — a pre-PRD challenge that costs
 more than the PRD defeats its purpose.
@@ -381,7 +381,7 @@ parameter — that section is the single source of truth for the per-role model 
 2. Enforce the **structural bound**: ≤180 words per role per round; ≤2 collision rounds; on
    reaching it → stop and summarize. (The earlier `≤ ~15k tokens total` figure is withdrawn
    as measured-false — see `metrics/bench-2026-06-03-challenge-token-oracle.md`; "tokens
-   total" = real consumed cost, ~100k+/round on Opus.)
+   total" = real consumed cost, ~103k/round on Opus (single-round floor).)
 3. Distil a **user-facing ≤1-page summary** (top legitimate challenges + better-implementation
    proposals + concept risks) and **ask the user whether any legitimate point changes the
    product request**. On adopt → **amend the Canvas and re-confirm** (user only); on
