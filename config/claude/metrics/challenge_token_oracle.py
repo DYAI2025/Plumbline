@@ -56,7 +56,8 @@ def score(data, bound, sim_cap):
     total_tokens = sum(roles[r]["tokens"] for r in ROLES)
     role_words = {r: _words(roles[r]["text"]) for r in ROLES}
     pairs = (("challenger", "advisor"), ("challenger", "critic"), ("advisor", "critic"))
-    max_sim = max(_jaccard(role_words[a], role_words[b]) for a, b in pairs)
+    pair_sims = {f"{a}_{b}": round(_jaccard(role_words[a], role_words[b]), 4) for a, b in pairs}
+    max_sim = max(pair_sims.values())
 
     o1 = total_tokens <= bound
     o3 = max_sim <= sim_cap
@@ -66,6 +67,11 @@ def score(data, bound, sim_cap):
         "bound": bound,
         "total_tokens": total_tokens,
         "O1_token_bound_hold": o1,
+        # Per-pair Jaccard, exposed so the operator can see WHICH pair drives max_sim.
+        # Under the faithful concilium.md mapping, challenger & critic share the
+        # concilium-skeptic body, so an elevated challenger_critic is EXPECTED (shared
+        # base) and not consensus-theater; theater shows on a CROSS-body pair instead.
+        "pairwise_similarity": pair_sims,
         "max_pairwise_similarity": round(max_sim, 4),
         "similarity_cap": sim_cap,
         "O3_roles_distinct": o3,
