@@ -117,9 +117,9 @@ Create `DEPENDENCIES.md` (linked from README + SETUP) stating exactly:
 
 **Make the front door honest and working (A) → make the gates real, not rhetorical (B) → make the council genuinely diverse (C) → amplify the now-true story (D).** Every wave converts a claim into enforced reality or honest disclosure — Plumbline's own philosophy applied to itself. A precedes D on principle: never amplify a message that isn't yet true. B precedes any cost-lever (M7) and any "we're rigorous" marketing, because rigor you can't enforce is just prose. C is the highest-ceiling item but gated on fail-closed design, or it becomes the very echo chamber it's meant to fix.
 
-## Open decisions (human)
+## Decisions (RESOLVED 2026-06-03, via `/agileteam` directive)
 
-- **OD-1:** Confirm Wave A goes first (recommended) vs. you want the council (C) prioritized despite its larger design cost.
-- **OD-2 (L3/G6):** stricter human-gate-on-Canvas-deviation, or keep bounded autonomy + just fix the stale `dev-plan.md` tracker?
-- **OD-3 (C):** OpenRouter free-auto-discovery as the default council backend, with user-key as the upgrade — confirm this is the route to design.
-- **OD-4:** Website (D) timing — straight after A, or after B/C land so it can show the enforcement story too?
+- **OD-1 — RESOLVED:** Wave A goes first; started 2026-06-03.
+- **OD-2 — RESOLVED (stricter):** bounded autonomy = pure code-writing; **any** Canvas deviation hard-blocks + forces an interactive human gate. Recorded in `dev-plan.md`; ⚠ reverses current shipped behavior → separate Wave-B/L3 implementation task (not yet on `main`).
+- **OD-3 — RESOLVED:** council backend defaults to **OpenRouter free-tier auto-discovery**, **fail-closed** if <2 independent backends reachable; user API key = upgrade path. (Wave C, own design pass.)
+- **OD-4 — RESOLVED:** website (Wave D) scheduled **after Wave B**.
