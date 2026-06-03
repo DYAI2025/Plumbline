@@ -36,7 +36,7 @@ the prose claims. This is a successful refutation by the instrument, not a defec
 | Critic (`concilium-skeptic`) | 34,391 |
 | **total** | **103,464** |
 
-Scorer verdict (`/tmp/cto-run1.json`):
+Scorer verdict (from `python3 config/claude/metrics/challenge_token_oracle.py score /tmp/cto-run1.json`):
 
 ```
 O1_token_bound_hold: false   total_tokens: 103464   bound: 15000   (~6.9× over)
