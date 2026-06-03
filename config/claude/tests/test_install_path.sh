@@ -22,4 +22,9 @@ assert "doctor reports PATH status" \
 assert "install.sh prints a PATH export hint when bin not on PATH" \
   "{ CLAUDE_HOME='$TMP/clh' bash '$INSTALL' --dry-run 2>&1 || true; } | grep -q 'export PATH'"
 
+# F6: doctor surfaces the resolved update slug, so a fork user sees their update targets
+# the fork (and the existing --repo/PLUMBLINE_REPO override is discoverable).
+assert "doctor reports the resolved update slug" \
+  "{ '$PLUMBLINE' --root '$REPO' doctor 2>&1 || true; } | grep -qiE 'update slug|update repo'"
+
 finish "install path tests"

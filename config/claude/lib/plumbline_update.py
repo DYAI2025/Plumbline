@@ -477,6 +477,13 @@ def doctor(_args: argparse.Namespace, root: Path) -> int:
     print(f"PATH: {bindir} {'on' if on_path else 'NOT on'} $PATH")
     if not on_path:
         print(f'  fix: export PATH="{bindir}:$PATH"  (add to your shell rc, then restart the shell)')
+    # Update source — surface the resolved slug so a fork user sees where updates come from,
+    # and that the upstream override already exists (no new capability, just discoverability).
+    slug = default_repo_slug(root)
+    print(f"update slug: {slug}")
+    if slug != DEFAULT_REPO_SLUG:
+        print(f"  note: fork detected — for upstream updates: plumbline update --repo {DEFAULT_REPO_SLUG}")
+        print(f"        (or set PLUMBLINE_REPO={DEFAULT_REPO_SLUG})")
     return 0 if all(ok for _, ok in checks) else 1
 
 
