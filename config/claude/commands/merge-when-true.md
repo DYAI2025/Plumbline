@@ -20,7 +20,8 @@ even if CI is green.** Uncertainty resolves toward *not* merging; escalate to th
    check is `pass` (confirm the *conclusion*, not `status=CLEAN`/`mergeable=MERGEABLE`,
    which only mean "no failing *required* check"). A release-please / `GITHUB_TOKEN`-pushed
    branch may get **no CI run at all** — then run `bash config/claude/tests/run_all.sh` on
-   the branch yourself and require `ALL CHECKS PASSED`.
+   the branch yourself and require `ALL CHECKS PASSED`. (A local run substitutes for an
+   *absent* CI run; it does not excuse confirming any required check that *does* exist.)
 2. **Reality Ledger.** Every requirement that touches I/O, a remote, an external API, or UI
    sits at `real-boundary-smoke` or `production-verified`. Anything still `*-fake` is **RED
    regardless of green tests**, and that RED was **not** silently downgraded.
