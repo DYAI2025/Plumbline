@@ -112,6 +112,9 @@ bash config/claude/tests/test_release_please.sh || fail=1
 stage "update layer tests"
 bash config/claude/tests/test_update_layer.sh || fail=1
 
+stage "gate contract tests (G1/G3/G4)"
+bash config/claude/tests/test_gate_contracts.sh || fail=1
+
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
   shellcheck -x -P SCRIPTDIR \
