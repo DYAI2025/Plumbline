@@ -63,7 +63,7 @@ fallbacks keep the bare names resolvable for co-workers.
 | `writing-plans` | 1 | vendored recommended | fallback installed automatically |
 | `writing-skills` | 4 | vendored required for FULL | fallback installed automatically |
 | `skill-creator` | learning loop persistence | vendored required for approved skill writes | fallback installed automatically |
-| `product-management:write-spec` | 0 (optional) | vendored optional | fallback installed automatically |
+| `product-management-write-spec` | 0 (optional) | vendored optional | fallback installed automatically |
 | `using-git-worktrees` | guard | vendored optional | fallback installed automatically |
 | `defense-in-depth` | verification design | vendored anchor | fallback installed automatically |
 | `testing-anti-patterns` | test review | vendored anchor | fallback installed automatically |

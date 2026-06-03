@@ -215,6 +215,12 @@ Requirements: `git`, `bash`, `python3`, and `jq` (for hook registration). Full
 portability, web-session bootstrap, and per-project gate tooling are covered in
 [`SETUP.md`](SETUP.md).
 
+**Installation model (honest boundary):** Plumbline installs via `install.sh` only — it is
+**not a Claude Code plugin** (`/plugin install` does not apply) and **ships no MCP server**.
+Some vendored agents reference external MCP tools (`mcp__claude-flow__*`, …) that you would
+install separately; without them those references are simply inert. Exactly what is
+external vs. shipped vs. only-referenced is laid out in [`DEPENDENCIES.md`](DEPENDENCIES.md).
+
 ---
 
 ## Quality assurance

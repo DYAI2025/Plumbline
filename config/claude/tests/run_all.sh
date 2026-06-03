@@ -62,10 +62,12 @@ for p in sorted(glob.glob("**/*.md", recursive=True)):
     if d.get("name"):
         names[d["name"]] += 1
 dupes = {k: v for k, v in names.items() if v > 1}
+colon = sorted(k for k in names if ":" in k)
 print("parse failures:", bad or "none")
 print("missing description:", nodesc or "none")
 print("duplicate names:", dupes or "none")
-if bad or nodesc or dupes:
+print("colon in name (plugin-namespace syntax, invalid for a local skill/agent):", colon or "none")
+if bad or nodesc or dupes or colon:
     sys.exit(1)
 PY
 
