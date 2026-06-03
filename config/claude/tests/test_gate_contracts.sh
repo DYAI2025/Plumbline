@@ -29,12 +29,22 @@ assert "G4-C2 every roster role resolves in-repo" "python3 '$GC' resolve-roster 
 
 # G4-C3: prose examples in agileteam.md are a SUBSET of the manifest (prose uses 'e.g.')
 g4_manifest="$(python3 "$GC" roster-roles "$ROSTER")"
+g4_prose="$(python3 "$GC" prose-specialists "$CMD")"
+# Floor: prose-specialists exits 0 even with zero matches, so if agileteam.md's
+# "domain roles" line is reworded the subset loop below would run zero times and
+# give ZERO coverage while staying green. Assert the prose set is non-empty FIRST,
+# mirroring the G1-C1 positive-integer floor. (Subset semantics are kept: prose is
+# an intentionally illustrative 'e.g.' list, so the manifest may hold more.)
+assert "G4-C3 prose specialist set is non-empty (not vacuous)" \
+  "[ \"\$(printf '%s\\n' \"\$g4_prose\" | grep -c .)\" -gt 0 ]"
 while read -r role; do
   [ -z "$role" ] && continue
   TESTS_RUN=$((TESTS_RUN+1))
-  if printf '%s\n' "$g4_manifest" | grep -qx "$role"; then _pass "G4-C3 prose specialist '$role' is in the manifest"
+  if printf '%s\n' "$g4_manifest" | grep -qxF "$role"; then _pass "G4-C3 prose specialist '$role' is in the manifest"
   else _fail "G4-C3 prose specialist '$role' missing from manifest"; fi
-done < <(python3 "$GC" prose-specialists "$CMD")
+done <<EOF
+$g4_prose
+EOF
 
 # G4-C5 (negative fixture): resolve-roster reddens on a bogus role
 assert "G4-C5 resolve-roster reddens on unresolved role" "! python3 '$GC' resolve-roster '$FIX/g4_unresolved_roster.yml' '$REPO'"

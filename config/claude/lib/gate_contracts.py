@@ -34,11 +34,13 @@ def _read(path):
 
 
 def token_bound(path):
-    m = re.search(r"(\d+)\s*([kK])?\s+tokens", _read(path))
+    # Require the 'k' suffix so only "Nk tokens" (the real "≤ ~15k tokens total"
+    # phrasing) matches; a stray "N tokens" sentence must NOT be picked up.
+    m = re.search(r"(\d+)\s*[kK]\s+tokens", _read(path))
     if not m:
         print(f"no parseable token cap in {path}", file=sys.stderr)
         return 1
-    value = int(m.group(1)) * (1000 if m.group(2) else 1)
+    value = int(m.group(1)) * 1000
     print(value)
     return 0
 
@@ -78,7 +80,9 @@ def prose_specialists(path):
 
 
 def _name_exists(root, role):
-    pat = re.compile(r'^name:\s*"?' + re.escape(role) + r'"?\s*$')
+    # Accept single OR double quotes around the value, mirroring the repo's own
+    # frontmatter validator (run_all.sh strips both " and ' before comparing).
+    pat = re.compile(r"""^name:\s*["']?""" + re.escape(role) + r"""["']?\s*$""")
     for path in glob.glob(os.path.join(root, "**", "*.md"), recursive=True):
         if f"{os.sep}explorer{os.sep}" in path:
             continue
@@ -112,14 +116,20 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     cmd, rest = argv[1], argv[2:]
-    if cmd == "token-bound" and len(rest) == 1:
-        return token_bound(rest[0])
-    if cmd == "roster-roles" and len(rest) in (1, 2):
-        return roster_roles(rest[0], rest[1] if len(rest) == 2 else "all")
-    if cmd == "prose-specialists" and len(rest) == 1:
-        return prose_specialists(rest[0])
-    if cmd == "resolve-roster" and len(rest) == 2:
-        return resolve_roster(rest[0], rest[1])
+    try:
+        if cmd == "token-bound" and len(rest) == 1:
+            return token_bound(rest[0])
+        if cmd == "roster-roles" and len(rest) in (1, 2):
+            return roster_roles(rest[0], rest[1] if len(rest) == 2 else "all")
+        if cmd == "prose-specialists" and len(rest) == 1:
+            return prose_specialists(rest[0])
+        if cmd == "resolve-roster" and len(rest) == 2:
+            return resolve_roster(rest[0], rest[1])
+    except OSError as e:
+        # Uniform clean error surface (no traceback); keep exit non-zero so the
+        # harness's `! ...` assertions still hold.
+        print(f"{cmd}: {e}", file=sys.stderr)
+        return 1
     print(f"unknown/invalid subcommand: {argv[1:]}", file=sys.stderr)
     return 2
 
