@@ -106,7 +106,7 @@ requirements → spec-sanity audit → planning → coder/reviewer TDD loop → 
 validation → product-judgment → human acceptance → retrospective. Canonical source:
 **`config/claude/commands/agileteam.md`** (other commands in that dir:
 `agileteam-bench`, `concilium`, `honest-status`, `bench-oracle`, `reflect`,
-`reflect-skills`).
+`reflect-skills`, `plumbline-update`, `merge-when-true`).
 
 **Bootstrap:** the command must exist at `~/.claude/commands/agileteam.md` to be
 invokable. If it is missing, offer to run `./config/claude/install.sh`. Keep the global
