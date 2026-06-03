@@ -1,4 +1,4 @@
-# .github/FUNDING.yml
+.github/FUNDING.yml
 # Renders the "Sponsor" button on the repo. It only appears once the GitHub
 # Sponsors profile is approved AND Settings → Features → Sponsorships is on.
 # `github:` accepts a single handle or a list of up to four.
