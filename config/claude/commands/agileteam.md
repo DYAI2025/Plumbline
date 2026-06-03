@@ -395,7 +395,7 @@ parameter — that section is the single source of truth for the per-role model 
    `ai-native-prd-architect` (mandatory) to produce REQ-IDs, data model, architecture
    constraints, Given/When/Then acceptance, NFRs, security matrix, atomic tasks, and
    `MISSING/ASSUMPTION/OPEN QUESTION/BLOCKER`. The PRD must link back to
-   `docs/canvas/<feature>.canvas.md`. Optionally use `product-management:write-spec`
+   `docs/canvas/<feature>.canvas.md`. Optionally use `product-management-write-spec`
    first if the goal is vague.
 2. **Gap rule (hard):** NEVER close a MISSING/OPEN QUESTION/BLOCKER by your own
    "logical" guess. Close each gap individually by asking the user via Skill
