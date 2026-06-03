@@ -8,7 +8,13 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # Run the whole suite on Linux AND macOS — the latter catches GNU-vs-BSD portability
+    # regressions (e.g. the GNU-only `tar` flags that falsely RED-ed run_all on macOS).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +27,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyyaml
-          sudo apt-get update
-          sudo apt-get install -y jq shellcheck
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install jq shellcheck
+          else
+            sudo apt-get update
+            sudo apt-get install -y jq shellcheck
+          fi
 
       - name: Run check suite
         run: bash config/claude/tests/run_all.sh
