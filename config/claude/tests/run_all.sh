@@ -118,6 +118,9 @@ bash config/claude/tests/test_gate_contracts.sh || fail=1
 stage "challenge token oracle scorer tests"
 bash config/claude/tests/test_challenge_token_oracle.sh || fail=1
 
+stage "readme honesty (Wave A: agent count derived from explorer + vendored framing)"
+bash config/claude/tests/test_readme_honesty.sh || fail=1
+
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
   shellcheck -x -P SCRIPTDIR \
