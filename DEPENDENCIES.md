@@ -59,6 +59,10 @@ them still load and run; they only lose the corresponding tool.
 | **`mcp__qwen__`** | foreign-model MCP — `/concilium` (Qwen body) | no |
 | **`mcp__sublinear-time-solver__`** | specialized solver MCP referenced by a few vendored agents | no |
 
+*Naming note: some vendored agents write these with underscores (`mcp__claude_flow__`)
+rather than hyphens (`mcp__claude-flow__`) — the same logical server either way; the
+disclosure guard matches both forms.*
+
 > **Council note:** the foreign-model families (`gemini`/`openai`/`qwen`) are the path to a
 > genuinely diverse `/concilium`. Today they are **not wired**, so the council runs as a
 > structured single-model critique (disclosed at runtime — see `concilium.md` Step 0.5).
