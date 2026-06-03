@@ -11,13 +11,14 @@ FIXTURES="$HERE/fixtures/update"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
-# Build deterministic fixture tarballs across platforms. macOS bsdtar otherwise
-# injects AppleDouble (._*) metadata members whose top-level ._<dir> entry sorts
-# before the real top dir — historically RED-ing this whole suite on macOS in a
-# filesystem-dependent (nondeterministic) way. COPYFILE_DISABLE=1 suppresses it on
-# macOS and is a harmless no-op on GNU tar (Linux). The production extractor is
-# independently hardened to ignore these members (see the AppleDouble regression
-# test below), so this only keeps the happy-path fixtures clean.
+# Best-effort request that Apple's tar omit AppleDouble (._*) metadata members
+# from the fixture tarballs (documented in Apple's tar(1); harmless unknown-var
+# no-op on GNU tar / Linux). Whether macOS tar emits ._* at all is xattr- and
+# filesystem-dependent (nondeterministic between runs), so this is a belt only:
+# correctness does NOT rely on it. The production extractor is independently
+# hardened to ignore AppleDouble / __MACOSX members whatever the source tar did
+# (see the AppleDouble regression test below, which synthesizes the members via
+# Python tarfile so it triggers on every platform regardless of this var).
 export COPYFILE_DISABLE=1
 
 assert "plumbline CLI exists" "test -x '$PLUMBLINE'"
