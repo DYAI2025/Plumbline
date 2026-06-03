@@ -15,9 +15,9 @@ try:
 except ImportError:
     sys.exit(
         "PyYAML required. Install it for this interpreter:\n"
-        "  pip install pyyaml\n"
+        "  python3 -m pip install pyyaml\n"
         "  # PEP-668 (externally-managed) python, e.g. system python3 on macOS/Debian:\n"
-        "  pip install --user --break-system-packages pyyaml\n"
+        "  python3 -m pip install --user --break-system-packages pyyaml\n"
         "  # or run under a venv / uv that has it."
     )
 
