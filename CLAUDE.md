@@ -155,6 +155,12 @@ Prefer A over B over C; always preview diffs before writing shared/global config
   `bash config/claude/tests/run_all.sh` before committing.
 - Evidence over vibes: back claims with code/tests/logs or an explicit assumption; mark
   absent tooling `MISSING` rather than pretending it passes.
+- **Landing an additive doc run_all-green has two tripwires.** A new `docs/**.md` is the
+  safe way to ship a disclosure/finding, but: (a) start it with a plain `#` heading and
+  **no `---` frontmatter**, or the frontmatter validator (`run_all.sh`, globs `**/*.md`)
+  demands `name`/`description`; (b) do **not** quote a `mcp__<family>__` literal whose
+  family isn't already in `DEPENDENCIES.md`, or `test_dependencies_doc.sh` reddens the
+  suite — refer to MCP tools in prose instead.
 
 ## Process guidelines (learned — bench, release, merge safety)
 
@@ -164,6 +170,7 @@ Hard-won rules from the v0.10 milestone — each from a real incident this repo 
 - **No hardcoded version numbers in tests/fixtures — read `VERSION` dynamically.** Tests that pinned the release-please-managed version broke the instant the repo released past their literal (`expected '0.9.0', got '0.10.0'`; a fixture "latest" of `v0.10.0` that the repo caught up to). A hardcoded version in a test is a time-bomb that fails on the next release. Instead: read the version from `VERSION` at runtime (or assert *consistency* — CLI/manifest must match `VERSION`); synthesize any "newer" fixture relative to the current version (e.g. minor+1) so the suite survives every bump.
 - **Verify the CI conclusion before merging — `mergeable`/`CLEAN` ≠ tested.** A release PR merged on `mergeable=CLEAN` landed version-hardcoded test failures on `main` (briefly RED). `status=CLEAN`/`mergeable=MERGEABLE` only means "no *failing required* check" — and a release-please branch pushed by `GITHUB_TOKEN` gets **no CI run at all** (GitHub suppresses workflow-triggered workflows). So before merging to a shared branch: confirm the actual `ci` workflow conclusion is `success`; if the branch has no CI run, **run `run_all.sh` on the branch locally first**. Never merge to `main` on `mergeable` alone.
 - **Use release-please-recognized commit types so work is never invisible in the changelog.** The v0.11.0 release silently dropped its security hardening from `CHANGELOG.md` because the commits used a non-standard `harden:` type that release-please maps to no section — the user-facing release looked like it shipped only features, hiding the verifyCommand/zip-slip/SSRF fixes. So: for anything that should appear in the changelog, use a recognized Conventional-Commits type — **`fix:` (or `feat:` with a security scope, e.g. `feat(security):`) for security hardening**, not ad-hoc verbs. Reserve `chore:`/`docs:`/`test:` for changes you deliberately want to keep *out* of the release notes (and remember `fix:`/`feat:` will trigger a release-please version bump).
+- **No brittle exact counts in honesty/disclosure docs — prefer `~approximate` or derive them.** The gate-enforcement audit hardcoded `63`/`117` `has()` counts; an independent fidelity review found the real figures were `61`/`115`/`117` — they differ *purely by counting method* (`grep` line-anchored vs. anywhere). An exact integer that's contestable is *less* honest than an explicit `~`. So in docs that make a counted claim, use an approximate figure (or one a test re-derives), and reserve exact counts for values something machine-verifies. (The no-hardcoded-version rule above, applied to prose.)
 
 ## Benchmark-claim honesty (learned)
 
