@@ -27,6 +27,44 @@
 
 ---
 
+## ⚡ Quickstart — install · update · which model
+
+**Install** — Claude Code is the runtime; you also need `git`, `bash`, `python3`, `jq`:
+
+```bash
+git clone https://github.com/DYAI2025/Plumbline plumbline
+cd plumbline
+./config/claude/install.sh     # symlinks repo → ~/.claude/agents, installs commands/skills/hook
+                               # add --copy on Windows / if you prefer copies over symlinks
+```
+
+Then, in any project inside Claude Code:
+
+```bash
+/agileteam "add OAuth2 login with refresh-token rotation"
+```
+
+**Update from the terminal** — `plumbline update` fetches the latest published GitHub release and applies it with **verified-or-revert** (it auto-reverts if the post-update check fails):
+
+```bash
+plumbline update --check     # is a newer release out? (compares your version to the latest release)
+plumbline update             # fetch + apply the latest release
+plumbline doctor             # self-check: version · $PATH discoverability · the update slug
+```
+
+> `plumbline: command not found`? The CLI dir isn't on `$PATH` yet — run `~/.claude/bin/plumbline …`, or add `export PATH="$HOME/.claude/bin:$PATH"` to your shell rc (the installer prints this hint). Inside a Claude Code session, the **`/plumbline-update`** slash command does the same. Updating a fork from upstream: `plumbline update --repo DYAI2025/Plumbline`.
+
+**Which model to use — measured, not a preference.** Plumbline defaults every role to your current session model (`/model`). But the *reach-the-real-boundary* safety net on the checking gates (review · security · validation · judgment) is **only guaranteed on Opus** — on Sonnet and Haiku that exact "green-but-broken" bug class escaped **3/3** in our benchmark (below).
+
+- **Best quality → run on Opus** (or reply `gates on opus` at run start to put just the five checking gates on Opus). This costs **noticeably more tokens** — and buys the truth-checking judgment a cheaper model cannot give you.
+- **Lower cost → Sonnet / Haiku** is fine for routine work, on the explicit understanding that the Opus-only safety net is not guaranteed. Plumbline discloses this once per run and never silently up- or down-grades.
+
+> **Higher model → higher token cost → higher quality of the truth-checking.** That trade-off *is* the point of the benchmark below. More detail: the *Model policy* section below · the no-plugin / no-MCP-server install boundary in [`DEPENDENCIES.md`](DEPENDENCIES.md) · portability & web bootstrap in [`SETUP.md`](SETUP.md).
+
+**Installation model (honest boundary):** install is via `install.sh` only — Plumbline is **not a Claude Code plugin** (`/plugin install` does not apply) and **ships no MCP server**; some vendored agents reference external MCP tools you would install separately (inert without them). See [`DEPENDENCIES.md`](DEPENDENCIES.md).
+
+---
+
 ## Why "Plumbline"?
 
 A plumb line is the oldest tool humanity has for checking whether something is **truly straight** — not whether it *looks* straight. You hang a weight on a string, and gravity gives you one honest reference that never lies.
@@ -193,33 +231,6 @@ orchestrator, transparently.)
 |---|---|---|
 | `core` (default) | Safe, runnable baseline | None — learnings stay human-gated |
 | `full` | Autonomous evolution (canary + auto-revert) | Only once a `metrics/runs.jsonl` baseline exists |
-
----
-
-## Quickstart
-
-```bash
-git clone https://github.com/DYAI2025/Plumbline plumbline
-cd plumbline
-./config/claude/install.sh        # symlinks repo → ~/.claude/agents, installs commands/skills/hook
-                                  # add --copy on Windows / if you prefer copies
-```
-
-Then, in any project:
-
-```bash
-/agileteam "add OAuth2 login with refresh-token rotation"
-```
-
-Requirements: `git`, `bash`, `python3`, and `jq` (for hook registration). Full
-portability, web-session bootstrap, and per-project gate tooling are covered in
-[`SETUP.md`](SETUP.md).
-
-**Installation model (honest boundary):** Plumbline installs via `install.sh` only — it is
-**not a Claude Code plugin** (`/plugin install` does not apply) and **ships no MCP server**.
-Some vendored agents reference external MCP tools (`mcp__claude-flow__*`, …) that you would
-install separately; without them those references are simply inert. Exactly what is
-external vs. shipped vs. only-referenced is laid out in [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ---
 
