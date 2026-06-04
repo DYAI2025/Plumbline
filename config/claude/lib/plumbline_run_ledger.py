@@ -28,8 +28,8 @@ one row per gate event:
 Subcommands
 -----------
   record      append one gate event (fail-closed on a bad --status)
-  resume-point  print the first mandatory canonical gate whose LATEST row is
-                missing or not CLEARED. Fail-closed sentinels:
+  resume-point  print the first gate (in recorded order) whose LATEST status is not
+                CLEARED. Fail-closed sentinels:
                   * ledger missing / empty / corrupt -> START sentinel (begin at
                     Phase 0; NEVER "all cleared")
                   * every recorded gate latest-CLEARED but no explicit
