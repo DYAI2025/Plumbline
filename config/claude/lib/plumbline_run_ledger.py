@@ -32,7 +32,12 @@ Subcommands
                 missing or not CLEARED. Fail-closed sentinels:
                   * ledger missing / empty / corrupt -> START sentinel (begin at
                     Phase 0; NEVER "all cleared")
-                  * every expected gate latest-CLEARED -> COMPLETE sentinel
+                  * every recorded gate latest-CLEARED but no explicit
+                    __RUN_COMPLETE__ marker -> START sentinel (the ledger has no
+                    authoritative full gate list, so all-observed-cleared is not
+                    proof that later gates ran)
+                  * explicit __RUN_COMPLETE__ marker latest-CLEARED -> COMPLETE
+                    sentinel
   revalidate  exit 0 iff gate G's LATEST row is CLEARED AND its recorded
                 artifact_hash == --current-hash; otherwise non-zero (the human gate
                 must be re-asked because its artifact changed, or it was never
@@ -43,8 +48,11 @@ Design invariants
   * `at` is caller-supplied; there is no wall-clock call anywhere in this module.
   * resume-point fails CLOSED: any doubt about the ledger resolves to "start from
     the beginning", never to "everything is done". A laundered "complete" on a
-    corrupt ledger would skip every gate — the exact failure this framework exists
-    to prevent.
+    corrupt or partial ledger would skip gates — the exact failure this framework
+    exists to prevent.
+  * The ledger stores observed events, not an authoritative /agileteam gate list,
+    so "all observed gates are CLEARED" is NOT completion. Completion requires an
+    explicit __RUN_COMPLETE__ marker recorded after the final gate clears.
   * Pure standard library. No third-party dependencies.
 
 Usage
@@ -79,10 +87,17 @@ CANONICAL_GATES = (
 
 # Fail-closed sentinels (kept in sync with config/claude/tests/test_run_ledger.sh).
 # START_SENTINEL means "resume from the very beginning (Phase 0)"; it is the answer
-# whenever the ledger cannot be trusted. COMPLETE_SENTINEL means every expected gate
-# is latest-CLEARED. Neither is a real gate name, so they can never collide with one.
+# whenever the ledger cannot be trusted or is only partial. COMPLETE_SENTINEL means
+# the caller explicitly recorded RUN_COMPLETE_GATE as CLEARED after the final gate.
+# The sentinel values are not real gate names, so they can never collide with one.
 START_SENTINEL = "__START__"
 COMPLETE_SENTINEL = "__COMPLETE__"
+
+# Synthetic terminal marker. Because the ledger only stores observed events and has
+# no authoritative full /agileteam gate list, resume-point must not infer completion
+# from "every recorded gate is CLEARED"; a crash between gates would otherwise skip
+# gates that were never recorded. Record this marker only after the final gate clears.
+RUN_COMPLETE_GATE = "__RUN_COMPLETE__"
 
 
 def ledger_path(repo, feature):
@@ -162,15 +177,24 @@ def cmd_resume_point(args):
         # Fail closed: missing / empty / corrupt -> start from the beginning.
         print(START_SENTINEL)
         return 0
-    _, latest = latest_status_by_gate(rows)
-    for gate in CANONICAL_GATES:
-        row = latest.get(gate)
-        if row is None or row.get("status") != "CLEARED":
+    order, latest = latest_status_by_gate(rows)
+    for gate in order:
+        if gate == RUN_COMPLETE_GATE:
+            continue
+        if latest[gate].get("status") != "CLEARED":
             print(gate)
             return 0
-    # Every expected gate is latest-CLEARED; extra recorded optional gates do not
-    # make a partial mandatory ledger complete, and do not block CORE completion.
-    print(COMPLETE_SENTINEL)
+
+    complete_row = latest.get(RUN_COMPLETE_GATE)
+    if complete_row is not None and complete_row.get("status") == "CLEARED":
+        print(COMPLETE_SENTINEL)
+        return 0
+
+    # Fail closed: the ledger has no authoritative list of gates, so a ledger whose
+    # observed gates are all latest-CLEARED may simply be partial (for example, a
+    # crash after one gate cleared but before the next gate's PENDING row was
+    # recorded). Do not let resume skip unobserved later gates.
+    print(START_SENTINEL)
     return 0
 
 
