@@ -262,8 +262,12 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   `revalidate --gate G --current-hash H` passes**; if the gate's artifact changed since it
   was cleared (hash mismatch), re-ask the human — a stale clear is never honoured. The
   ledger fails **closed**: a missing / empty / corrupt ledger resumes from the beginning
-  (Phase 0), never "all cleared". Record each gate's CLEARED/PENDING/PAUSED transition to
-  the ledger (via `context-keeper`) as the run proceeds, so the next invocation can resume.
+  (Phase 0), never "all cleared". Because the ledger records observed events rather than
+  the authoritative full `/agileteam` gate list, an all-observed-CLEARED ledger is still
+  treated as partial and resumes from Phase 0 unless an explicit `__RUN_COMPLETE__` marker
+  was recorded after the final gate cleared. Record each gate's CLEARED/PENDING/PAUSED
+  transition to the ledger (via `context-keeper`) as the run proceeds, so the next
+  invocation can resume.
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
 - Identify the **target repo**. If the change is non-trivial and you are on a default
