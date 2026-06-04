@@ -75,6 +75,13 @@ applied by the current Claude Code runtime — only an explicit dispatch paramet
 effect, so model control lives in the orchestrator, transparently. After editing any
 agent, run `build-explorer.sh` and the frontmatter validator before committing.
 
+**Resolving whether an agent exists — quote-aware, by `name:` not filename.** Agent files
+are named by topic, not by their `name:` value (e.g. `name: "backend-dev"` lives in
+`development/backend/dev-backend-api.md`), and `name:` is often YAML-quoted. `find -name
+"<role>.md"` and `grep '^name: <role>$'` both miss these — resolve with a quote-aware scan
+(`grep -rlE '^name: *"?<role>"?[[:space:]]*$' --include='*.md'`) before claiming an agent
+is absent.
+
 ## Core invariants (don't violate these)
 
 - **True-Line governance** — Plumbline optimizes for staying true to confirmed human
@@ -99,7 +106,7 @@ requirements → spec-sanity audit → planning → coder/reviewer TDD loop → 
 validation → product-judgment → human acceptance → retrospective. Canonical source:
 **`config/claude/commands/agileteam.md`** (other commands in that dir:
 `agileteam-bench`, `concilium`, `honest-status`, `bench-oracle`, `reflect`,
-`reflect-skills`).
+`reflect-skills`, `plumbline-update`, `merge-when-true`).
 
 **Bootstrap:** the command must exist at `~/.claude/commands/agileteam.md` to be
 invokable. If it is missing, offer to run `./config/claude/install.sh`. Keep the global
@@ -148,3 +155,23 @@ Prefer A over B over C; always preview diffs before writing shared/global config
   `bash config/claude/tests/run_all.sh` before committing.
 - Evidence over vibes: back claims with code/tests/logs or an explicit assumption; mark
   absent tooling `MISSING` rather than pretending it passes.
+- **Landing an additive doc run_all-green has two tripwires.** A new `docs/**.md` is the
+  safe way to ship a disclosure/finding, but: (a) start it with a plain `#` heading and
+  **no `---` frontmatter**, or the frontmatter validator (`run_all.sh`, globs `**/*.md`)
+  demands `name`/`description`; (b) do **not** quote a `mcp__<family>__` literal whose
+  family isn't already in `DEPENDENCIES.md`, or `test_dependencies_doc.sh` reddens the
+  suite — refer to MCP tools in prose instead.
+
+## Process guidelines (learned — bench, release, merge safety)
+
+Hard-won rules from the v0.10 milestone — each from a real incident this repo hit. Binding for benchmark/eval runs and release work here.
+
+- **Benchmark/eval isolation — never run builder agents in-tree.** A full-pipeline bench whose `coder`/builder sub-agents have file tools + the repo cwd *will* pollute the tree: ours wrote real files into `metrics/corpus/**`, and its staged arm-prompt copies tripped the frontmatter validator's duplicate-`name:` scan (it globs `**/*.md`) — turning `run_all.sh` **RED, twice**. So: (a) **stage all bench inputs OUTSIDE the repo** (`/tmp/…` or a dedicated worktree), never in a tracked dir; (b) **hard-constrain builder agents to TEXT-ONLY output** ("respond with code as text; do NOT Write/Edit/Bash any files"); (c) **after every bench run, verify `git status` is clean and `run_all.sh` is green**, and revert any stray files before continuing.
+- **No hardcoded version numbers in tests/fixtures — read `VERSION` dynamically.** Tests that pinned the release-please-managed version broke the instant the repo released past their literal (`expected '0.9.0', got '0.10.0'`; a fixture "latest" of `v0.10.0` that the repo caught up to). A hardcoded version in a test is a time-bomb that fails on the next release. Instead: read the version from `VERSION` at runtime (or assert *consistency* — CLI/manifest must match `VERSION`); synthesize any "newer" fixture relative to the current version (e.g. minor+1) so the suite survives every bump.
+- **Verify the CI conclusion before merging — `mergeable`/`CLEAN` ≠ tested.** A release PR merged on `mergeable=CLEAN` landed version-hardcoded test failures on `main` (briefly RED). `status=CLEAN`/`mergeable=MERGEABLE` only means "no *failing required* check" — and a release-please branch pushed by `GITHUB_TOKEN` gets **no CI run at all** (GitHub suppresses workflow-triggered workflows). So before merging to a shared branch: confirm the actual `ci` workflow conclusion is `success`; if the branch has no CI run, **run `run_all.sh` on the branch locally first**. Never merge to `main` on `mergeable` alone.
+- **Use release-please-recognized commit types so work is never invisible in the changelog.** The v0.11.0 release silently dropped its security hardening from `CHANGELOG.md` because the commits used a non-standard `harden:` type that release-please maps to no section — the user-facing release looked like it shipped only features, hiding the verifyCommand/zip-slip/SSRF fixes. So: for anything that should appear in the changelog, use a recognized Conventional-Commits type — **`fix:` (or `feat:` with a security scope, e.g. `feat(security):`) for security hardening**, not ad-hoc verbs. Reserve `chore:`/`docs:`/`test:` for changes you deliberately want to keep *out* of the release notes (and remember `fix:`/`feat:` will trigger a release-please version bump).
+- **No brittle exact counts in honesty/disclosure docs — prefer `~approximate` or derive them.** The gate-enforcement audit hardcoded `63`/`117` `has()` counts; an independent fidelity review found the real figures were `61`/`115`/`117` — they differ *purely by counting method* (`grep` line-anchored vs. anywhere). An exact integer that's contestable is *less* honest than an explicit `~`. So in docs that make a counted claim, use an approximate figure (or one a test re-derives), and reserve exact counts for values something machine-verifies. (The no-hardcoded-version rule above, applied to prose.)
+
+## Benchmark-claim honesty (learned)
+
+When publishing benchmark results (README/docs), a claim must carry its own scope and **both** anti-Goodhart metrics. The v0.10 n=6 slice showed catch-rate and false-positive-rate can move in *opposite* directions (the DNA was net-positive on Opus but a catch-vs-cry-wolf trade-off on sub-Opus). So: never headline catch-rate alone ("DNA halves escapes") without the cry-wolf number beside it; keep `n=`, task count, and model scope visible; "strictly better" is a claim that needs *both* metrics to support it. Any cost-optimization lever (M7) is promoted only when it holds catch **and** does not raise cry-wolf — gated on **BOTH**.

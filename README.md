@@ -6,7 +6,7 @@
 
 **A defense-in-depth agent framework for Claude Code — built around one obsession: proving that work is *actually* done, not that it merely *looks* done.**
 
-`87 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
+`86 subagents` · `16 vendored skills` · `/agileteam` v3 orchestrator · `/concilium` four-body council · `Reality-Ledger QA` · `empirically benchmarked`
 
 **An agile AI agent framework for Claude Code: a self-learning, customer-value-governed agentic team that builds software with TDD gates, Kaizen retrospectives, and a defense-in-depth quality pipeline.**
 
@@ -15,13 +15,53 @@
 > ### We benchmarked our own agent framework — and discovered our cleverest idea didn't work.
 > Then we shipped the honest result anyway. **That** is Plumbline.
 
-**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 87 agents in your browser, nothing to install
+**[▶ Live demo](https://dyai2025.github.io/Plumbline/)** · explore all 86 agents in your browser, nothing to install
+
+[![Sponsor Plumbline — fund the token costs of the benchmarks](https://img.shields.io/badge/Sponsor-fund%20the%20benchmarks-ff5fa2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/DYAI2025)
 
 <br/>
 
 ![Plumbline Agent Explorer — searching, filtering and inspecting the colour-coded subagent library](docs/images/explorer-demo.gif)
 
 </div>
+
+---
+
+## ⚡ Quickstart — install · update · which model
+
+**Install** — Claude Code is the runtime; you also need `git`, `bash`, `python3`, `jq`:
+
+```bash
+git clone https://github.com/DYAI2025/Plumbline plumbline
+cd plumbline
+./config/claude/install.sh     # symlinks repo → ~/.claude/agents, installs commands/skills/hook
+                               # add --copy on Windows / if you prefer copies over symlinks
+```
+
+Then, in any project inside Claude Code:
+
+```bash
+/agileteam "add OAuth2 login with refresh-token rotation"
+```
+
+**Update from the terminal** — `plumbline update` fetches the latest published GitHub release and applies it with **verified-or-revert** (it auto-reverts if the post-update check fails):
+
+```bash
+plumbline update --check     # is a newer release out? (compares your version to the latest release)
+plumbline update             # fetch + apply the latest release
+plumbline doctor             # self-check: version · $PATH discoverability · the update slug
+```
+
+> `plumbline: command not found`? The CLI dir isn't on `$PATH` yet — run `~/.claude/bin/plumbline …`, or add `export PATH="$HOME/.claude/bin:$PATH"` to your shell rc (the installer prints this hint). Inside a Claude Code session, the **`/plumbline-update`** slash command does the same. Updating a fork from upstream: `plumbline update --repo DYAI2025/Plumbline`.
+
+**Which model to use — measured, not a preference.** Plumbline defaults every role to your current session model (`/model`). But the *reach-the-real-boundary* safety net on the checking gates (review · security · validation · judgment) is **only guaranteed on Opus** — on Sonnet and Haiku that exact "green-but-broken" bug class escaped **3/3** in our benchmark (below).
+
+- **Best quality → run on Opus** (or reply `gates on opus` at run start to put just the five checking gates on Opus). This costs **noticeably more tokens** — and buys the truth-checking judgment a cheaper model cannot give you.
+- **Lower cost → Sonnet / Haiku** is fine for routine work, on the explicit understanding that the Opus-only safety net is not guaranteed. Plumbline discloses this once per run and never silently up- or down-grades.
+
+> **Higher model → higher token cost → higher quality of the truth-checking.** That trade-off *is* the point of the benchmark below. More detail: the *Model policy* section below · the no-plugin / no-MCP-server install boundary in [`DEPENDENCIES.md`](DEPENDENCIES.md) · portability & web bootstrap in [`SETUP.md`](SETUP.md).
+
+**Installation model (honest boundary):** install is via `install.sh` only — Plumbline is **not a Claude Code plugin** (`/plugin install` does not apply) and **ships no MCP server**; some vendored agents reference external MCP tools you would install separately (inert without them). See [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ---
 
@@ -59,6 +99,17 @@ Across four independently-designed oracle corpora (`metrics/corpus/`), the hones
 
 That intellectual honesty — *measuring* our own framework instead of marketing it — is the spirit of Plumbline.
 
+### v0.10 — the discipline, measured end-to-end (`n=6` full-pipeline slice)
+
+The oracle above tests one agent in isolation. In **v0.10** we measured the *whole pipeline*: a buried-gap build (`tester → coder → reviewer → production-validator`) run under two arms — the frozen-v3 agents vs. the evolved **Reality-Ledger DNA** — across a weak model (Haiku) and a strong one (Opus), scored by a **blind judge**. Two signals stood out:
+
+We measured **both halves** of the ledger — catch-rate on planted gaps *and* false-positive ("cry-wolf") rate on pure-logic controls — and the honest answer is **not** "strictly better":
+
+- ✅ **On Opus — a clean win.** Both arms catch every gap, but the frozen pipeline **cries wolf on 67% of pure-logic features** (demanding boundary tests a discount calculator doesn't need); the DNA's *"fires only on genuine boundary features, never on pure logic"* reflex cuts that to **17%**. **Same catch, ~4× less crying wolf.**
+- ⚖️ **On a sub-Opus model — a trade-off, not a free lunch.** On Haiku the DNA **halves the boundary-defect escape rate (67% → 33%)** — but it **also raises the false-positive rate (0% → 33%).** The catch-gain on the weak model *is* partly bought with over-sensitivity. We say so plainly.
+
+> **The scope is the point** — this is Plumbline: `n=6` per cell · 2 gap tasks + 2 control tasks · ~24M tokens across two runs · 240 coordinated agents · judge-scored. "The DNA is strictly better" would be a lie; **"net-positive on Opus, a trade-off on sub-Opus"** is the measured truth. Full ledger + setup → **[the transparent deep-dive →](docs/benchmarks/2026-06-02-full-pipeline.md)**.
+
 ### Built on that finding
 
 - **Reality Ledger** — every requirement carries an *evidence class* (`unit-fake → integration-fake → real-boundary-smoke → production-verified`). Anything touching I/O, a remote, an external API or UI that stays `*-fake` is **RED regardless of green tests**, and that RED cannot be silently downgraded.
@@ -78,7 +129,7 @@ Plumbline even ships its own honesty as commands: **`/honest-status`** (separate
 - 🪜 **Defense-in-depth quality gates** — many diverse, uncorrelated checks (Gates A–E) so a defect must survive several independent reviewers, not one.
 - 🔬 **Reality Ledger** — every requirement carries an evidence class; anything that stays fake/mock is **RED regardless of green tests**, and can't be silently downgraded.
 - 📊 **Empirically benchmarked** — a deterministic mutation-oracle harness measures the agents themselves; we published the honest negative result, not just the wins.
-- 🧩 **87 ready-to-use Claude Code subagents + 16 vendored skills** across 21 categories — coding, review, security, SPARC, swarm, hive-mind, consensus, GitHub automation, and more.
+- 🧩 **86 Claude Code subagents + 16 vendored skills** across 21 categories. Honest split: a small **Plumbline-engineered core** (~16 — the `/agileteam` pipeline, the `/concilium` council, the core TDD/governance roles) does the differentiating work; the majority (~70) are **vendored from the claude-flow agent base and shipped as a tested-workload dependency — prompts only, not individually benchmarked**, not "team members". (Count derived from the explorer extractor and drift-guarded; see `config/claude/tests/test_readme_honesty.sh`.)
 - 🖥️ **Live Agent Explorer** — a zero-install web UI to search, filter, and inspect every agent ([live demo](https://dyai2025.github.io/Plumbline/)).
 - 🛠️ **Portable & self-contained** — vendored skills + commands install with one script; works locally and in Claude Code on the web.
 
@@ -183,27 +234,6 @@ orchestrator, transparently.)
 
 ---
 
-## Quickstart
-
-```bash
-git clone https://github.com/DYAI2025/Plumbline plumbline
-cd plumbline
-./config/claude/install.sh        # symlinks repo → ~/.claude/agents, installs commands/skills/hook
-                                  # add --copy on Windows / if you prefer copies
-```
-
-Then, in any project:
-
-```bash
-/agileteam "add OAuth2 login with refresh-token rotation"
-```
-
-Requirements: `git`, `bash`, `python3`, and `jq` (for hook registration). Full
-portability, web-session bootstrap, and per-project gate tooling are covered in
-[`SETUP.md`](SETUP.md).
-
----
-
 ## Quality assurance
 
 ```bash
@@ -244,6 +274,22 @@ web bootstrap, and (if installed) shell scripts via `shellcheck`.
 - **Independence matters** — review, test, security and product judgment must not just echo the coder's perspective.
 - **Human gates stay** — especially for requirements, product decisions, and persistent self-improvement.
 - **Version prompts like code** — every agent change gets a diff, review, and validation.
+
+---
+
+## Support / sponsor the benchmarks
+
+Plumbline's central claims are *measured*, not asserted — and measuring them costs real model tokens. Every oracle corpus run re-executes agent variants, **secretly sabotages the code**, and counts which tests turn red (caught) vs. stay green (escaped), across Haiku, Sonnet and Opus. Sponsorship goes straight into that compute, so the empirical instrument stays honest, reproducible, and able to grow new corpora.
+
+[![Sponsor Plumbline](https://img.shields.io/badge/Sponsor-fund%20the%20benchmarks-ff5fa2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/DYAI2025)
+
+| Tier | What your contribution funds |
+|---|---|
+| **Haiku Supporter** · 5 €/mo | The daily smoke tests — keeps the repo's CORE oracle checks green every day. |
+| **Opus Validator** · 25 €/mo | A compute-heavy `FULL`-mode deep evaluation run — including the *provided-fake* trap that **only Opus** catches (0/3 escaped) while Sonnet and Haiku escape it 3/3. |
+| **Enterprise Governance Patron** · 100 €/mo | For teams running Plumbline in production — sustained benchmarking plus a seat at the table for governance / Reality-Ledger priorities. |
+
+Sponsorship is best-effort support for an open-source project — not a paid product, SLA, or feature guarantee. Thank you for helping keep the line true.
 
 ---
 

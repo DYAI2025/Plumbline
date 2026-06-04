@@ -20,10 +20,10 @@ REPO_DIR="$(cd "$HERE/../../.." && pwd)"
 LEDGER="$REPO_DIR/config/claude/lib/plumbline_run_ledger.py"
 WRAP="$REPO_DIR/config/claude/bin/plumbline-run-ledger"
 
-# Sentinels / synthetic marker the script promises (kept in sync with the lib).
-START_SENTINEL="__START__"
-COMPLETE_SENTINEL="__COMPLETE__"
-RUN_COMPLETE_GATE="__RUN_COMPLETE__"
+# Sentinels / synthetic marker are emitted by the lib so this contract test
+# cannot drift from the implementation literals.
+constants_shell="$(python3 "$LEDGER" constants --format shell)" || { echo "FAIL: unable to load run-ledger constants" >&2; exit 1; }
+eval "$constants_shell"
 
 pass=0; fail=0
 ok()  { printf '  ok   %s\n' "$1"; pass=$((pass+1)); }

@@ -229,6 +229,10 @@ register_enforce_hook() {
   fi
 }
 
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "dry-run: no changes will be written (target CLAUDE_HOME=$CLAUDE_HOME)"
+fi
+
 mkdir -p "$CLAUDE_HOME"
 [ "$INSTALL_AGENTS" -eq 1 ] && install_agent_repo
 [ "$INSTALL_COMMANDS" -eq 1 ] && install_commands
@@ -240,3 +244,24 @@ fi
 [ "$INSTALL_BIN" -eq 1 ] && install_bin
 
 echo "done. Restart Claude Code (or reload /hooks) so agents, commands, skills, hooks, and plumbline CLI are picked up."
+
+# The plumbline CLI lands in $CLAUDE_HOME/bin. If that's not on the user's $PATH, a bare
+# `plumbline ...` is "command not found" — so say so unmistakably (the install audit's
+# top user-facing symptom).
+# shellcheck disable=SC2016  # the $PATH and `export PATH=...` are intentional literals to paste
+case ":${PATH:-}:" in
+  *":$CLAUDE_HOME/bin:"*) : ;;  # already discoverable — nothing to say
+  *)
+    printf '\n'
+    printf '  ======================================================================\n'
+    printf '   ACTION NEEDED: the plumbline CLI is installed but NOT on your $PATH.\n'
+    printf '   Without this, "plumbline ..." will be command not found.\n'
+    printf '\n'
+    printf '       export PATH="%s/bin:$PATH"\n' "$CLAUDE_HOME"
+    printf '\n'
+    printf '   Add that line to your shell rc (~/.zshrc or ~/.bashrc), then restart\n'
+    printf '   your shell. (/plumbline-update is the Claude Code slash command,\n'
+    printf '   separate from the plumbline terminal CLI.)\n'
+    printf '  ======================================================================\n'
+    ;;
+esac

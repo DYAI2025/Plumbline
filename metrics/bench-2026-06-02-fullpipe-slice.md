@@ -27,3 +27,18 @@ Stage ordinal: tester=1 · coder=2 · reviewer=3 · validator=4 · **missed=5** 
 ~529k tokens/cell (full-pipeline). Full bench-core-v1 matrix = 12 tasks × 2 arms × 2 models × 3 runs = 144 cells ≈ **~76M tokens**, ~720 agents, multi-hour — and must add the control tasks (T06/T07/T09/T10/T12) to measure false_positive_rate.
 
 > Per-cell raw verdicts: see workflow `wf_a4af4142-a90`. NOT recorded to `runs.jsonl` as an /agileteam baseline (this is a bench A/B, not a single-run record).
+
+---
+
+## Anti-Goodhart FP-control addendum (2026-06-02) — controls T06, T12
+
+Same full-pipeline harness on pure-logic controls (no gap, no I/O boundary). n=3/cell × 2 tasks = 6 per cell; 120 agents; 11.1M tokens. Verdict = clean | false_positive (cry-wolf). Workflow `wf_bc7c1f82-a48`.
+
+| arm | model | false_positive_rate | cry-wolf stage |
+|---|---|---:|---|
+| baseline | haiku | 0.00 | — |
+| dna | haiku | 0.33 | reviewer ×2 |
+| baseline | opus | 0.67 | validator ×4 |
+| dna | opus | 0.17 | validator ×1 |
+
+**Combined verdict:** DNA is **net-positive on Opus** (same catch, ~4× less cry-wolf: 67%→17%) and a **trade-off on sub-Opus** (escape 0.67→0.33 BUT false-positive 0.00→0.33). "Strictly better" is false. Cost levers (M7) must be gated on BOTH metrics. See `docs/benchmarks/2026-06-02-full-pipeline.md`.

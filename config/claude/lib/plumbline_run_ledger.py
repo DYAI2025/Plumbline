@@ -61,6 +61,7 @@ Usage
       --status CLEARED|PENDING|PAUSED --artifact-hash H --at 2026-06-02T10:00:00Z
   plumbline_run_ledger.py resume-point --repo R --feature F
   plumbline_run_ledger.py revalidate --repo R --feature F --gate G --current-hash H
+  plumbline_run_ledger.py constants --format shell|json
 """
 import argparse
 import json
@@ -69,23 +70,8 @@ import sys
 
 STATUSES = ("CLEARED", "PENDING", "PAUSED")
 
-# Canonical mandatory CORE gate IDs used across Plumbline tooling (see
-# config/claude/metrics/emit_run.py for canonical gate outcome keys; these map to the
-# Phase/Gate names documented in config/claude/commands/agileteam.md).
-# Optional/full-mode gates (Gate B security, Gate D judgment, mutation, etc.) may be
-# recorded and revalidated, but they are not required for the CORE completion sentinel.
-# only early CLEARED rows could incorrectly look complete.
-CANONICAL_GATES = (
-    "phase0",
-    "phase0_5_spec_sanity",
-    "phase1_tdd_qa",
-    "phase2_implementation",
-    "gateA_verification",
-    "gateC_validation",
-    "user_acceptance",
-)
-
-# Fail-closed sentinels (kept in sync with config/claude/tests/test_run_ledger.sh).
+# Fail-closed sentinels. Tests and shell callers can read these from the
+# `constants --format shell` subcommand instead of duplicating literal values.
 # START_SENTINEL means "resume from the very beginning (Phase 0)"; it is the answer
 # whenever the ledger cannot be trusted or is only partial. COMPLETE_SENTINEL means
 # the caller explicitly recorded RUN_COMPLETE_GATE as CLEARED after the final gate.
@@ -130,21 +116,29 @@ def read_rows(path):
 
 
 def latest_status_by_gate(rows):
-    """Map gate -> its LATEST recorded row, preserving first-seen gate order.
+    """Map gate -> its LATEST recorded row.
 
     The ledger is append-only and chronological, so the last row for a gate is its
-    current state. We keep an ordered list of gates as first encountered so
-    resume-point returns the first non-cleared gate in *recorded* order."""
-    order = []
+    current state. Ordering is a resume-point concern and is derived directly from
+    the rows there instead of being returned by this helper."""
     latest = {}
     for row in rows:
         gate = row.get("gate")
         if gate is None:
             continue
-        if gate not in latest:
-            order.append(gate)
         latest[gate] = row
-    return order, latest
+    return latest
+
+
+def iter_first_seen_gates(rows):
+    """Yield gates in the order they first appear in the ledger."""
+    seen = set()
+    for row in rows:
+        gate = row.get("gate")
+        if gate is None or gate in seen:
+            continue
+        seen.add(gate)
+        yield gate
 
 
 def cmd_record(args):
@@ -177,16 +171,18 @@ def cmd_resume_point(args):
         # Fail closed: missing / empty / corrupt -> start from the beginning.
         print(START_SENTINEL)
         return 0
-    order, latest = latest_status_by_gate(rows)
-    for gate in order:
+    latest = latest_status_by_gate(rows)
+    for gate in iter_first_seen_gates(rows):
         if gate == RUN_COMPLETE_GATE:
             continue
         if latest[gate].get("status") != "CLEARED":
             print(gate)
             return 0
 
-    complete_row = latest.get(RUN_COMPLETE_GATE)
-    if complete_row is not None and complete_row.get("status") == "CLEARED":
+    # Only treat the run as complete if the completion marker is the last recorded row,
+    # matching the invariant that it is recorded after the final gate clears.
+    last_row = rows[-1]
+    if last_row.get("gate") == RUN_COMPLETE_GATE and last_row.get("status") == "CLEARED":
         print(COMPLETE_SENTINEL)
         return 0
 
@@ -198,12 +194,26 @@ def cmd_resume_point(args):
     return 0
 
 
+def cmd_constants(args):
+    constants = {
+        "START_SENTINEL": START_SENTINEL,
+        "COMPLETE_SENTINEL": COMPLETE_SENTINEL,
+        "RUN_COMPLETE_GATE": RUN_COMPLETE_GATE,
+    }
+    if args.format == "json":
+        print(json.dumps(constants, sort_keys=True))
+        return 0
+    for name, value in constants.items():
+        print(f"{name}={json.dumps(value)}")
+    return 0
+
+
 def cmd_revalidate(args):
     rows, ok = read_rows(ledger_path(args.repo, args.feature))
     if not ok:
         print(f"STALE: ledger untrusted for gate {args.gate}", file=sys.stderr)
         return 1
-    _, latest = latest_status_by_gate(rows)
+    latest = latest_status_by_gate(rows)
     row = latest.get(args.gate)
     if row is None:
         print(f"STALE: gate {args.gate} not in ledger", file=sys.stderr)
@@ -248,6 +258,11 @@ def parse_args(argv):
     prv.add_argument("--gate", required=True)
     prv.add_argument("--current-hash", required=True, dest="current_hash")
     prv.set_defaults(func=cmd_revalidate)
+
+    pc = sub.add_parser("constants",
+                        help="emit run-ledger constants for shell/json consumers")
+    pc.add_argument("--format", choices=("shell", "json"), default="shell")
+    pc.set_defaults(func=cmd_constants)
 
     return p.parse_args(argv)
 

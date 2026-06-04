@@ -30,6 +30,7 @@ DIRECTIONS = {
     "escaped_defect_rate": -1, "regression": -1, "unverified_claims": -1,
     "cycle_time": -1, "lead_time": -1, "dev_review_loops": -1,
     "human_override_rate": -1, "escalation_rate": -1, "cost_per_req": -1,
+    "challenge_gate_tokens": -1,
     "root_cause_trigger_rate": -1,
 }
 

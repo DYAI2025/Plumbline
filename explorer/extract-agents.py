@@ -13,7 +13,13 @@ import sys
 try:
     import yaml
 except ImportError:
-    sys.exit("PyYAML required (pip install pyyaml)")
+    sys.exit(
+        "PyYAML required. Install it for this interpreter:\n"
+        "  python3 -m pip install pyyaml\n"
+        "  # PEP-668 (externally-managed) python, e.g. system python3 on macOS/Debian:\n"
+        "  python3 -m pip install --user --break-system-packages pyyaml\n"
+        "  # or run under a venv / uv that has it."
+    )
 
 root = sys.argv[1] if len(sys.argv) > 1 else "."
 os.chdir(root)

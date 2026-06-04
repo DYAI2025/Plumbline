@@ -129,11 +129,21 @@ def plumbline_install_root():
     --repo: the COMPONENT relpaths (config/claude/commands/agileteam.md, core/coder.md,
     …) describe Plumbline's own tree, which does not exist under a target project. The
     historical all-`missing` fingerprint (amendment M-1) was exactly this: the run was
-    emitted inside a target repo. Derive the install root from __file__ — walk up to the
-    nearest .git-bearing dir (the install repo), falling back to the structural parent of
-    config/claude/metrics/ when there is no .git (e.g. a copied/installed tree).
+    emitted inside a target repo. Derive the install root from __file__.
+
+    Resolution order (amendment M-2): the STRUCTURAL root wins when it looks like a
+    Plumbline install (metrics/ -> claude/ -> config/ -> root, where root/config/claude
+    exists). Only fall back to walking up to the nearest ancestor .git when the
+    structural root is NOT a recognizable install. Walking to .git first is wrong for an
+    install that lives UNDER an unrelated git repo (e.g. ~/.claude/agents beneath
+    $HOME/.git): the walk would resolve to the foreign repo and every COMPONENT would go
+    `missing`. In a source checkout the structural root and the .git root are the same
+    dir, so existing behavior is preserved.
     """
     here = os.path.abspath(__file__)
+    structural = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(here))))
+    if os.path.isdir(os.path.join(structural, "config", "claude")):
+        return structural
     cur = os.path.dirname(here)
     while True:
         if os.path.isdir(os.path.join(cur, ".git")):
@@ -142,8 +152,7 @@ def plumbline_install_root():
         if parent == cur:
             break
         cur = parent
-    # No .git above the script (copied/installed): metrics/ -> claude/ -> config/ -> root
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(here))))
+    return structural
 
 
 def search_path(repo):

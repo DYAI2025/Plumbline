@@ -150,7 +150,7 @@ Modell / adversariale Rolle.
     │
     ├─ Phase 0 — Requirements & Validation Design
     │   │  Owner: requirements-analyst
-    │   ├─ (optional, bei vagem <goal>) Skill /product-management:write-spec
+    │   ├─ (optional, bei vagem <goal>) Skill /product-management-write-spec
     │   ├─ Skill /ai-native-prd-architect   [PFLICHT — Engine dieser Phase]
     │   │     → REQ-IDs, Datenmodell, Architektur-Constraints,
     │   │       Given/When/Then-Acceptance, NFRs, Security-Matrix,
@@ -309,7 +309,7 @@ Drift-vs-Präzision-Vergleich: fixer Korpus + vorab definierte Metriken, main
 
 | Stelle | Skill | Modus | Wiederholung |
 |---|---|---|---|
-| Phase 0 (optional) | `/product-management:write-spec` | dialogisch | n.a. |
+| Phase 0 (optional) | `/product-management-write-spec` | dialogisch | n.a. |
 | Phase 0 (Pflicht) | `/ai-native-prd-architect` | voll | bis DoR erfüllt |
 | Phase 0 (je Lücke) | `/brainstorming` | dialogisch | bis Lücke geschlossen |
 | Phase 0.5 (Command-Pipeline: 0.7, nach PRIL 0.5/0.6) | `/ultrathink-craftsmanship` (+ `/konfabulations-audit`) | voll | **EINMAL**, kein Re-Run |
