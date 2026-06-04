@@ -182,6 +182,27 @@ assert "doctor reports the resolved update slug" "printf '%s' \"$out\" | grep -q
 - If the loader **ignores** non-frontmatter / non-agent `.md` → **F3 is cosmetic**: STOP the restructure, record the finding, and instead (optional) just exclude obvious noise. Do not do the risky mount change for nothing.
 **Step 3 — Record the verdict in the plan/PR. This gate is mandatory; report the evidence either way.**
 
+#### VERDICT (2026-06-04, resolved via read-only `claude-code-guide` + on-machine observation)
+
+**Premise is FALSE → B3/Phase-6 downgrades to cosmetic; the risky mount restructure is NOT done.**
+
+- **Official docs** (`https://code.claude.com/docs/en/sub-agents`): a subagent requires
+  `name` + `description` YAML frontmatter; *"identity comes only from the `name`
+  frontmatter field."* A file without frontmatter has no agent identity, so the loader
+  has nothing to register and **skips it** (it does not surface a phantom/broken agent).
+- **Observed on this machine** (`~/.claude/agents` = the Plumbline repo): 169 `.md` files,
+  110 with valid frontmatter, **59 without** (`README.md`, `CLAUDE.md`, `SETUP.md`,
+  `dev-plan.md`, `metrics/*` reports). **No phantom-agent entries observed** despite running
+  exactly the whole-repo mount the foreign audit warned about.
+- **Confidence: high.** The foreign audit's "phantom agents" claim is not reproduced by the
+  docs or the live state.
+
+**Decision:** do **not** invest in the `install_agent_repo()` restructure as a *fix*
+(Task 6.1/6.2/6.3 are unwarranted). The whole-repo mount is **not a functional defect**.
+A purely cosmetic exclusion of obvious non-agent noise remains *optional* and low-priority,
+to be justified on its own merits (tidiness, not correctness) — never sold as a bug fix.
+Per the plan's own honesty gate: *"do not do the risky mount change for nothing."*
+
 ### Task 6.1 — (only if 6.0 confirms) Mount only agent categories
 **Files:** Modify `config/claude/install.sh` `install_agent_repo()` (`:96-102`).
 **Step 1 — Enumerate** the agent category dirs + top-level agent files (e.g. `code-reviewer.md`) vs non-agent (`README.md`, `CHANGELOG.md`, `SETUP.md`, `CLAUDE.md`, `docs/`, `metrics/`, `config/`, `explorer/`, `dev-plan.md`, …).
@@ -212,7 +233,9 @@ assert "doctor reports the resolved update slug" "printf '%s' \"$out\" | grep -q
 - No colon in any local skill/agent `name:`; guarded.
 - README/SETUP state the install model (no MCP/no plugin) and the fork-update override; guarded where testable.
 - README counts derived, not hand-asserted; drift-guarded.
-- F3: either the mount is restructured (premise confirmed) **or** the premise is documented as unverified/cosmetic and the risky change is *not* made — never built on an unverified claim.
+- F3: **RESOLVED 2026-06-04 — premise FALSE (Task 6.0 verdict above): the loader skips
+  non-frontmatter `.md`, no phantom agents. The risky mount restructure is documented as
+  cosmetic and is *not* made.** (Never built on an unverified claim.)
 - No agent frontmatter semantics changed without an explorer rebuild; governed-config diffs all shown.
 
 ## Open decisions (human)

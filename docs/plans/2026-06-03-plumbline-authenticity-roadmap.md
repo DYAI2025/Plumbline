@@ -32,7 +32,7 @@
 | A5 | **Install-model honesty** (F1/F2): "no MCP server, not a `/plugin`; some agents reference `mcp__claude-flow__*` → external optional" + fork-update override discoverability (F6) | verified gap | medium | low | **A** |
 | B1 | **Dispatch-model enforcement gate**: PRIL reads `runs.jsonl` and FAILS the merge gate if the reviewer/validator did not run on the required model — frontmatter `model:` is inert, so trust the *log*, not the prose | disclosed (Gemini Prio 2; `CLAUDE.md`) | **highest structural** — makes the model-policy claim REAL; precondition to ever unlock M7 | medium | **B** |
 | B2 | **Prose-gate → enforced-gate audit**: catalog which governance/PRIL gates are prompt-only vs. machine-checked; convert the highest-value ones (continues PR-1/PR-2 pattern) | new (the deepest theme) | **highest structural** | medium-high | **B** |
-| B3 | **F3 agent-dir mount** (gated on verifying the "phantom agents" premise first — see install-audit-fixes P6) | verified-but-premise-unverified | medium | medium (risky) | **B** |
+| B3 | ~~**F3 agent-dir mount**~~ — **CLOSED 2026-06-04: premise FALSE.** The loader skips non-frontmatter `.md` (official docs + on-machine observation: 169 `.md` in `~/.claude/agents`, 59 without frontmatter, no phantom agents). Restructure is cosmetic, not a fix → **dropped as a bug**; see `install-audit-fixes.md` Task 6.0 verdict | premise refuted | medium (risky) | ~~B~~ **closed** |
 | C1 | **Multi-model council** (OpenRouter free-tier auto-config, or user-key curated models), **fail-closed**: <2 independent model backends → abort, never single-model masquerading as diversity | disclosed validation-debt (`2026-06-02-plumbline-maturation-goal.md:290`) + Gemini Prio 1 + your feature | **highest epistemic** — the reflection organ stops being an echo chamber | high (own design) | **C** |
 | D1 | **Website** presenting Plumbline honestly (the bench, the negative results, the reality ledger, the live explorer) | new | medium — amplification | high (own design) | **D** |
 | L1 | Sanitize dangling `mcp__claude-flow__*` refs in vendored agents | verified (root of F1) | medium | medium | folds into A2/B2 |
@@ -83,7 +83,13 @@ Create `DEPENDENCIES.md` (linked from README + SETUP) stating exactly:
 - Convert the highest-authenticity prose-gates to enforced ones, reusing the **gate-contract (PR-1) + oracle (PR-2)** pattern. Candidates: wired-in-prod evidence-class, the independence rule (writer≠reviewer — could be checked from the dispatch ledger), no-silent-RED-downgrade.
 - Honest output includes: which gates **cannot** be machine-enforced (genuinely need human/model judgment) — mark those clearly so the framework doesn't over-claim enforcement either.
 
-**B3 — F3 agent-dir mount** — only after its premise is verified (install-audit-fixes P6 Task 6.0). Wave A's clean install + Wave B's enforcement make this safe to attempt last.
+**B3 — F3 agent-dir mount — CLOSED 2026-06-04.** Premise verification (install-audit-fixes
+P6 Task 6.0) returned **FALSE**: Claude Code's loader requires `name`+`description`
+frontmatter and skips non-frontmatter `.md` (verified against official docs and the live
+`~/.claude/agents` on the dev box — 59 of 169 `.md` lack frontmatter, no phantom agents).
+The whole-repo mount is therefore **not a functional defect**; the restructure is dropped as
+a bug (optional cosmetic cleanup only, on its own merits). This is the honesty gate working
+as designed — a risky change *not* made on an unverified foreign claim.
 
 **L3 — G6 decision** (Wave-B-adjacent): reconcile the stale `dev-plan.md:26` and decide, explicitly with the user, whether a Canvas deviation should hard-stop with `y/n` (Gemini's stricter stance) or keep the current bounded-autonomy (Vision immutable + escalate-to-user + final acceptance gate, already on `main` and guarded by PR-1 G3 tests). **A design decision, not a bug.**
 
