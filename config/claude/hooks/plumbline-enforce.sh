@@ -81,9 +81,9 @@ fi
 bin=""
 for candidate in \
   "$repo/config/claude/bin" \
-  "${CLAUDE_HOME:-}/bin" \
-  "$inferred_claude_home/bin" \
-  "${HOME:-}/.claude/bin"; do
+  "${CLAUDE_HOME:+$CLAUDE_HOME/bin}" \
+  "${inferred_claude_home:+$inferred_claude_home/bin}" \
+  "${HOME:+$HOME/.claude/bin}"; do
   [ -n "$candidate" ] || continue
   if [ -x "$candidate/plumbline-scope-check" ] && \
      [ -x "$candidate/plumbline-context-check" ] && \
