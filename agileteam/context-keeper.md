@@ -41,7 +41,10 @@ It lives in **persistent artifacts**, and you are their curator — not the memo
   human gate is trusted only if `revalidate` passes (its recorded `artifact_hash` still
   matches the current artifact — a changed artifact forces a re-ask). It fails **closed**:
   a missing / empty / corrupt ledger resumes from the beginning (Phase 0), never "all
-  cleared". Record each gate's CLEARED/PENDING/PAUSED transition here as it happens.
+  cleared". Because the ledger stores observed events rather than the authoritative full
+  `/agileteam` gate list, an all-observed-CLEARED ledger is still treated as partial and
+  resumes from Phase 0 unless an explicit `__RUN_COMPLETE__` marker was recorded after the
+  final gate cleared. Record each gate's CLEARED/PENDING/PAUSED transition here as it happens.
 
 You also own the iteration/Kanban progress state (G7), so the orchestrator can give the
 user CLI iteration visibility at each iteration boundary. (Concretely: context-keeper
