@@ -28,6 +28,12 @@ These are checked for, not installed. `install.sh` assumes they exist.
   (~16 — the `/agileteam` pipeline, the `/concilium` council, the core TDD/governance
   roles) plus ~70 **vendored from the claude-flow agent base** — we ship the **prompts
   only**, as a *tested-workload dependency*, **not** claude-flow's runtime. (See README.)
+  **Lean by default:** `install.sh` mounts only the **MCP-free subset** (the install
+  derives it — currently ~51 of the 86); the agents whose distinctive function *is* an
+  external MCP (`mcp__claude-flow__` / `mcp__flow-nexus__` / `mcp__sublinear-time-solver__`)
+  are omitted unless you pass `--with-flow-agents`. This keeps a plain install from pulling
+  you toward the token-heavy claude-flow MCP. The repo still *contains* all 86 — it is an
+  install-time selection, not a removal.
 - **16 vendored skills** (`config/claude/skills/*/SKILL.md`).
 - **The commands** (`config/claude/commands/*.md`) — `/agileteam`, `/concilium`,
   `/honest-status`, `/bench-oracle`, `/merge-when-true`, `/reflect`(-skills),

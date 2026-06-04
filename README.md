@@ -34,9 +34,11 @@
 ```bash
 git clone https://github.com/DYAI2025/Plumbline plumbline
 cd plumbline
-./config/claude/install.sh     # symlinks repo → ~/.claude/agents, installs commands/skills/hook
-                               # add --copy on Windows / if you prefer copies over symlinks
+./config/claude/install.sh     # installs the MCP-free agents + commands/skills/hooks into ~/.claude
+                               # --copy on Windows · --with-flow-agents to also add the claude-flow agents
 ```
+
+> **Lean by default:** a plain install mounts only the **MCP-free** governance agents (the `/agileteam` pipeline, `/concilium`, the core roles). The vendored **claude-flow / flow-nexus** agents — whose distinctive function *is* an external MCP server — are omitted unless you pass `--with-flow-agents`, so installing Plumbline never pulls you toward the token-heavy claude-flow MCP stack. The repo still ships all of them; this is an install-time choice, not a removal. ([`DEPENDENCIES.md`](DEPENDENCIES.md))
 
 Then, in any project inside Claude Code:
 
