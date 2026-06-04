@@ -61,11 +61,11 @@ import sys
 
 STATUSES = ("CLEARED", "PENDING", "PAUSED")
 
-# Canonical mandatory CORE gate sequence from config/claude/commands/agileteam.md.
+# Canonical mandatory CORE gate IDs used across Plumbline tooling (see
+# config/claude/metrics/emit_run.py for canonical gate outcome keys; these map to the
+# Phase/Gate names documented in config/claude/commands/agileteam.md).
 # Optional/full-mode gates (Gate B security, Gate D judgment, mutation, etc.) may be
 # recorded and revalidated, but they are not required for the CORE completion sentinel.
-# Resume must compare against this full expected sequence rather than only the gates
-# that happen to have been recorded; otherwise an interrupted partial ledger containing
 # only early CLEARED rows could incorrectly look complete.
 CANONICAL_GATES = (
     "phase0",
