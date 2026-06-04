@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/DYAI2025/Plumbline/compare/v0.13.1...v0.14.0) (2026-06-04)
+
+
+### Features
+
+* **install:** lean default — omit MCP-coupled agents unless --with-flow-agents ([26d45b6](https://github.com/DYAI2025/Plumbline/commit/26d45b66f3ebb49382ef711cf418a85a89df29f2))
+* **install:** lean default — omit MCP-coupled agents unless --with-flow-agents ([4d6f008](https://github.com/DYAI2025/Plumbline/commit/4d6f008b45f06620119ee5820a40906d4f8cf8c4))
+
 ## [0.13.1](https://github.com/DYAI2025/Plumbline/compare/v0.13.0...v0.13.1) (2026-06-03)
 
 
