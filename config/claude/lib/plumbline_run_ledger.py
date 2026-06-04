@@ -28,11 +28,11 @@ one row per gate event:
 Subcommands
 -----------
   record      append one gate event (fail-closed on a bad --status)
-  resume-point  print the first gate (in recorded order) whose LATEST status is not
-                CLEARED. Fail-closed sentinels:
+  resume-point  print the first mandatory canonical gate whose LATEST row is
+                missing or not CLEARED. Fail-closed sentinels:
                   * ledger missing / empty / corrupt -> START sentinel (begin at
                     Phase 0; NEVER "all cleared")
-                  * every recorded gate latest-CLEARED -> COMPLETE sentinel
+                  * every expected gate latest-CLEARED -> COMPLETE sentinel
   revalidate  exit 0 iff gate G's LATEST row is CLEARED AND its recorded
                 artifact_hash == --current-hash; otherwise non-zero (the human gate
                 must be re-asked because its artifact changed, or it was never
@@ -61,9 +61,25 @@ import sys
 
 STATUSES = ("CLEARED", "PENDING", "PAUSED")
 
+# Canonical mandatory CORE gate sequence from config/claude/commands/agileteam.md.
+# Optional/full-mode gates (Gate B security, Gate D judgment, mutation, etc.) may be
+# recorded and revalidated, but they are not required for the CORE completion sentinel.
+# Resume must compare against this full expected sequence rather than only the gates
+# that happen to have been recorded; otherwise an interrupted partial ledger containing
+# only early CLEARED rows could incorrectly look complete.
+CANONICAL_GATES = (
+    "phase0",
+    "phase0_5_spec_sanity",
+    "phase1_tdd_qa",
+    "phase2_implementation",
+    "gateA_verification",
+    "gateC_validation",
+    "user_acceptance",
+)
+
 # Fail-closed sentinels (kept in sync with config/claude/tests/test_run_ledger.sh).
 # START_SENTINEL means "resume from the very beginning (Phase 0)"; it is the answer
-# whenever the ledger cannot be trusted. COMPLETE_SENTINEL means every recorded gate
+# whenever the ledger cannot be trusted. COMPLETE_SENTINEL means every expected gate
 # is latest-CLEARED. Neither is a real gate name, so they can never collide with one.
 START_SENTINEL = "__START__"
 COMPLETE_SENTINEL = "__COMPLETE__"
@@ -146,12 +162,14 @@ def cmd_resume_point(args):
         # Fail closed: missing / empty / corrupt -> start from the beginning.
         print(START_SENTINEL)
         return 0
-    order, latest = latest_status_by_gate(rows)
-    for gate in order:
-        if latest[gate].get("status") != "CLEARED":
+    _, latest = latest_status_by_gate(rows)
+    for gate in CANONICAL_GATES:
+        row = latest.get(gate)
+        if row is None or row.get("status") != "CLEARED":
             print(gate)
             return 0
-    # Every recorded gate is latest-CLEARED.
+    # Every expected gate is latest-CLEARED; extra recorded optional gates do not
+    # make a partial mandatory ledger complete, and do not block CORE completion.
     print(COMPLETE_SENTINEL)
     return 0
 

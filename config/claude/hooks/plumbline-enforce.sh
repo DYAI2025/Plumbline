@@ -65,7 +65,33 @@ emit_block() {
 
 : "${CLAUDE_PROJECT_DIR:=$PWD}"
 repo="$CLAUDE_PROJECT_DIR"
-bin="$repo/config/claude/bin"
+
+# Resolve PRIL CLIs from the Plumbline installation, not just from the target
+# project. In Claude Code, CLAUDE_PROJECT_DIR is the repo being worked on, while
+# install.sh places the runnable CLIs in $CLAUDE_HOME/bin and may register this
+# hook from $CLAUDE_HOME/agents/config/claude/hooks. Keep the project-vendored
+# path first for source-tree tests/development, then fall back to the installed
+# Claude home paths used in production.
+hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+inferred_claude_home=""
+if [ -n "$hook_dir" ] && [ -d "$hook_dir/../../../.." ]; then
+  inferred_claude_home="$(cd "$hook_dir/../../../.." 2>/dev/null && pwd)"
+fi
+
+bin=""
+for candidate in \
+  "$repo/config/claude/bin" \
+  "${CLAUDE_HOME:-}/bin" \
+  "$inferred_claude_home/bin" \
+  "${HOME:-}/.claude/bin"; do
+  [ -n "$candidate" ] || continue
+  if [ -x "$candidate/plumbline-scope-check" ] && \
+     [ -x "$candidate/plumbline-context-check" ] && \
+     [ -x "$candidate/plumbline-reality-check" ]; then
+    bin="$candidate"
+    break
+  fi
+done
 
 # --- C1 activation: ground-truth marker the orchestrator writes ---------------
 # No marker -> not an active feature run -> no-op. This is what keeps normal
@@ -99,10 +125,8 @@ esac
 
 # The PRIL CLIs must be present to enforce. If they are absent we cannot prove
 # the gate either way; rather than fail OPEN we block with an explicit reason.
-if [ ! -x "$bin/plumbline-scope-check" ] || \
-   [ ! -x "$bin/plumbline-context-check" ] || \
-   [ ! -x "$bin/plumbline-reality-check" ]; then
-  emit_block "PRIL enforcement failed: enforcement CLIs missing under config/claude/bin; cannot prove gates. Fix the install or escalate to the user; do not finish with an unprovable gate."
+if [ -z "$bin" ]; then
+  emit_block "PRIL enforcement failed: enforcement CLIs missing from the target repo and Claude install bin; cannot prove gates. Fix the install or escalate to the user; do not finish with an unprovable gate."
   exit 0
 fi
 

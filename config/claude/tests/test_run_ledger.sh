@@ -5,10 +5,10 @@
 #     at docs/context/<feature>.run-ledger.jsonl, round-tripping
 #     {repo, feature, gate, status, artifact_hash, at}.
 #   * `at` is supplied as an ARG (no wall-clock / Date.now in the script).
-#   * resume-point prints the FIRST gate (in recorded order) whose LATEST status
-#     is not CLEARED; all-cleared => a "complete" sentinel; missing/corrupt/empty
-#     ledger => a start-from-beginning sentinel (fail-closed to Phase 0, NEVER
-#     "all cleared").
+#   * resume-point prints the FIRST mandatory canonical gate whose LATEST status
+#     is missing or not CLEARED; all expected gates cleared => a "complete"
+#     sentinel; missing/corrupt/empty ledger => a start-from-beginning sentinel
+#     (fail-closed to Phase 0, NEVER "all cleared").
 #   * revalidate exits non-zero when a CLEARED gate's recorded artifact-hash no
 #     longer matches the current hash (a human gate whose artifact changed must
 #     be re-asked).
@@ -19,7 +19,17 @@ REPO_DIR="$(cd "$HERE/../../.." && pwd)"
 LEDGER="$REPO_DIR/config/claude/lib/plumbline_run_ledger.py"
 WRAP="$REPO_DIR/config/claude/bin/plumbline-run-ledger"
 
-# The two fail-closed sentinels the script promises (kept in sync with the lib).
+# The canonical mandatory CORE gate sequence and fail-closed sentinels the script
+# promises (kept in sync with the lib).
+CANONICAL_GATES=(
+  phase0
+  phase0_5_spec_sanity
+  phase1_tdd_qa
+  phase2_implementation
+  gateA_verification
+  gateC_validation
+  user_acceptance
+)
 START_SENTINEL="__START__"
 COMPLETE_SENTINEL="__COMPLETE__"
 
@@ -39,7 +49,7 @@ python3 "$LEDGER" record --repo "$repo" --feature demo \
   --gate phase0 --status CLEARED --artifact-hash hA \
   --at 2026-06-02T10:00:00Z >/dev/null 2>&1
 python3 "$LEDGER" record --repo "$repo" --feature demo \
-  --gate gateA --status PENDING --artifact-hash hB \
+  --gate gateA_verification --status PENDING --artifact-hash hB \
   --at 2026-06-02T10:01:00Z >/dev/null 2>&1
 
 led="$repo/docs/context/demo.run-ledger.jsonl"
@@ -63,26 +73,39 @@ assert r["at"]=="2026-06-02T10:00:00Z", r
   ok "row round-trips {repo, feature, gate, status, artifact_hash, at}"
 else bad "row round-trips {repo, feature, gate, status, artifact_hash, at}"; fi
 
-# 3) resume-point = first non-CLEARED gate in recorded order (gateB is PENDING)
+# 3) resume-point = first canonical gate whose latest status is missing/non-CLEARED
 rp="$(python3 "$LEDGER" resume-point --repo "$repo" --feature demo 2>/dev/null)"
-if [ "$rp" = "gateA" ]; then
-  ok "resume-point returns the first non-CLEARED gate (gateA)"
-else bad "resume-point returns the first non-CLEARED gate (got: '$rp')"; fi
+if [ "$rp" = "phase0_5_spec_sanity" ]; then
+  ok "resume-point returns the first missing canonical gate (phase0_5_spec_sanity)"
+else bad "resume-point returns the first missing canonical gate (got: '$rp')"; fi
 
-# 4) latest-status wins: clear gateA -> resume-point advances to complete sentinel
+# 4) clearing only recorded early gates is still partial: missing later gates fail closed
 python3 "$LEDGER" record --repo "$repo" --feature demo \
-  --gate gateA --status CLEARED --artifact-hash hB \
+  --gate gateA_verification --status CLEARED --artifact-hash hB \
   --at 2026-06-02T10:02:00Z >/dev/null 2>&1
 rp="$(python3 "$LEDGER" resume-point --repo "$repo" --feature demo 2>/dev/null)"
-if [ "$rp" = "$COMPLETE_SENTINEL" ]; then
-  ok "all-CLEARED resume-point returns the complete sentinel"
-else bad "all-CLEARED resume-point returns the complete sentinel (got: '$rp')"; fi
+if [ "$rp" = "phase0_5_spec_sanity" ]; then
+  ok "partial all-recorded-CLEARED ledger resumes at the first missing canonical gate"
+else bad "partial all-recorded-CLEARED ledger should resume at first missing gate (got: '$rp')"; fi
 
-# 5) a re-PAUSED gate after a CLEAR means latest wins => resume there again
-python3 "$LEDGER" record --repo "$repo" --feature demo \
+# 5) all expected gates CLEARED -> complete sentinel; latest status still wins
+full_repo="$tmp/full"
+mkdir -p "$full_repo/docs/context"
+idx=0
+for gate in "${CANONICAL_GATES[@]}"; do
+  python3 "$LEDGER" record --repo "$full_repo" --feature demo \
+    --gate "$gate" --status CLEARED --artifact-hash "h$idx" \
+    --at "2026-06-02T10:0${idx}:00Z" >/dev/null 2>&1
+  idx=$((idx+1))
+done
+rp="$(python3 "$LEDGER" resume-point --repo "$full_repo" --feature demo 2>/dev/null)"
+if [ "$rp" = "$COMPLETE_SENTINEL" ]; then
+  ok "all expected gates CLEARED returns the complete sentinel"
+else bad "all expected gates CLEARED returns the complete sentinel (got: '$rp')"; fi
+python3 "$LEDGER" record --repo "$full_repo" --feature demo \
   --gate phase0 --status PAUSED --artifact-hash hA \
-  --at 2026-06-02T10:03:00Z >/dev/null 2>&1
-rp="$(python3 "$LEDGER" resume-point --repo "$repo" --feature demo 2>/dev/null)"
+  --at 2026-06-02T10:10:00Z >/dev/null 2>&1
+rp="$(python3 "$LEDGER" resume-point --repo "$full_repo" --feature demo 2>/dev/null)"
 if [ "$rp" = "phase0" ]; then
   ok "latest status wins: a re-PAUSED cleared gate becomes the resume-point"
 else bad "latest status wins: a re-PAUSED cleared gate becomes the resume-point (got: '$rp')"; fi
