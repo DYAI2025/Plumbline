@@ -122,8 +122,8 @@ presence assertions, **not** proof a gate fires.
 
 | Test module | What it guards | Note |
 |-------------|----------------|------|
-| `test_true_line_governance.sh` | 117 `has()` prose-presence checks across agileteam/concilium/watcher/agent files | header itself: *"There is no runtime to exercise"* |
-| `test_product_canvas_gate.sh` | 63 `has()` checks over command/template/spec/agent | adds `detects_removal()` — strips the line + re-greps, so the assertion has **teeth** against static docs |
+| `test_true_line_governance.sh` | ~115 `has()` prose-presence checks across agileteam/concilium/watcher/agent files (the bulk of the file) | header itself: *"There is no runtime to exercise"* |
+| `test_product_canvas_gate.sh` | ~60 `has()` checks over command/template/spec/agent | adds `detects_removal()` — strips the line + re-greps, so the assertion has **teeth** against static docs |
 | `test_gate_contracts.sh` (G1/G3/G4) | 21 `has()` (`2 collision rounds`, `180 words per role`, `USER ACCEPTANCE GATE`, role names) | minority structural: `gate_contracts.py` roster name-resolution + 2 negative fixtures (G3-C2 removed-acceptance-gate, G4-C5 unresolved role) |
 | Council challenge bounds | collision-round / word-cap / **withdrawn** token cap | the `≈15k tokens total` cap is explicitly withdrawn as measured-false; "a hard cap would need a real token counter, not prose" |
 | **Human acceptance gate** | `USER ACCEPTANCE GATE` present + negative fixture | guards the *string*, not actual runtime blocking for a human |
