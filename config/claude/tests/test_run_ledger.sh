@@ -22,7 +22,8 @@ WRAP="$REPO_DIR/config/claude/bin/plumbline-run-ledger"
 
 # Sentinels / synthetic marker are emitted by the lib so this contract test
 # cannot drift from the implementation literals.
-eval "$(python3 "$LEDGER" constants --format shell)"
+constants_shell="$(python3 "$LEDGER" constants --format shell)" || { echo "FAIL: unable to load run-ledger constants" >&2; exit 1; }
+eval "$constants_shell"
 
 pass=0; fail=0
 ok()  { printf '  ok   %s\n' "$1"; pass=$((pass+1)); }
