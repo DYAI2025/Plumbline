@@ -169,8 +169,10 @@ def cmd_resume_point(args):
             print(gate)
             return 0
 
-    complete_row = latest.get(RUN_COMPLETE_GATE)
-    if complete_row is not None and complete_row.get("status") == "CLEARED":
+    # Only treat the run as complete if the completion marker is the last recorded row,
+    # matching the invariant that it is recorded after the final gate clears.
+    last_row = rows[-1]
+    if last_row.get("gate") == RUN_COMPLETE_GATE and last_row.get("status") == "CLEARED":
         print(COMPLETE_SENTINEL)
         return 0
 
