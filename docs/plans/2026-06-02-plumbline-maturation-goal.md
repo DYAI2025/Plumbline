@@ -243,7 +243,7 @@ Ground-truth check at execution time overturned this milestone's premise: `bench
 Design specs (expand to bite-sized tasks in-loop):
 - **M6.1 Wire `/honest-status` at the G7 iteration boundary** of `agileteam.md` (show-only-when-RED): per-REQ evidence-class + not-wired items from the matrix. Additive; reuse existing columns.
 - **M6.2 Structured pause-reason** on every non-pass Watcher/gate verdict (extend `true-line-gate-check.template.md` with `{failed-check, artifact:line, required user decision}` — additive fields, keep the pinned `PRIL check output:` etc.).
-- **M6.3 Resumable run-ledger** (`docs/context/run-ledger.md`, owned by `context-keeper`): record per-gate CLEARED/PENDING/PAUSED + artifact hash; on re-invocation resume at the first non-cleared gate; **human gates re-validated by hash** (changed artifact → re-ask). Fail-closed to Phase-0 on missing/corrupt ledger.
+- **M6.3 Resumable run-ledger** (`docs/context/run-ledger.md`, owned by `context-keeper`): record per-gate CLEARED/PENDING/PAUSED + artifact hash; on re-invocation resume at the first non-cleared gate; **human gates re-validated by hash** (changed artifact → re-ask). Fail-closed to Phase-0 on missing/corrupt/partial ledger; all-observed-CLEARED is not completion unless an explicit `__RUN_COMPLETE__` marker was recorded after the final gate cleared.
 Each: test-first where a check is executable (ledger round-trip; template slot presence), suite green, atomic commit, Watcher value-check.
 
 ---
