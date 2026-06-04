@@ -33,7 +33,9 @@ These are checked for, not installed. `install.sh` assumes they exist.
   external MCP (`mcp__claude-flow__` / `mcp__flow-nexus__` / `mcp__sublinear-time-solver__`)
   are omitted unless you pass `--with-flow-agents`. This keeps a plain install from pulling
   you toward the token-heavy claude-flow MCP. The repo still *contains* all 86 — it is an
-  install-time selection, not a removal.
+  install-time selection, not a removal. *(The installer never deletes: if you already ran
+  `--with-flow-agents` and want lean again, remove `~/.claude/agents` and re-install — a
+  plain re-run won't prune the extra agents.)*
 - **16 vendored skills** (`config/claude/skills/*/SKILL.md`).
 - **The commands** (`config/claude/commands/*.md`) — `/agileteam`, `/concilium`,
   `/honest-status`, `/bench-oracle`, `/merge-when-true`, `/reflect`(-skills),
