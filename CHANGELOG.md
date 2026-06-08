@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/DYAI2025/Plumbline/compare/v0.14.0...v0.15.0) (2026-06-08)
+
+
+### Features
+
+* CI-enforced AgileTeam start governance (VISION_MISSING classifier, templates, tests, CI job) ([608fd20](https://github.com/DYAI2025/Plumbline/commit/608fd20d89cbbc09e8ee25ee1687525247cf6c72))
+* enforce agileteam start governance contracts ([c49e977](https://github.com/DYAI2025/Plumbline/commit/c49e97785a23662da31ac0f0248733b2dbb03080))
+
 ## [0.14.0](https://github.com/DYAI2025/Plumbline/compare/v0.13.1...v0.14.0) (2026-06-04)
 
 
