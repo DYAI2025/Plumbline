@@ -129,6 +129,9 @@ bash config/claude/tests/test_dependencies_doc.sh || fail=1
 stage "install path (Wave A: CLI discoverable — doctor PATH check + install.sh hint)"
 bash config/claude/tests/test_install_path.sh || fail=1
 
+stage "lean install (default omits MCP-coupled agents; --with-flow-agents includes them)"
+bash config/claude/tests/test_install_lean_agents.sh || fail=1
+
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
   shellcheck -x -P SCRIPTDIR \
