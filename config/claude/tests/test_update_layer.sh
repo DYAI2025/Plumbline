@@ -24,12 +24,16 @@ export COPYFILE_DISABLE=1
 assert "plumbline CLI exists" "test -x '$PLUMBLINE'"
 # Version is release-please-managed; assert the CLI reports whatever VERSION holds
 # (not a hardcoded number that breaks the suite on every release bump).
-REPO_VERSION="$(grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' "$REPO_DIR/VERSION" | head -1)"
+REPO_VERSION="$(repo_version "$REPO_DIR")"
 assert_eq "version reads release-please-managed VERSION" "$REPO_VERSION" "$($PLUMBLINE --root "$REPO_DIR" version)"
 
 # Synthesize a "latest release" one minor above the current version so update-available
 # stays valid across every release bump (not pinned to a literal the repo catches up to).
 NEWER_VERSION="$(awk -F. -v OFS=. '{print $1, $2+1, 0}' <<<"$REPO_VERSION")"
+BASELINE_FIXTURE_VERSION="0.9.0"
+UPDATE_FIXTURE_VERSION="0.9.1"
+BASELINE_FIXTURE="$FIXTURES/target-$BASELINE_FIXTURE_VERSION"
+UPDATE_FIXTURE="$FIXTURES/source-$UPDATE_FIXTURE_VERSION"
 LATEST_SRC="$TMP_ROOT/latest-newer"
 mkdir -p "$LATEST_SRC"
 printf '{\n  "tag_name": "v%s",\n  "draft": false,\n  "prerelease": false\n}\n' "$NEWER_VERSION" > "$LATEST_SRC/latest-release.json"
@@ -54,32 +58,32 @@ assert_file "install creates copied plumbline library" "$COPY_HOME/lib/plumbline
 assert_eq "installed copy wrapper resolves library" "$REPO_VERSION" "$("$COPY_HOME/bin/plumbline" --root "$REPO_DIR" version)"
 
 TARGET="$TMP_ROOT/target"
-cp -R "$FIXTURES/target-0.9.0" "$TARGET"
-apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TARGET" --source "$FIXTURES/source-0.9.1" --verify-cmd 'bash config/claude/tests/run_all.sh')"
-assert_eq "update applies source version" "0.9.1" "$($PLUMBLINE --root "$TARGET" version)"
+cp -R "$BASELINE_FIXTURE" "$TARGET"
+apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TARGET" --source "$UPDATE_FIXTURE" --verify-cmd 'bash config/claude/tests/run_all.sh')"
+assert_eq "update applies source version" "$UPDATE_FIXTURE_VERSION" "$($PLUMBLINE --root "$TARGET" version)"
 assert_file "update copies payload" "$TARGET/UPDATED"
 assert_file "update records last success" "$TARGET/.plumbline/update/last-success.json"
-assert "update reports verified" "printf '%s\n' '$apply_output' | grep -q 'status: changed and verified (0.9.0 -> 0.9.1)'"
+assert "update reports verified" "printf '%s\n' \"\$apply_output\" | grep -q \"status: changed and verified ($BASELINE_FIXTURE_VERSION -> $UPDATE_FIXTURE_VERSION)\""
 
 rollback_output="$($PLUMBLINE --root "$REPO_DIR" rollback --target "$TARGET")"
-assert_eq "rollback restores previous version" "0.9.0" "$($PLUMBLINE --root "$TARGET" version)"
+assert_eq "rollback restores previous version" "$BASELINE_FIXTURE_VERSION" "$($PLUMBLINE --root "$TARGET" version)"
 assert "rollback removes updated payload" "test ! -f '$TARGET/UPDATED'"
 assert "rollback reports snapshot" "printf '%s\n' '$rollback_output' | grep -q 'status: rolled back'"
 
 FAIL_TARGET="$TMP_ROOT/fail-target"
-cp -R "$FIXTURES/target-0.9.0" "$FAIL_TARGET"
-if "$PLUMBLINE" --root "$REPO_DIR" update --target "$FAIL_TARGET" --source "$FIXTURES/source-0.9.1" --verify-cmd 'test -f DOES_NOT_EXIST' >"$TMP_ROOT/fail.log" 2>&1; then
+cp -R "$BASELINE_FIXTURE" "$FAIL_TARGET"
+if "$PLUMBLINE" --root "$REPO_DIR" update --target "$FAIL_TARGET" --source "$UPDATE_FIXTURE" --verify-cmd 'test -f DOES_NOT_EXIST' >"$TMP_ROOT/fail.log" 2>&1; then
   fail_status=0
 else
   fail_status=$?
 fi
 assert_eq "failed verification exits non-zero" "1" "$fail_status"
-assert_eq "failed verification reverts version" "0.9.0" "$($PLUMBLINE --root "$FAIL_TARGET" version)"
+assert_eq "failed verification reverts version" "$BASELINE_FIXTURE_VERSION" "$($PLUMBLINE --root "$FAIL_TARGET" version)"
 assert "failed verification reverts payload" "test ! -f '$FAIL_TARGET/UPDATED'"
 assert "failed verification reports revert" "grep -q 'status: reverted to snapshot' '$TMP_ROOT/fail.log'"
 
 MAJOR_TARGET="$TMP_ROOT/major-target"
-cp -R "$FIXTURES/target-0.9.0" "$MAJOR_TARGET"
+cp -R "$BASELINE_FIXTURE" "$MAJOR_TARGET"
 if "$PLUMBLINE" --root "$REPO_DIR" update --target "$MAJOR_TARGET" --source "$FIXTURES/source-1.0.0" --verify-cmd 'true' >"$TMP_ROOT/major.log" 2>&1; then
   major_status=0
 else
@@ -109,7 +113,7 @@ assert "tarball --check reports update-available" "printf '%s\n' '$tar_check_out
 assert "tarball --check reports newer latest" "printf '%s\n' '$tar_check_output' | grep -q \"latest: $NEWER_VERSION\""
 
 TAR_TARGET="$TMP_ROOT/tar-target"
-cp -R "$FIXTURES/target-0.9.0" "$TAR_TARGET"
+cp -R "$BASELINE_FIXTURE" "$TAR_TARGET"
 tar_apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TAR_TARGET" --source "$TARBALL" --verify-cmd true)"
 assert "tarball apply reports verified" "printf '%s\n' '$tar_apply_output' | grep -q 'status: changed and verified'"
 assert_eq "tarball apply installs newer version" "$NEWER_VERSION" "$($PLUMBLINE --root "$TAR_TARGET" version)"
@@ -140,7 +144,7 @@ with tarfile.open(tarball, "w:gz") as t:
     add(t, f"{TOP}/config/claude/install.sh", b"#!/usr/bin/env bash\nexit 0\n", mode=0o755)
 PY
 AD_TARGET="$TMP_ROOT/appledouble-target"
-cp -R "$FIXTURES/target-0.9.0" "$AD_TARGET"
+cp -R "$BASELINE_FIXTURE" "$AD_TARGET"
 ad_check="$($PLUMBLINE --root "$REPO_DIR" update --check --source "$AD_TARBALL" 2>&1)"
 assert "AppleDouble tarball --check reports update-available" "printf '%s\n' '$ad_check' | grep -q 'status: update-available'"
 ad_apply="$($PLUMBLINE --root "$REPO_DIR" update --target "$AD_TARGET" --source "$AD_TARBALL" --verify-cmd true 2>&1)"
@@ -167,7 +171,7 @@ with tarfile.open(tarball, "w:gz") as t:
     t.add(payload, arcname="../evil")
 PY
 EVIL_TARGET="$TMP_ROOT/evil-target"
-cp -R "$FIXTURES/target-0.9.0" "$EVIL_TARGET"
+cp -R "$BASELINE_FIXTURE" "$EVIL_TARGET"
 EVIL_SENTINEL="$TMP_ROOT/evil"
 rm -f "$EVIL_SENTINEL"
 if "$PLUMBLINE" --root "$REPO_DIR" update --target "$EVIL_TARGET" --source "$EVIL_TARBALL" --verify-cmd true >"$TMP_ROOT/evil.log" 2>&1; then
@@ -178,7 +182,7 @@ fi
 assert_eq "unsafe tarball exits non-zero" "1" "$evil_status"
 assert "unsafe tarball reports unsafe member" "grep -q 'unsafe tarball' '$TMP_ROOT/evil.log'"
 assert "unsafe tarball writes nothing outside target" "test ! -e '$EVIL_SENTINEL'"
-assert_eq "unsafe tarball leaves target version intact" "0.9.0" "$($PLUMBLINE --root "$EVIL_TARGET" version)"
+assert_eq "unsafe tarball leaves target version intact" "$BASELINE_FIXTURE_VERSION" "$($PLUMBLINE --root "$EVIL_TARGET" version)"
 
 # --- P1: network failure is a clean message, never a traceback -------------
 # Point the API at a closed port so the fetch fails fast and deterministically.
@@ -207,7 +211,7 @@ chmod +x "$EVILV_DIR/config/claude/install.sh" "$EVILV_DIR/config/claude/tests/r
 EVILV_TARBALL="$TMP_ROOT/evilverify.tar.gz"
 tar -C "$EVILV_BUILD" -czf "$EVILV_TARBALL" "$EVILV_TOP"
 EVILV_TARGET="$TMP_ROOT/evilverify-target"
-cp -R "$FIXTURES/target-0.9.0" "$EVILV_TARGET"
+cp -R "$BASELINE_FIXTURE" "$EVILV_TARGET"
 evilv_out="$($PLUMBLINE --root "$REPO_DIR" update --target "$EVILV_TARGET" --source "$EVILV_TARBALL")"
 assert "verify falls back to the fixed standard command" "printf '%s\n' '$evilv_out' | grep -q 'status: changed and verified'"
 assert "payload-supplied verifyCommand is NOT executed" "test ! -e '$EVILV_TARGET/EVIL_VERIFY_SENTINEL'"

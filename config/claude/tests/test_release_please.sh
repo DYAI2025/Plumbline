@@ -16,10 +16,11 @@ assert "workflow grants pull request write" "grep -q 'pull-requests: write' '$RE
 assert "VERSION has release-please marker" "grep -q 'x-release-please-start-version' '$REPO_DIR/VERSION'"
 assert "Conventional Commits are documented" "grep -q 'Conventional Commits' '$REPO_DIR/CONTRIBUTING.md'"
 
-python3 - <<'PY' >/tmp/plumbline_release_please_check.txt
+REPO_DIR="$REPO_DIR" python3 - <<'PY' >/tmp/plumbline_release_please_check.txt
 import json
+import os
 from pathlib import Path
-root=Path.cwd()
+root=Path(os.environ['REPO_DIR'])
 config=json.loads((root/'release-please-config.json').read_text())
 manifest=json.loads((root/'.release-please-manifest.json').read_text())
 compat=json.loads((root/'compatibility.json').read_text())

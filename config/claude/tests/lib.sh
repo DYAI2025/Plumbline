@@ -23,6 +23,12 @@ assert_eq() { # assert_eq <description> <expected> <actual>
   if [ "$2" = "$3" ]; then _pass "$1"; else _fail "$1 (expected '$2', got '$3')"; fi
 }
 
+repo_version() { # repo_version <repo-root>
+  # VERSION is release-please-managed and may contain marker comments. Return
+  # the first non-comment, non-empty line so release tests follow each bump.
+  awk 'NF && $0 !~ /^#/ {print; exit}' "${1:-.}/VERSION"
+}
+
 finish() { # print summary and exit non-zero if anything failed
   printf '\n%s: %d run, %d failed\n' "${1:-tests}" "$TESTS_RUN" "$TESTS_FAILED"
   [ "$TESTS_FAILED" -eq 0 ]
