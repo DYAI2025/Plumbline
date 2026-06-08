@@ -63,7 +63,7 @@ apply_output="$($PLUMBLINE --root "$REPO_DIR" update --target "$TARGET" --source
 assert_eq "update applies source version" "$UPDATE_FIXTURE_VERSION" "$($PLUMBLINE --root "$TARGET" version)"
 assert_file "update copies payload" "$TARGET/UPDATED"
 assert_file "update records last success" "$TARGET/.plumbline/update/last-success.json"
-assert "update reports verified" "printf '%s\n' \"\$apply_output\" | grep -q \"status: changed and verified ($BASELINE_FIXTURE_VERSION -> $UPDATE_FIXTURE_VERSION)\""
+assert_contains "update reports verified" "$apply_output" "status: changed and verified ($BASELINE_FIXTURE_VERSION -> $UPDATE_FIXTURE_VERSION)"
 
 rollback_output="$($PLUMBLINE --root "$REPO_DIR" rollback --target "$TARGET")"
 assert_eq "rollback restores previous version" "$BASELINE_FIXTURE_VERSION" "$($PLUMBLINE --root "$TARGET" version)"

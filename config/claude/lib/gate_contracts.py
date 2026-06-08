@@ -15,14 +15,14 @@ Subcommands:
 """
 from __future__ import annotations
 import glob
+import importlib.util
 import os
 import re
 import sys
 
-try:
+yaml = None
+if importlib.util.find_spec("yaml") is not None:  # pragma: no cover - CI installs PyYAML
     import yaml  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover - PyYAML is a repo dependency
-    yaml = None
 
 
 def _read(path):
@@ -30,10 +30,42 @@ def _read(path):
         return fh.read()
 
 
+def _load_simple_roster_manifest(raw):
+    """Parse the small roster YAML subset used by the G4 contract fixtures.
+
+    CI installs PyYAML, but this fallback keeps `run_all.sh` deterministic in local
+    or stripped-down environments. It intentionally supports only top-level keys
+    whose values are dash lists, which is the complete roster contract shape.
+    """
+    data = {}
+    current = None
+    for lineno, original in enumerate(raw.splitlines(), start=1):
+        line = original.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        if not line[:1].isspace() and line.endswith(":"):
+            current = line[:-1].strip()
+            if not current:
+                raise ValueError(f"empty roster key on line {lineno}")
+            data[current] = []
+            continue
+        stripped = line.strip()
+        if stripped.startswith("- ") and current is not None:
+            role = stripped[2:].strip().strip('"').strip("'")
+            if not role:
+                raise ValueError(f"empty roster role on line {lineno}")
+            data[current].append(role)
+            continue
+        raise ValueError(f"unsupported roster YAML on line {lineno}: {original}")
+    return data
+
+
 def _load_manifest(path):
-    if yaml is None:
-        raise RuntimeError("PyYAML required for roster parsing")
-    data = yaml.safe_load(_read(path))
+    raw = _read(path)
+    if yaml is not None:
+        data = yaml.safe_load(raw)
+    else:
+        data = _load_simple_roster_manifest(raw)
     if not isinstance(data, dict):
         raise ValueError("roster manifest is not a mapping")
     return data

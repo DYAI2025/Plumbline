@@ -23,10 +23,24 @@ assert_eq() { # assert_eq <description> <expected> <actual>
   if [ "$2" = "$3" ]; then _pass "$1"; else _fail "$1 (expected '$2', got '$3')"; fi
 }
 
+assert_contains() { # assert_contains <description> <haystack> <needle>
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if printf '%s\n' "$2" | grep -qF -- "$3"; then
+    _pass "$1"
+  else
+    _fail "$1 (missing '$3')"
+  fi
+}
+
 repo_version() { # repo_version <repo-root>
   # VERSION is release-please-managed and may contain marker comments. Return
-  # the first non-comment, non-empty line so release tests follow each bump.
-  awk 'NF && $0 !~ /^#/ {print; exit}' "${1:-.}/VERSION"
+  # the first non-comment, non-empty semver so release tests follow each bump.
+  local version_file="${1:-.}/VERSION"
+  local version
+  [ -f "$version_file" ] || return 1
+  version="$(awk 'NF && $0 !~ /^#/ {print; exit}' "$version_file")" || return 1
+  printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || return 1
+  printf '%s\n' "$version"
 }
 
 finish() { # print summary and exit non-zero if anything failed
