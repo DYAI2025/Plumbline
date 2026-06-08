@@ -56,7 +56,11 @@ def _load_simple_roster_manifest(raw):
                 raise ValueError(f"empty roster role on line {lineno}")
             data[current].append(role)
             continue
-        raise ValueError(f"unsupported roster YAML on line {lineno}: {original}")
+        raise ValueError(
+            f"unsupported roster YAML on line {lineno}: {original} "
+            "(the built-in simple parser only supports a limited subset of roster YAML; "
+            "install PyYAML to use full YAML syntax)"
+        )
     return data
 
 
