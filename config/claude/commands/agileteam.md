@@ -24,6 +24,47 @@ user's idea, the PRD, the confirmed Product Vision, the real user, real usefulne
 Reality-Ledger evidence, and the delivered behavior. This layer sits **on top of** —
 never weakening — the existing Reality Ledger, escalation-asymmetry, and Gates A–D.
 
+
+### AgileTeam Start Governance (Sprint 2 contract layer)
+
+`/agileteam` is first an intake gate and only then a delivery orchestrator. When a PRD or PRD-equivalent user request is present but the Product Vision is not explicitly confirmed, classify the start as `VISION_MISSING`: planning and coding are both blocked, the missing artifact is the confirmed Product Vision Canvas, and the next allowed step is Vision Extraction plus explicit user confirmation. This Sprint 2 rule is a contract layer; full live runtime start governance remains unproven until a real `/agileteam` dry-run and hook/start integration exist.
+
+#### Vision Extraction Procedure
+
+When Product Vision is missing or unconfirmed:
+
+1. Extract explicit intent from the PRD and user input.
+2. Extract the target user/customer.
+3. Extract the user problem.
+4. Extract the desired change.
+5. Extract the core value promise.
+6. Mark inferred content as `ASSUMPTION`; Claude may draft but must not own or approve product meaning.
+7. Ask only missing high-impact questions.
+8. Fill the Product Vision Canvas using `Explicit`, `Assumption`, `Missing`, `Source`, and `User decision` for each key field.
+9. Ask the user for the exact confirmation phrase: `I confirm this Product Vision as the basis for AgileTeam planning.`
+10. Do not proceed to planning or coding before confirmation.
+
+Required high-impact questions:
+
+- Who is the primary user or customer?
+- What should become better for them?
+- Why does this matter now?
+- What is the core value promise that must not be broken?
+- What would count as a wrong or harmful implementation?
+- How will we know the Vision has been fulfilled?
+- What is explicitly out of scope?
+
+#### Scope Shift Decision Rule
+
+For any material scope shift, reduced implementation, or deviation from the confirmed Product Vision, show the `SCOPE SHIFT DECISION REQUIRED` block from `docs/templates/scope-shift-notice.template.md` (header: `SCOPE SHIFT DECISION REQUIRED`). The user must choose explicitly:
+
+A) Resolve the blocker and continue toward the original goal.
+B) Accept reduced scope, but keep original goal NOT DONE.
+C) Move this feature to backlog.
+D) Stop and document the contradiction.
+
+Generic OK / continue / sounds good is insufficient for this decision. Reduced scope cannot be reported as Original Goal Done: always separate `Original Goal Status` from `Current Iteration Status`.
+
 ### First-run orientation
 
 When the user starts `/agileteam`, first explain Plumbline in the user's language.

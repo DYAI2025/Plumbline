@@ -1,0 +1,8 @@
+# Plumbline Backlog
+
+| ID | Feature | Original Goal | Current Status | Next Slice | Evidence Required | Owner | Last Updated |
+|---|---|---|---|---|---|---|---|
+| BL-001 | CI-Enforced AgileTeam Start Governance | Block AgileTeam planning/coding when PRD exists but confirmed Product Vision is missing. | Sprint 2 contract layer done when focused tests and CI wiring pass; full live runtime start governance not done. | Observe CI run, then prepare runtime wiring. | Focused tests, `run_all.sh`, dedicated CI job, README/template/backlog updates. | Plumbline maintainers | 2026-06-08 |
+| BL-002 | Runtime start-classifier integration | Wire the deterministic start classifier into real Claude session/start behavior without making SessionStart fatal. | Not done. | Add non-fatal runtime-adjacent invocation and user-facing dry-run path. | Hook/start evidence showing `VISION_MISSING` blocks planning/coding without breaking SessionStart. | Plumbline maintainers | 2026-06-08 |
+| BL-003 | Live dry-run fixture | Prove `/agileteam + PRD without confirmed Vision` behavior in a real dry-run fixture. | Not done. | Build deterministic fixture and transcript evidence. | Dry-run transcript showing Vision Extraction only; no planning/coding. | Plumbline maintainers | 2026-06-08 |
+| BL-004 | Runtime phase dashboard | Show full runtime phase dashboard with iteration N/M and current gate state. | Not done. | Connect dashboard to runtime state after start governance integration. | Runtime evidence of phase, gate, missing artifacts, iteration count, and next allowed step. | Plumbline maintainers | 2026-06-08 |
