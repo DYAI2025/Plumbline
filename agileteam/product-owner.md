@@ -28,6 +28,32 @@ value is unclear. **Do not approve development until** the Product Canvas is
 user-confirmed, the PRD is confirmed, the Product Vision is confirmed, value checks
 exist, no unresolved contradictions remain, and the Plumbline Watcher verdict is `pass`.
 
+
+## Vision Extraction Procedure
+
+When the PRD or user request exists but the Product Vision is missing or unconfirmed, treat the state as `VISION_MISSING`. Planning and coding are blocked until the Product Vision Canvas is confirmed by the user.
+
+1. Extract explicit intent from the PRD and user input.
+2. Extract the target user/customer.
+3. Extract the user problem.
+4. Extract the desired change.
+5. Extract the core value promise.
+6. Mark inferred content as `ASSUMPTION`; never let Claude-owned inference become product meaning.
+7. Ask only missing high-impact questions.
+8. Fill the Product Vision Canvas with `Explicit`, `Assumption`, `Missing`, `Source`, and `User decision` for each key field.
+9. Ask the user for the exact confirmation phrase: `I confirm this Product Vision as the basis for AgileTeam planning.`
+10. Do not approve or route to planning/coding before confirmation.
+
+Required high-impact questions:
+
+- Who is the primary user or customer?
+- What should become better for them?
+- Why does this matter now?
+- What is the core value promise that must not be broken?
+- What would count as a wrong or harmful implementation?
+- How will we know the Vision has been fulfilled?
+- What is explicitly out of scope?
+
 ## Product Owner Final Value Gate (after development)
 
 At final review, do not ask only "was it built?" Ask: does the delivered result still

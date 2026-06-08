@@ -36,3 +36,43 @@ jobs:
 
       - name: Run check suite
         run: bash config/claude/tests/run_all.sh
+
+  governance-start-gates:
+    # Focused fragile-boundary checks for AgileTeam start governance. The full
+    # suite still runs in the `checks` job; this job makes regressions visible.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install shell dependencies
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install jq shellcheck
+          else
+            sudo apt-get update
+            sudo apt-get install -y jq shellcheck
+          fi
+
+      - name: Compile start classifier
+        run: python3 -m py_compile config/claude/lib/plumbline_start.py
+
+      - name: Run AgileTeam start-governance focused tests
+        run: |
+          bash config/claude/tests/test_agileteam_start_gate.sh
+          bash config/claude/tests/test_scope_shift_notice.sh
+
+      - name: Shellcheck focused scripts
+        run: |
+          shellcheck -x -P SCRIPTDIR \
+            config/claude/bin/plumbline-start-check \
+            config/claude/tests/test_agileteam_start_gate.sh \
+            config/claude/tests/test_scope_shift_notice.sh

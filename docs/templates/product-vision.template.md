@@ -1,37 +1,83 @@
 # Product Vision: <feature>
 
-## One-sentence vision
-<One sentence describing the product from the customer's value perspective.>
+Use this canvas to keep product meaning owned by the user. Claude may draft from PRD or conversation context, but every inferred item must stay under `Assumption:` until the user confirms it. Do not treat a PRD-only draft as confirmed Product Vision.
 
-## Customer / user
-<Who is this for?>
+## Target User
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## Real usage moment
-<When and where would a real user use this?>
+## User Problem
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## Customer value
-<What concrete human value does this create?>
+## Desired Change
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## Pain avoided or gain created
-<What problem, friction, risk, cost, delay, confusion, or unmet desire is improved?>
+## Core Value Promise
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## Human realism check
-<Why is this plausible in a real user's work/life context?>
+## Why Now
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## Non-goals
-- <What this product explicitly should not optimize for>
-- <What would be misleading scope expansion>
+## Non-Goals
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## Value risks
-- <How this could become technically correct but not useful>
-- <How this could become green in tests but unusable in reality>
-- <How this could drift away from the original customer value>
+## Success Signal
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## QA value checks
-- VCHK-001: <A check that validates customer value, not just code behavior>
-- VCHK-002: <A check that validates real usability or real-world feasibility>
+## Risks if Misbuilt
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
 
-## User confirmation
+## QA Value Checks
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
+
+## User Confirmation
+Explicit:
+Assumption:
+Missing:
+Source:
+User decision:
+
+Required confirmation phrase:
+
+```text
+I confirm this Product Vision as the basis for AgileTeam planning.
+```
+
 Status: unconfirmed | confirmed | reframed
 Confirmed by:
 Confirmed at:

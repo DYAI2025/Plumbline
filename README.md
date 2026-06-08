@@ -27,6 +27,18 @@
 
 ---
 
+## Before You Start: AgileTeam Requires Confirmed Product Intent
+
+`/agileteam` is first an intake gate and only then a delivery orchestrator. A PRD by itself is not enough to start planning or coding: if a PRD is present but the Product Vision is not explicitly confirmed, Plumbline classifies the start state as `VISION_MISSING`.
+
+When `VISION_MISSING` applies, planning and coding are blocked. Claude may reconstruct a Product Vision draft from the PRD or user input, but it cannot own, approve, or silently invent product meaning. Any inferred Vision content must be labeled `ASSUMPTION` until the user confirms it.
+
+The next allowed step is Vision Extraction: clarify the target user, problem, desired change, core value promise, non-goals, success signal, and risks if misbuilt, then ask the user to confirm the Product Vision explicitly. Scope shifts are handled the same way: a material deviation requires an explicit A/B/C/D decision, not generic `OK`, `continue`, or `sounds good`. Reduced scope is not Original Goal Done.
+
+Sprint 2 proves this as a local contract layer and CI-enforced start-governance check. Full `/agileteam` live runtime behavior is only proven after a real dry-run and hook/start integration exist.
+
+---
+
 ## ⚡ Quickstart — install · update · which model
 
 **Install** — Claude Code is the runtime; you also need `git`, `bash`, `python3`, `jq`:
