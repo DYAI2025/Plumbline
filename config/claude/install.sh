@@ -17,14 +17,17 @@ INSTALL_COMMANDS=1
 INSTALL_SKILLS=1
 INSTALL_HOOK=1
 INSTALL_BIN=1
+WITH_FLOW=0
 DRY_RUN=0
 
 usage() {
   cat <<USAGE
-Usage: $0 [--copy] [--force] [--dry-run] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
+Usage: $0 [--copy] [--force] [--dry-run] [--with-flow-agents] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
 
 Installs the repo for Claude Code by:
-  - making this checkout available as \$CLAUDE_HOME/agents (unless already there),
+  - installing the MCP-free agents into \$CLAUDE_HOME/agents (default; the ~35 claude-flow /
+    flow-nexus / sublinear agents are omitted unless --with-flow-agents, so a plain install
+    never pulls you toward the heavy claude-flow MCP stack),
   - installing all vendored commands from config/claude/commands/,
   - installing all vendored skills from config/claude/skills/,
   - registering the sentinel-gated learning-loop Stop hook,
@@ -46,6 +49,7 @@ for arg in "$@"; do
     --no-skills) INSTALL_SKILLS=0 ;;
     --no-hook) INSTALL_HOOK=0 ;;
     --no-bin) INSTALL_BIN=0 ;;
+    --with-flow-agents) WITH_FLOW=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -93,13 +97,51 @@ transfer() {
   fi
 }
 
+# An agent is "flow-coupled" when its distinctive function is calling an external heavy MCP
+# server (claude-flow / flow-nexus / sublinear-time-solver). Derived from the prompt, not a
+# hardcoded list, so it stays correct as agents are added or changed. These agents are inert
+# without that MCP installed separately, and carrying them by default would both bloat the
+# agent registry and pull the user toward connecting the token-heavy claude-flow MCP.
+is_flow_coupled() {
+  grep -qE 'mcp__(claude[-_]flow|flow[-_]nexus|sublinear)' "$1"
+}
+
+# Install the agent prompts into $CLAUDE_HOME/agents. Selective by design: only real agents
+# (markdown with a top-level name: frontmatter key) are mounted — not the repo's docs, config,
+# metrics or explorer trees — and the flow-coupled set is omitted unless --with-flow-agents.
 install_agent_repo() {
   local target="$CLAUDE_HOME/agents"
+  # Back-compat: an existing whole-repo symlink (from an older install) is left untouched.
   if same_path "$REPO_DIR" "$target"; then
     log_action "skip agents: $target already points at this repo"
     return
   fi
-  transfer "$REPO_DIR" "$target"
+  local f rel omitted=0
+  while IFS= read -r -d '' f; do
+    # name: frontmatter marks an agent; this skips README/CLAUDE/SETUP, reports, etc.
+    grep -qE '^name:' "$f" || continue
+    if [ "$WITH_FLOW" -ne 1 ] && is_flow_coupled "$f"; then
+      omitted=$((omitted + 1))
+      continue
+    fi
+    rel="${f#"$REPO_DIR"/}"
+    transfer "$f" "$target/$rel"
+  done < <(
+    find "$REPO_DIR" \
+      \( -path "$REPO_DIR/.git" \
+         -o -path "$REPO_DIR/.github" \
+         -o -path "$REPO_DIR/.claude" \
+         -o -path "$REPO_DIR/.pytest_cache" \
+         -o -path "$REPO_DIR/config" \
+         -o -path "$REPO_DIR/docs" \
+         -o -path "$REPO_DIR/metrics" \
+         -o -path "$REPO_DIR/explorer" \) -prune -o \
+      -type f -name '*.md' -print0
+  )
+  if [ "$omitted" -gt 0 ]; then
+    echo "note: omitted $omitted MCP-coupled agents (claude-flow / flow-nexus / sublinear)."
+    echo "      Re-run with --with-flow-agents to include them (they need that external MCP to be useful)."
+  fi
 }
 
 install_commands() {
@@ -229,6 +271,10 @@ register_enforce_hook() {
   fi
 }
 
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "dry-run: no changes will be written (target CLAUDE_HOME=$CLAUDE_HOME)"
+fi
+
 mkdir -p "$CLAUDE_HOME"
 [ "$INSTALL_AGENTS" -eq 1 ] && install_agent_repo
 [ "$INSTALL_COMMANDS" -eq 1 ] && install_commands
@@ -240,3 +286,24 @@ fi
 [ "$INSTALL_BIN" -eq 1 ] && install_bin
 
 echo "done. Restart Claude Code (or reload /hooks) so agents, commands, skills, hooks, and plumbline CLI are picked up."
+
+# The plumbline CLI lands in $CLAUDE_HOME/bin. If that's not on the user's $PATH, a bare
+# `plumbline ...` is "command not found" — so say so unmistakably (the install audit's
+# top user-facing symptom).
+# shellcheck disable=SC2016  # the $PATH and `export PATH=...` are intentional literals to paste
+case ":${PATH:-}:" in
+  *":$CLAUDE_HOME/bin:"*) : ;;  # already discoverable — nothing to say
+  *)
+    printf '\n'
+    printf '  ======================================================================\n'
+    printf '   ACTION NEEDED: the plumbline CLI is installed but NOT on your $PATH.\n'
+    printf '   Without this, "plumbline ..." will be command not found.\n'
+    printf '\n'
+    printf '       export PATH="%s/bin:$PATH"\n' "$CLAUDE_HOME"
+    printf '\n'
+    printf '   Add that line to your shell rc (~/.zshrc or ~/.bashrc), then restart\n'
+    printf '   your shell. (/plumbline-update is the Claude Code slash command,\n'
+    printf '   separate from the plumbline terminal CLI.)\n'
+    printf '  ======================================================================\n'
+    ;;
+esac

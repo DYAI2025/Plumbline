@@ -22,13 +22,18 @@ consensus.
 Tech Arbiter · Skeptic · Distribution Realist) — unchanged. A second, thin mode exists for
 use as the `/agileteam` pre-PRD gate:
 
-### Challenge mode (`--mode=challenge`) — thin, token-bounded, three roles
+### Challenge mode (`--mode=challenge`) — thin, structurally bounded, three roles
 
 `--mode=challenge` convenes a **three-role** challenge council instead of the four bodies.
 It is the pre-PRD challenge gate invoked by `/agileteam` (Phase 0.16) on a `user-confirmed`
-Product Canvas + the raw idea. It is **token-bounded** by design: ≤ ~15k tokens total;
-≤180 words per role per round; friction-driven, ≤2 collision rounds; on reaching the cap →
-stop and summarize. The three roles (reusing the existing body prompts under role-aliases
+Product Canvas + the raw idea. It is **structurally bounded** by design: ≤180 words per role per round; friction-driven,
+≤2 collision rounds; on reaching that bound → stop and summarize. *On cost — what "tokens
+total" means:* the gate's real cost is the total tokens its role dispatches consume (each
+body's system prompt + model reasoning + output, plus distillation), not just visible
+output. An earlier `≤ ~15k tokens total` figure was aspirational and is **withdrawn** as
+measured-false — a single-round / three-role Opus floor is ~103k tokens
+(`metrics/bench-2026-06-03-challenge-token-oracle.md`). The structural limits above are
+the real bound; a hard token cap, if ever needed, requires a real token counter, not prose. The three roles (reusing the existing body prompts under role-aliases
 where sensible — DRY):
 
 | Role | Reuses | Pulls toward |

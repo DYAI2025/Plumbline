@@ -50,6 +50,21 @@ run_hook() {
   rm -f "$outf" "$errf"
 }
 
+# Install just enough Plumbline CLI surface under a fake Claude home to exercise
+# the production install path: target repos do NOT vendor config/claude/bin, but
+# install.sh does place these commands under $CLAUDE_HOME/bin.
+make_installed_cli_home() {
+  local home
+  home="$(mktemp -d -p "$WORK")"
+  mkdir -p "$home/bin" "$home/lib"
+  cp "$BIN_SRC"/plumbline-context-check "$BIN_SRC"/plumbline-reality-check \
+     "$BIN_SRC"/plumbline-scope-check "$home/bin/"
+  cp "$LIB_SRC"/plumbline_context.py "$LIB_SRC"/plumbline_reality.py \
+     "$LIB_SRC"/plumbline_scope.py "$home/lib/"
+  chmod +x "$home/bin/"*
+  printf '%s' "$home"
+}
+
 # Build a self-contained git repo that vendors the PRIL CLIs + libs so the hook
 # can shell out to them with --repo pointed at this repo. Echoes the repo path.
 # Arg1: feature slug. Sets up a confirmed canvas + full context + traceability.
@@ -160,6 +175,34 @@ if [ -z "$leaked" ]; then
   _pass "I1: no err.* files leaked into the repo"
 else
   _fail "I1: stderr leaked into repo: $leaked"
+fi
+
+# --- 4b. Installed hook path: CLIs resolve from $CLAUDE_HOME/bin. --------------
+# Production installs register the hook from the Claude installation while
+# CLAUDE_PROJECT_DIR remains the target repo. A normal target repo with an active
+# marker/canvas should not need to vendor config/claude/bin for enforcement to run.
+installed_repo="$(make_feature_repo installedfeat)"
+rm -rf "$installed_repo/config/claude/bin" "$installed_repo/config/claude/lib"
+printf 'installedfeat' >"$installed_repo/docs/context/.active-feature"
+mkdir -p "$installed_repo/src/billing"
+printf 'def installed_escape():\n    return 1\n' >"$installed_repo/src/billing/escape.py"
+git -C "$installed_repo" add src/billing/escape.py
+installed_home="$(make_installed_cli_home)"
+outf="$(mktemp -p "$WORK")"
+errf="$(mktemp -p "$WORK")"
+CLAUDE_HOME="$installed_home" CLAUDE_PROJECT_DIR="$installed_repo" \
+  bash "$HOOK" >"$outf" 2>"$errf" <<<'{}'
+installed_rc=$?
+installed_out="$(cat "$outf")"
+rm -f "$outf" "$errf"
+assert_eq "installed CLI path: exit 0 (never non-zero)" "0" "$installed_rc"
+TESTS_RUN=$((TESTS_RUN + 1))
+installed_decision="$(printf '%s' "$installed_out" | jq -r '.decision' 2>/dev/null)"
+installed_reason="$(printf '%s' "$installed_out" | jq -r '.reason' 2>/dev/null)"
+if [ "$installed_decision" = "block" ] && printf '%s' "$installed_reason" | grep -Fq 'scope'; then
+  _pass "installed CLI path: target repo without vendored CLIs still enforces via CLAUDE_HOME/bin"
+else
+  _fail "installed CLI path: expected scope block via CLAUDE_HOME/bin (out: $installed_out)"
 fi
 
 # --- 5. Marker + everything in scope + NO boundary marker -> exit 0 (I2). ------

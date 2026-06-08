@@ -29,7 +29,7 @@ a `canvas-link` field. No confirmed canvas ⇒ no PRD finalization and no develo
    skill (mandatory): REQ-IDs, data model, architecture constraints, Given/When/Then
    acceptance criteria, NFRs, security matrix, atomic tasks, and the labels
    `MISSING / ASSUMPTION / OPEN QUESTION / BLOCKER`. For vague, human-framed input you
-   may first run `product-management:write-spec` to capture intent and success metrics.
+   may first run `product-management-write-spec` to capture intent and success metrics.
 2. **Quality bar.** Every requirement must be testable, atomic, and free of
    contradictions. If it is not, it is not ready — flag it.
 3. **Traceability matrix.** Build and maintain REQ-ID ↔ acceptance-test ↔ impl-task ↔

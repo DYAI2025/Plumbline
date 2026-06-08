@@ -1,0 +1,18 @@
+{
+  "model": "synthetic",
+  "bound": 15000,
+  "roles": {
+    "challenger": {
+      "tokens": 6200,
+      "text": "The proposed digest feature assumes users actually want a batched summary, but we have zero evidence anyone asked for fewer interruptions versus richer per-event alerts. Before committing engineering effort, surface the falsifiable hypothesis: which retention or satisfaction number moves, and what counts as the experiment failing? Right now the value claim is unfalsifiable wishful prose."
+    },
+    "advisor": {
+      "tokens": 5400,
+      "text": "From a go-to-market angle, three incumbents already bundle weekly rollups inside their pricing tiers, so differentiation must come from relevance ranking rather than mere batching. Sales would position this against churn risk in the mid-market segment; without a clear pricing story the launch reads as table-stakes parity, not a wedge competitors cannot copy cheaply within a quarter."
+    },
+    "critic": {
+      "tokens": 5900,
+      "text": "Implementation-wise the scheduler introduces a recurring fan-out job that contends with the existing notification queue; idempotency on retried digest windows is the trap. Watch timezone boundary arithmetic, daylight-saving rollovers, and how a partial database read during aggregation could double-count events. The data model needs a deduplication key keyed on window plus recipient or backfills corrupt history."
+    }
+  }
+}

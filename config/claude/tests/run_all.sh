@@ -62,15 +62,17 @@ for p in sorted(glob.glob("**/*.md", recursive=True)):
     if d.get("name"):
         names[d["name"]] += 1
 dupes = {k: v for k, v in names.items() if v > 1}
+colon = sorted(k for k in names if ":" in k)
 print("parse failures:", bad or "none")
 print("missing description:", nodesc or "none")
 print("duplicate names:", dupes or "none")
-if bad or nodesc or dupes:
+print("colon in name (plugin-namespace syntax, invalid for a local skill/agent):", colon or "none")
+if bad or nodesc or dupes or colon:
     sys.exit(1)
 PY
 
 stage "metrics scripts compile"
-python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/lib/plumbline_update.py \
+python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/metrics/challenge_token_oracle.py config/claude/lib/plumbline_update.py config/claude/lib/gate_contracts.py \
   && echo "py_compile OK" || fail=1
 
 stage "metrics contract round-trip"
@@ -111,6 +113,24 @@ bash config/claude/tests/test_release_please.sh || fail=1
 
 stage "update layer tests"
 bash config/claude/tests/test_update_layer.sh || fail=1
+
+stage "gate contract tests (G1/G3/G4)"
+bash config/claude/tests/test_gate_contracts.sh || fail=1
+
+stage "challenge token oracle scorer tests"
+bash config/claude/tests/test_challenge_token_oracle.sh || fail=1
+
+stage "readme honesty (Wave A: agent count derived from explorer + vendored framing)"
+bash config/claude/tests/test_readme_honesty.sh || fail=1
+
+stage "dependencies doc (Wave A: external vs shipped vs referenced MCP families)"
+bash config/claude/tests/test_dependencies_doc.sh || fail=1
+
+stage "install path (Wave A: CLI discoverable — doctor PATH check + install.sh hint)"
+bash config/claude/tests/test_install_path.sh || fail=1
+
+stage "lean install (default omits MCP-coupled agents; --with-flow-agents includes them)"
+bash config/claude/tests/test_install_lean_agents.sh || fail=1
 
 if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"

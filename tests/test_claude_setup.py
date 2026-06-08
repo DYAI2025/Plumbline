@@ -21,7 +21,7 @@ EXPECTED_SKILLS = {
     "executing-plans": "executing-plans",
     "writing-plans": "writing-plans",
     "writing-skills": "writing-skills",
-    "product-management:write-spec": "product-management-write-spec",
+    "product-management-write-spec": "product-management-write-spec",
     "using-git-worktrees": "using-git-worktrees",
     "defense-in-depth": "defense-in-depth",
     "testing-anti-patterns": "testing-anti-patterns",

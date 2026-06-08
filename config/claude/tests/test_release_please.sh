@@ -16,10 +16,16 @@ assert "workflow grants pull request write" "grep -q 'pull-requests: write' '$RE
 assert "VERSION has release-please marker" "grep -q 'x-release-please-start-version' '$REPO_DIR/VERSION'"
 assert "Conventional Commits are documented" "grep -q 'Conventional Commits' '$REPO_DIR/CONTRIBUTING.md'"
 
-python3 - <<'PY' >/tmp/plumbline_release_please_check.txt
+release_check="$(mktemp "${TMPDIR:-/tmp}/plumbline_release_please_check.XXXXXX")"
+trap 'rm -f "$release_check"' EXIT
+expected_version="$(repo_version "$REPO_DIR")"
+
+REPO_DIR="$REPO_DIR" EXPECTED_VERSION="$expected_version" python3 - <<'PY' >"$release_check"
 import json
+import os
 from pathlib import Path
-root=Path.cwd()
+root=Path(os.environ['REPO_DIR'])
+expected_version=os.environ['EXPECTED_VERSION']
 config=json.loads((root/'release-please-config.json').read_text())
 manifest=json.loads((root/'.release-please-manifest.json').read_text())
 compat=json.loads((root/'compatibility.json').read_text())
@@ -28,11 +34,12 @@ extra=pkg['extra-files']
 assert pkg['release-type']=='simple'
 assert any(item.get('type')=='generic' and item.get('path')=='VERSION' for item in extra)
 assert any(item.get('type')=='json' and item.get('path')=='compatibility.json' and item.get('jsonpath')=='$.version' for item in extra)
-assert manifest['.']=='0.9.0'
-assert compat['version']=='0.9.0'
+version=[l.strip() for l in (root/'VERSION').read_text().splitlines() if l.strip() and not l.startswith('#')][0]
+assert version==expected_version, (version, expected_version)
+assert manifest['.']==version, (manifest['.'], version)
+assert compat['version']==version, (compat['version'], version)
 print('release-please JSON OK')
 PY
-assert "release-please JSON wires VERSION and compatibility.json" "grep -q 'release-please JSON OK' /tmp/plumbline_release_please_check.txt"
-rm -f /tmp/plumbline_release_please_check.txt
+assert "release-please JSON wires VERSION and compatibility.json" "grep -q 'release-please JSON OK' '$release_check'"
 
 finish "release-please tests"
