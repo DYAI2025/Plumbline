@@ -41,7 +41,7 @@ python3 "$LEDGER" record --repo "$repo" --feature demo \
   --gate phase0 --status CLEARED --artifact-hash hA \
   --at 2026-06-02T10:00:00Z >/dev/null 2>&1
 python3 "$LEDGER" record --repo "$repo" --feature demo \
-  --gate gateA --status PENDING --artifact-hash hB \
+  --gate gateA_verification --status PENDING --artifact-hash hB \
   --at 2026-06-02T10:01:00Z >/dev/null 2>&1
 
 led="$repo/docs/context/demo.run-ledger.jsonl"
@@ -65,16 +65,16 @@ assert r["at"]=="2026-06-02T10:00:00Z", r
   ok "row round-trips {repo, feature, gate, status, artifact_hash, at}"
 else bad "row round-trips {repo, feature, gate, status, artifact_hash, at}"; fi
 
-# 3) resume-point = first non-CLEARED gate in recorded order (gateB is PENDING)
+# 3) resume-point = first canonical gate whose latest status is missing/non-CLEARED
 rp="$(python3 "$LEDGER" resume-point --repo "$repo" --feature demo 2>/dev/null)"
-if [ "$rp" = "gateA" ]; then
-  ok "resume-point returns the first non-CLEARED gate (gateA)"
-else bad "resume-point returns the first non-CLEARED gate (got: '$rp')"; fi
+if [ "$rp" = "phase0_5_spec_sanity" ]; then
+  ok "resume-point returns the first missing canonical gate (phase0_5_spec_sanity)"
+else bad "resume-point returns the first missing canonical gate (got: '$rp')"; fi
 
 # 4) latest-status wins: clear gateA, but without an explicit completion marker the
 # ledger may be partial (crash between gates) and must fail closed to START.
 python3 "$LEDGER" record --repo "$repo" --feature demo \
-  --gate gateA --status CLEARED --artifact-hash hB \
+  --gate gateA_verification --status CLEARED --artifact-hash hB \
   --at 2026-06-02T10:02:00Z >/dev/null 2>&1
 rp="$(python3 "$LEDGER" resume-point --repo "$repo" --feature demo 2>/dev/null)"
 if [ "$rp" = "$START_SENTINEL" ]; then
