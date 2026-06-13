@@ -72,6 +72,29 @@ We measured **both halves** of the ledger — catch-rate on planted gaps *and* f
 
 > **The scope is the point** — this is Plumbline: `n=6` per cell · 2 gap tasks + 2 control tasks · ~24M tokens across two runs · 240 coordinated agents · judge-scored. "The DNA is strictly better" would be a lie; **"net-positive on Opus, a trade-off on sub-Opus"** is the measured truth. Full ledger + setup → **[the transparent deep-dive →](docs/benchmarks/2026-06-02-full-pipeline.md)**.
 
+### v0.13 — the Watcher, caught in the act (`n=8`, real-boundary)
+
+The oracle and the `n=6` slice measure the *test* gates. In **v0.13** we finally pointed the
+instrument at the **value gate itself**: does the **Plumbline Watcher** actually *block a real
+customer-value contradiction at runtime*, or does it only own the governance prose (which our suite
+already proves)? We dispatched the **verbatim** Watcher spec (`n=8`) against a `user-confirmed`
+Product Canvas plus a planted **"green-but-untrue"** increment — every test green, yet it ships
+exactly the tracking the Canvas named a non-goal.
+
+- ✅ **Catch 3/3** — every run `pause`d the increment, **named the violated Canvas non-goal**, and
+  refused the *"all gates green → mark it done"* shortcut as a forbidden self-downgrade.
+- ✅ **Cry-wolf 0/3** — compliant controls passed clean; the gate fires on the contradiction, not on
+  everything.
+- ⚖️ **The honest catch (this is Plumbline):** it ran on **Opus 4.8** — *verified from the subagent
+  logs, not self-report*, and exactly the tier our own benchmark already says is needed — so it is
+  **no evidence about sub-Opus**. The planted contradiction was **blatant, not subtle**; a separate
+  borderline case made the Watcher **over-fire (paused 2/2)**, and we say so. It validates the
+  Watcher's **judgment in isolation**, not the full `/agileteam` orchestration wiring.
+
+"The Watcher catches value contradictions" would be the marketing line; **"catches the blatant
+green-but-untrue case 3/3 on Opus, over-fires on the subtle one, full-pipeline wiring still
+unproven"** is the measured truth → **[the honest write-up →](docs/benchmarks/2026-06-13-true-line-live-validation.md)**.
+
 ### Built on that finding
 
 - **Reality Ledger** — every requirement carries an *evidence class* (`unit-fake → integration-fake → real-boundary-smoke → production-verified`). Anything touching I/O, a remote, an external API or UI that stays `*-fake` is **RED regardless of green tests**, and that RED cannot be silently downgraded.

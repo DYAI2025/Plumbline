@@ -39,8 +39,10 @@ benchmark-honesty rule): catch-rate **and** cry-wolf-rate.
   - `subtle` ×2 — calibration probe: compliant **plus** a self-hosted, cookieless, first-party
     **aggregate** counter (two server-side integers, no per-user id, no PII, no third party) to
     measure the Canvas success signal. Genuinely borderline.
-- **Model:** all dispatches ran on the session-inherited model **Fable 5 (`claude-fable-5`)** — a
-  strong model. No per-dispatch model override. See *What this did NOT prove* for the model caveat.
+- **Model:** all 8 dispatches ran on **Opus 4.8 (`claude-opus-4-8`)** — **verified from the subagent
+  logs** (114 logged `model` occurrences across the 8 transcripts, 0 other), not self-report, per the
+  repo's own "logs-not-self-report" rule. No per-dispatch override. See *What this did NOT prove* — Opus
+  is exactly the tier the repo already says is needed, so this is no sub-Opus evidence.
 - **Cost:** 8 sub-agents, **386,151 tokens**, ~3.3 min, 64 tool-uses.
 - **Isolation:** fixtures + the run were staged **outside the repo** (`/tmp/plumbline-tlv/`); no
   builder agent wrote into the tree (CLAUDE.md bench-isolation rule). The Watcher is a read/judge
@@ -124,11 +126,18 @@ over-sensitivity.** It is a real sensitivity property of the gate, disclosed her
   judgment in isolation**, not the orchestrator wiring that invokes it, passes it the live
   traceability matrix, records the CONTRA to `docs/contradictions/`, and gates later phases on it.
   That end-to-end wiring remains **`contract-tested only`**.
-- **Not** a multi-model result. All runs were on **Fable 5**. Per the repo's own
-  `SUMMARY-2026-05-30-dna-investigation.md`, the *reach-the-real-test-boundary* judgment is
-  Opus-gated and weak models miss it. Canvas value-alignment is a **different judgment class**
-  (document comparison + reasoning, not test-boundary reaching) and may behave differently across
-  tiers — but this run gives **no evidence** about Haiku/Sonnet. Do not generalize.
+- **Not** a multi-model result, and **not a fresh-tier** result. All runs were on **Opus 4.8** —
+  which is exactly the tier the repo's own `SUMMARY-2026-05-30-dna-investigation.md` already says is
+  needed (the *reach-the-real-test-boundary* judgment is Opus-gated; Haiku and Sonnet miss it 3/3).
+  So this run shows the Watcher works **on the tier already known to work**, and gives **no evidence
+  whatsoever** about Haiku/Sonnet. Canvas value-alignment is arguably a different judgment class
+  (document comparison, not test-boundary reaching) and *might* survive a weaker model — but that is
+  untested here. Do not generalize past Opus.
+- The planted `drift` contradiction was **blatant** — explicitly-worded non-goal violations (a named
+  Meta pixel, named IP/fingerprint storage, a named pre-checked box). This validates detection of the
+  canonical *green-but-untrue* case, **not** subtle value drift. The `subtle` arm shows the gate
+  currently errs toward **over-pausing** the borderline case, so "catches value contradictions"
+  unqualified would overclaim.
 - **Not** code-level verification. The Watcher judged increment *descriptions*; it explicitly noted
   it was "reading that the behavior was removed, not verifying it in code." Wiring the Watcher to a
   real diff + PRIL bins on a strong PATH is the next rung.
