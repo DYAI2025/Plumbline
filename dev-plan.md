@@ -8,7 +8,7 @@
 > is on `main` and exercised. See `metrics/SUMMARY-2026-05-30-dna-investigation.md` for
 > the evidence philosophy ("tests green ≠ it works").
 
-Last updated: 2026-06-03
+Last updated: 2026-06-13
 
 ---
 
@@ -62,7 +62,7 @@ The "branch, reviewed" labels above predate that merge.
 
 | Item | Status | User value of closing it |
 |------|--------|--------------------------|
-| **Live `/agileteam` dry-run of the True-Line layer** | contract-tested only (not yet live-run) | All new gates (Canvas/Vision/Watcher/council) currently prove the governance *text exists*, not that they *catch a real value contradiction at runtime*. A live dry-run on a tiny feature is the only `real-boundary` evidence — without it, the gates are `evidence-class: unit-fake` by our own standard. |
+| **Live `/agileteam` dry-run of the True-Line layer** | **partially closed 2026-06-13** — Watcher drift-detection now `real-boundary-smoke` ✓ ([evidence](docs/benchmarks/2026-06-13-true-line-live-validation.md): n=8, **catch 3/3 · cry-wolf 0/3**, **Opus 4.8**, verified from subagent logs); full 8-phase orchestration wiring still `contract-tested only` | The Watcher now carries **runtime** evidence that it catches a **blatant** planted value contradiction and **names the violated Canvas non-goal** — that judgment is no longer `unit-fake` by our own standard. Still open (see the evidence doc's "What this did NOT prove"): the orchestrator wiring that invokes the Watcher end-to-end + records the CONTRA + gates later phases; a multi-model result (the run was **Opus-4.8-only — the tier already known to work; no Haiku/Sonnet evidence**); and code-level/diff verification. The `subtle` arm paused 2/2 — disclosed as correct-but-over-sensitive conservatism, not a clean pass. |
 | **Council cognitive diversity** | not wired — **OD-3 (2026-06-03):** default to **OpenRouter free-tier auto-discovery**, fail-closed if <2 independent backends reachable (Wave C, own design pass) | `/concilium`'s value depends on *uncorrelated* models. Today it runs as a structured single-model critique. OD-3's OpenRouter route (or a user API key for stronger models) is the path to real triangulation — gated **fail-closed** so it never silently degrades to single-model (the failure it exists to prevent). |
 
 ---
