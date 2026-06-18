@@ -97,6 +97,7 @@ inline descriptions the parser cannot read):
 
 - `backlog.md`
 - `.gitignore`
+- `CLAUDE.md`
 - `config/claude/commands/agileteam.md`
 - `config/claude/install.sh`
 - `config/claude/hooks/pretool-vision-gate.sh`
