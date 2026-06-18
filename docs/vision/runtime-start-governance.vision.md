@@ -22,10 +22,11 @@ Planning sowie Coding blockieren.
 
 ## Problem
 
-`EXPLICIT`: `VISION_MISSING` ist ohne Runtime-Integration nur teilweise beweisbar. Die
-Klassifikationslogik existiert bereits (`config/claude/lib/plumbline_start.py`), ist aber
-nicht in den realen Start-Pfad eingebunden — daher kann `/agileteam` in der Praxis trotzdem
-zu früh in Planning oder Coding kippen.
+`EXPLICIT`: `VISION_MISSING` ist ohne realen Konsumpunkt nur teilweise beweisbar. Die
+Klassifikationslogik existiert bereits (`config/claude/lib/plumbline_start.py`), aber kein
+realer Befehlsfluss konsumiert ihr Verdict und hält an — daher kann `/agileteam` in der
+Praxis trotzdem zu früh in Planning oder Coding kippen. Auflösung: ein command-level Gate
+in `/agileteam` Phase 0 (NICHT SessionStart, das die Loop strukturell nicht anhalten kann).
 
 ## Value Proposition
 
@@ -35,25 +36,27 @@ reproduzierbar belegt ist.
 
 ## Product Outcome
 
-- `/agileteam` erkennt fehlende bestätigte Vision (über die bestehende Klassifikation).
+- `/agileteam` erkennt in Phase 0 fehlende bestätigte Vision (über die bestehende Klassifikation, via `plumbline-start-check`).
 - `/agileteam` zeigt einen klaren Statusblock (`render_status_panel`).
 - `/agileteam` erlaubt Vision Extraction.
-- `/agileteam` blockiert Planning und Coding bis zur expliziten User Confirmation.
-- Eine Dry-Run-Fixture belegt das Verhalten.
+- `/agileteam` betritt Planning/Coding nicht, bis explizite User Confirmation vorliegt (command-level Gate).
+- Ein PreToolUse-Hook verweigert Planning-/Coding-Dispatch bei `VISION_MISSING` harness-erzwungen (Defense-in-Depth-Backstop).
+- Ein behavioraler real-boundary-Trace belegt den Halt VOR Planning.
 
 ## Success Signals
 
 - `SS-A-001`: Test für PRD-present + Vision-missing läuft grün.
-- `SS-A-002`: Dry-Run-Evidence enthält `Gate: VISION_MISSING`.
-- `SS-A-003`: Dry-Run-Evidence enthält `Planning allowed: NO`.
-- `SS-A-004`: Dry-Run-Evidence enthält `Coding allowed: NO`.
-- `SS-A-005`: Backlog-Status von BL-002 und BL-003 kann mit Evidenz geschlossen werden.
+- `SS-A-002`: Real-boundary-Trace enthält `Gate: VISION_MISSING`.
+- `SS-A-003`: Real-boundary-Trace enthält `Planning allowed: NO` und `/agileteam` betritt Planning nicht.
+- `SS-A-004`: Real-boundary-Trace enthält `Coding allowed: NO` und `/agileteam` betritt Coding nicht.
+- `SS-A-005`: Backlog-Status von BL-002/BL-003 kann mit `real-boundary-smoke`-Evidenz geschlossen werden (sonst PASS(tests)/RED(confidence)).
 
 ## Non-Goals
 
-- Kein vollständiger Umbau der `/agileteam`-Pipeline.
+- Kein vollständiger Umbau der `/agileteam`-Pipeline (nur der Phase-0-Gate-Schritt).
 - Kein neues Product-Vision-Format.
-- Kein fataler Crash bei fehlender Vision.
+- Kein fataler Crash bei fehlender Vision (Gate ist steuernd).
+- Kein SessionStart-Enforcement (strukturell nicht halt-fähig). Der PreToolUse-Hook ist hingegen der gewählte harness-erzwungene Backstop.
 - Kein automatisches Simulieren der User Confirmation.
 - Kein Claim von Production-Readiness ohne echte Runtime-/Boundary-Evidenz.
 
