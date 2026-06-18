@@ -3,3 +3,7 @@ __pycache__/
 *.bak.*
 .DS_Store
 *.log
+
+# Runtime PRIL start-state markers (orchestrator-written / hook-read; not source).
+docs/context/.active-feature
+docs/context/.start-gate
