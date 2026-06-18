@@ -51,4 +51,9 @@ touching I/O / remote / UI that stays `*-fake` is RED regardless of green tests.
   (TRC-B-001/B-020) remains `cmd instruction-only (int-fake)`.
 This RED may not be downgraded; only the user may reclassify at the acceptance gate.
 
+**User acceptance (Ben, 2026-06-18):** OD-3 accepted — catalog-reachability + normalized-base
+diversity gate accepted as `real-boundary-smoke`; **invocability and deep model diversity
+accepted as ceiling at `RED(confidence)`** (a paid completion probe was not required). The
+invocability probe remains an optional future step; not claimed proven.
+
 ---
