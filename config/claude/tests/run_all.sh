@@ -72,7 +72,7 @@ if bad or nodesc or dupes or colon:
 PY
 
 stage "metrics scripts compile"
-python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/metrics/challenge_token_oracle.py config/claude/lib/plumbline_update.py config/claude/lib/gate_contracts.py config/claude/lib/plumbline_start.py \
+python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/metrics/challenge_token_oracle.py config/claude/lib/plumbline_update.py config/claude/lib/gate_contracts.py config/claude/lib/plumbline_start.py config/claude/lib/council_backend.py \
   && echo "py_compile OK" || fail=1
 
 stage "metrics contract round-trip"
@@ -98,6 +98,9 @@ bash config/claude/tests/test_agileteam_start_gate.sh || fail=1
 
 stage "scope shift notice tests"
 bash config/claude/tests/test_scope_shift_notice.sh || fail=1
+
+stage "openrouter council backend acceptance contract"
+bash config/claude/tests/test_council_backend.sh || fail=1
 
 
 stage "runtime integrity layer tests"

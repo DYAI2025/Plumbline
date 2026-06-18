@@ -87,6 +87,39 @@ for c in codex gemini qwen; do printf "%-8s %s\n" "$c" "$(command -v $c >/dev/nu
   a structured single-model critique, not true cognitive diversity."* Never hide this.
 - Hard floor: at least **2 independent bodies** must produce a position, or abort and say so.
 
+### Step 0.6 — Optional OpenRouter diversity backend (config-driven, fail-closed)
+
+A second, **config-driven** source of model diversity (beyond the foreign-CLI/MCP check
+above): the OpenRouter Council Backend. It is **opt-in** via `.env` and is governed by the
+deterministic module `config/claude/lib/council_backend.py` (see `.env.example`,
+`docs/prd/openrouter-council-backend.prd.md`). When `COUNCIL_BACKEND=openrouter`:
+
+```bash
+# Diversity gate over the configured slots (reachability is established at runtime).
+# <COUNCIL_MIN_BACKENDS distinct NORMALIZED base models  =>  abort, no Claude-only fallback.
+python3 config/claude/lib/council_backend.py gate --fake-reachable '<reachable-ids-json>' --json
+python3 config/claude/lib/council_backend.py report --fake-reachable '<reachable-ids-json>' --json
+```
+
+- **Diversity is counted on the normalized base model id** (`:nitro`/`:floor`/`:exacto`/
+  `:<variant>` stripped) — two variants of one base count as ONE. This is a
+  **necessary-not-sufficient** guard (RISK-B-007); it does **not** prove real model
+  diversity.
+- **Fail-closed:** `<COUNCIL_MIN_BACKENDS` distinct base models → `COUNCIL_DIVERSITY_UNAVAILABLE`;
+  missing key → `COUNCIL_MISSING_SECRET`; timeout/unavailable → `COUNCIL_TIMEOUT` /
+  `COUNCIL_MODEL_UNAVAILABLE`. **Never a silent Claude-only fallback** — explicit Claude-only
+  is allowed only with disclosure (`fallback --allow-claude-only`). The raw `OPENROUTER_API_KEY`
+  is never printed (only `api_key_present`).
+- **Report disclosure** feeds Step 5's diversity disclosure: per role → model id + backend +
+  prompt source (`concilium/<body>.md`).
+
+**Honest evidence ceiling (Reality Ledger):** the gate LOGIC is exercised only against
+**injected/fake** reachability (`integration-fake`); the module is **not yet composed into a
+real OpenRouter call** here, and the reachability METHOD (catalog vs. probe; reachable ≠
+invocable) is an **OPEN QUESTION (OQ-B-004), `ungeprüft`** until verified against the live
+API. So "real model diversity via OpenRouter" stays **PASS(tests)/RED(confidence)** — this
+wiring documents the governed path; it does not certify live diversity.
+
 ## Step 1 — Round 1: independent positions (parallel, maximum friction)
 Dispatch all four bodies **simultaneously** with the framed subject. Each returns its
 Output-Contract block (POSITION + evidence + falsifier + …). Forbid cross-talk this round.

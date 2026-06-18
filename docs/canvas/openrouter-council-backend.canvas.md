@@ -109,6 +109,7 @@ parser cannot read):
 - `docs/vision/openrouter-council-backend.vision.md`
 - `docs/traceability.md`
 - `docs/plans/2026-06-18-openrouter-council-backend.md`
+- `docs/reality/openrouter-council-backend.evidence.jsonl`
 - `backlog.md`
 
 - `config/claude/lib/` (neues Council-Backend-Modul, z.B. `council_backend.py`)

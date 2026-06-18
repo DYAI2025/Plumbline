@@ -7,3 +7,6 @@ __pycache__/
 # Runtime PRIL start-state markers (orchestrator-written / hook-read; not source).
 docs/context/.active-feature
 docs/context/.start-gate
+
+# Real secrets: only .env.example is committed (REQ-B-003 / NGOAL-B-001).
+.env
