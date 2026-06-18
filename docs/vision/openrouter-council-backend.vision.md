@@ -10,10 +10,13 @@ Canvas: docs/canvas/openrouter-council-backend.canvas.md
 
 ## Vision Statement
 
-Plumbline soll `/concilium` optional mit echter Modell-Diversität ausführen können.
-Council-Rollen sollen über OpenRouter-Modelle konfigurierbar sein, ihre Basis-Prompts
-editierbar behalten und fail-closed abbrechen, wenn weniger als zwei unabhängige
-Modell-Backends verfügbar sind.
+Plumbline soll `/concilium` optional mit reduzierter Backend-Monokultur / geringerer
+Modellkorrelation ausführen können — mit ≥2 distinkten normalisierten Basis-Modellen als
+notwendiger, nicht hinreichender Bedingung. Council-Rollen sollen über OpenRouter-Modelle
+konfigurierbar sein, ihre Basis-Prompts editierbar behalten und fail-closed abbrechen, wenn
+weniger als zwei distinkte normalisierte Basis-Modelle erreichbar sind. (Reale Modell-Diversität
+bleibt per Reality Ledger RED(confidence), bis ein Real-Boundary-Smoke sie stützt — sie wird
+hier nicht als gelieferter Wert behauptet.)
 
 ## Target User
 
@@ -23,16 +26,18 @@ Modell-Backends verfügbar sind.
 
 ## Problem
 
-`EXPLICIT`: Der Council soll die Option auf OpenRouter-Modelle erhalten. Ohne echte
-Modell-Diversität kann `/concilium` so wirken, als gäbe es mehrere Perspektiven, obwohl alle
+`EXPLICIT`: Der Council soll die Option auf OpenRouter-Modelle erhalten. Ohne reduzierte
+Backend-Monokultur kann `/concilium` so wirken, als gäbe es mehrere Perspektiven, obwohl alle
 vier Bodies durch dasselbe Modell oder denselben Backend-Pfad laufen.
 
 ## Value Proposition
 
 `EXPLICIT`: User können Council-Modelle über `.env` konfigurieren (vier Slots, einer pro
 Body), einschließlich möglicher Free-Modelle. Plumbline legt offen, welche Modelle genutzt
-wurden, und bricht ab, wenn die Mindestdiversität (≥2 distinkte erreichbare Modell-IDs) nicht
-erreicht wird.
+wurden, und bricht ab, wenn die Mindestdiversität (≥2 distinkte **normalisierte Basis-Modelle**
+als notwendige, nicht hinreichende Bedingung) nicht erreicht wird. Dies senkt die
+Backend-Monokultur / Modellkorrelation; es ist kein Beweis echter Modell-Diversität (die bleibt
+per Reality Ledger RED(confidence) bis zum Real-Boundary-Smoke).
 
 ## Product Outcome
 

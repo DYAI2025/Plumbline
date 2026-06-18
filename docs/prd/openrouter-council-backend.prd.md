@@ -13,8 +13,9 @@ Vision: docs/vision/openrouter-council-backend.vision.md
 
 Dieses Feature ergänzt `/concilium` um ein optionales OpenRouter-Backend. Die vier
 Council-Bodies können über `.env` konfigurierbare Modelle nutzen (ein Slot pro Body). Die
-Basisprompts (`concilium/*.md`) bleiben editierbar. Wenn weniger als zwei unabhängige
-Modell-IDs erreichbar sind, bricht der Council fail-closed ab.
+Basisprompts (`concilium/*.md`) bleiben editierbar. Wenn weniger als `COUNCIL_MIN_BACKENDS`
+(Default 2) distinkte **normalisierte Basis-Modell-IDs** erreichbar sind, bricht der Council
+fail-closed ab.
 
 ## 2. Problem Statement
 
@@ -60,8 +61,8 @@ Modell-IDs erreichbar sind, bricht der Council fail-closed ab.
 | REQ-B-008 | Uppercase Env-Werte sollen Vorrang vor lowercase Alias-Werten haben. | SRC-B-008 | SHOULD |
 | REQ-B-009 | Free OpenRouter-Modelle sollen konfigurierbar sein, aber nicht als feste Liste hart verdrahtet werden. | SRC-B-004, SRC-B-010 | SHOULD |
 | REQ-B-010 | Basisprompts pro Council-Rolle müssen aus editierbaren Dateien (`concilium/*.md`) geladen werden. | SRC-B-006 | MUST |
-| REQ-B-011 | Der Council muss prüfen, ob mindestens zwei unterschiedliche Modell-IDs erreichbar/verwendbar sind. | SRC-B-007 | MUST |
-| REQ-B-012 | Bei <2 erreichbaren unabhängigen Modell-IDs muss `/concilium` mit `COUNCIL_DIVERSITY_UNAVAILABLE` abbrechen. | SRC-B-007 | MUST |
+| REQ-B-011 | Der Council muss prüfen, ob mindestens `COUNCIL_MIN_BACKENDS` (Default 2) **distinkte normalisierte Basis-Modell-IDs** erreichbar/verwendbar sind. Diversität wird auf der normalisierten Basis-Modell-Identität gemessen: bekannte Variant-/Preis-/Provider-Suffixe (`:nitro`, `:floor`, `:exacto` und jedes `:<variant>`-Suffix) werden vor dem Vergleich entfernt, sodass zwei Variant-IDs desselben Basis-Modells als EIN Modell zählen. Gezählt werden distinkte normalisierte Basis-Slugs, nicht rohe ID-Strings. Die Bedeutung von „erreichbar/verwendbar" ist an OQ-B-004 gebunden (Methode + `erreichbar ≠ invocable`, impl-verifiziert) und bis dahin `ungeprüft`. | SRC-B-007 | MUST |
+| REQ-B-012 | Bei `<COUNCIL_MIN_BACKENDS` (Default 2) erreichbaren distinkten normalisierten Basis-Modell-IDs muss `/concilium` mit `COUNCIL_DIVERSITY_UNAVAILABLE` abbrechen. | SRC-B-007 | MUST |
 | REQ-B-013 | Es darf keinen stillen Fallback auf Claude-only geben, solange Fail-Closed aktiv ist. | SRC-B-007 | MUST |
 | REQ-B-014 | Jeder Council-Report muss pro Rolle die verwendete Modell-ID nennen. | SRC-B-009 | SHOULD |
 | REQ-B-015 | Tests müssen ohne Netzwerk und ohne echten API-Key laufen. | SRC-B-009 | MUST |
@@ -132,7 +133,7 @@ When `/concilium` starts with `COUNCIL_FAIL_CLOSED=true`
 Then it aborts with `COUNCIL_DIVERSITY_UNAVAILABLE`
 
 ### AC-B-006: Minimum Diversity Pass
-Given OpenRouter validation returns at least two distinct reachable model IDs
+Given OpenRouter validation returns at least `COUNCIL_MIN_BACKENDS` (default 2) distinct reachable model IDs **after normalization to base-model identity** (variant/price/provider suffixes such as `:nitro`/`:floor`/`:exacto`/`:<variant>` stripped before counting)
 When `/concilium` starts
 Then the Council may proceed and assigns roles to configured models
 
@@ -173,11 +174,11 @@ Then it does not continue as Claude-only unless the user explicitly configured n
 | ID | Edge Case | Expected Behavior |
 |---|---|---|
 | EDGE-B-001 | `OPENROUTER_API_KEY` missing and backend=openrouter | fail-closed with missing-secret message, no raw env dump |
-| EDGE-B-002 | Same model in all slots | fail-closed if unique reachable model count <2 |
-| EDGE-B-003 | Free model unavailable | fail-closed or model-unavailable message |
+| EDGE-B-002 | Same base model in all slots (incl. distinct variant-IDs of the same base, e.g. `:nitro` vs `:floor`) | normalize to base-model identity → counts as 1 distinct model → fail-closed with `COUNCIL_DIVERSITY_UNAVAILABLE` |
+| EDGE-B-003 | Free model unavailable | fail-closed with a `model-unavailable` classified message |
 | EDGE-B-004 | OpenRouter timeout | fail-closed with timeout classification |
-| EDGE-B-005 | Prompt file missing | fail-closed or explicit prompt-missing error |
-| EDGE-B-006 | One role has no assigned model | deterministic mapping or explicit configuration error |
+| EDGE-B-005 | Prompt file missing | fail-closed with a `prompt-missing` classified error |
+| EDGE-B-006 | One role has no assigned model | fail-closed with a `model-unconfigured` classified configuration error |
 | EDGE-B-007 | User sets Claude-only intentionally | allowed only with clear disclosure and fail-closed override if policy permits |
 
 ## 11. Implementation Notes
@@ -188,8 +189,26 @@ Then it does not continue as Claude-only unless the user explicitly configured n
 - Niemals `OPENROUTER_API_KEY` roh ausgeben.
 - Tatsächlich genutzte Modell-IDs reporten.
 - OpenRouter-Verfügbarkeit = Runtime-Evidenz, nicht statische Wahrheit.
+- **Kanonische Fallback-Regel (N1, kein Widerspruch):** Es gibt **keinen stillen** Fallback auf
+  Claude-only (REQ-B-013 / NGOAL-B-003). Ein vom User **explizit** konfigurierter Claude-only-Modus
+  ist erlaubt — aber nur mit Disclosure und nicht still (EDGE-B-007 / AC-B-010). „Kein stiller Fallback"
+  und „explizit konfigurierter Claude-only mit Disclosure" sind damit dieselbe Regel aus zwei Richtungen,
+  kein Konflikt.
 - **Reality Ledger:** Fake-Transport-Tests bleiben `integration-fake`; der „echte Diversität"-Claim
   bleibt RED, bis ein optionaler Real-Boundary-Smoke (außerhalb Repo/Tests) ihn stützt.
+- **Limitation Diversitäts-Gate (notwendig, nicht hinreichend):** Basis-Slug-Normalisierung
+  (Strippen von `:nitro`/`:floor`/`:exacto`/`:<variant>`) schließt das offensichtliche Aliasing-Loch
+  — zwei Variant-IDs desselben Basis-Modells zählen als EIN Modell. Sie kann aber **nicht** beweisen,
+  dass zwei genuin unterschiedliche Slugs nicht doch dasselbe oder ein sehr ähnliches Modell sind
+  (Provider-Routing-Aliase, umbenannte/gespiegelte Modelle). Das Gate **reduziert** Schein-Diversität,
+  es **eliminiert** sie nicht. Reale Modell-Diversität bleibt konsistent mit dem Reality Ledger
+  RED(confidence), bis ein Real-Boundary-Smoke sie stützt.
+- **Reachability ist eine ungeprüfte externe-API-Prämisse (`ungeprüft`, siehe OQ-B-004):** Die
+  Reachability-Check-METHODE (Katalog/list-models vs. eine Probe-Completion) und die Unterscheidung
+  **`erreichbar ≠ invocable`** (ein gelistetes Modell kann für den Key/das Guthaben des Users trotzdem
+  402/429 liefern) sind zur Implementierungszeit gegen die **live OpenRouter API** zu verifizieren. Der
+  Coder darf keine einzelne unverifizierte Definition still festschreiben; bis zur Impl-Verifikation bleibt
+  diese Prämisse `ungeprüft`. REQ-B-011 ist an OQ-B-004 gebunden.
 
 ## 12. Definition of Done
 
@@ -199,3 +218,37 @@ Then it does not continue as Claude-only unless the user explicitly configured n
 - `/concilium`-Dokumentation aktualisiert.
 - OpenRouter-Fehler kann sich nicht als erfolgreicher diverser Council ausgeben.
 - User Confirmation liegt vor (Ben, 2026-06-18). ✔
+
+## Spec remediation (2026-06-18)
+
+Targeted remediation of the Phase-0.5 spec-auditor BLOCKER (user decision: "Strengthen + document").
+No scope expansion, no new YAML frontmatter.
+
+- **B1 (BLOCKER, diversity Goodhart proxy):**
+  - Strengthened: REQ-B-011/REQ-B-012 and AC-B-006 now measure diversity on the **normalized
+    base-model identity** — variant/price/provider suffixes (`:nitro`/`:floor`/`:exacto`/`:<variant>`)
+    are stripped, count is of distinct normalized base slugs (not raw ID strings). EDGE-B-002 updated:
+    same base model across slots → counts as 1 → fail-closed. Summary §1 aligned.
+  - Documented limitation: §11 + canvas Risks now state base-slug normalization is **necessary,
+    not sufficient** — it reduces but does not eliminate Schein-Diversität; real diversity stays
+    RED(confidence) per the Reality Ledger.
+  - Overclaim fix (I3): Vision Statement/Value Proposition and canvas Value Proposition no longer
+    assert unqualified „echte Modell-Diversität / real diversity"; replaced with „reduzierte
+    Backend-Monokultur / geringere Modellkorrelation, ≥2 distinkte normalisierte Basis-Modelle als
+    notwendige, nicht hinreichende Bedingung".
+- **B2 (BLOCKER, unverified reachability premise):** canvas OQ-B-004 generalized to all reachability;
+  §11 note added — reachability METHOD (catalog/list-models vs. probe completion) and
+  `erreichbar ≠ invocable` (402/429 for the user's key/credits) are to be verified at implementation
+  against the live OpenRouter API. REQ-B-011's „erreichbar/verwendbar" bound to OQ-B-004; premise
+  marked `ungeprüft` until impl-verified.
+- **I2 (important, disjunctive expected behaviors):** EDGE-B-003/EDGE-B-005/EDGE-B-006 collapsed from
+  "fail-closed OR …" into single deterministic fail-closed outcomes with specific classified messages
+  (`model-unavailable` / `prompt-missing` / `model-unconfigured`).
+- **Minor N2:** REQ-B-011/REQ-B-012 and AC-B-006 now reference the configured `COUNCIL_MIN_BACKENDS`
+  (default 2) instead of hardcoding "two", consistent with `.env.example`. AC-B-004 (0 models) and
+  AC-B-005 (1 model) remain valid deterministic sub-cases of `<COUNCIL_MIN_BACKENDS` at the default.
+- **Minor N1:** Added one canonical fallback-rule statement (§11) reconciling „kein stiller Fallback"
+  (REQ-B-013/NGOAL-B-003) with „explizit konfigurierter Claude-only mit Disclosure" (EDGE-B-007/AC-B-010).
+
+REQ ↔ AC ↔ Vision remain internally consistent. **Spec is ready to re-freeze pending user
+confirmation at the gate** (Status lines left unchanged; user re-confirms at the gate).
