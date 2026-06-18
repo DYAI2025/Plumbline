@@ -100,3 +100,31 @@ accepted as ceiling at `RED(confidence)`** (a paid completion probe was not requ
 invocability probe remains an optional future step; not claimed proven.
 
 ---
+
+## Slice: OpenRouter Inference Path (openrouter-inference / Slice 1 of 4)
+
+- Feature-Slug: openrouter-inference
+- canvas-link: docs/canvas/openrouter-inference.canvas.md
+- vision-link: docs/vision/openrouter-inference.vision.md
+- Extends: OD-3 (openrouter-council-backend) — closes its invocability RED.
+
+| Trace ID | Requirement | Canvas | Acceptance | Evidence | wired-in-prod? | evidence-class (target) | True-Line |
+|---|---|---|---|---|---|---|---|
+| TRC-INF-001 | REQ-INF-001 (real POST /chat/completions) | CAN-INF-008 | AC-INF-001 | EV-INF-003 (smoke) | TBD | real-boundary-smoke (1 model only) | pass |
+| TRC-INF-002 | REQ-INF-003 (stdlib urllib, no SDK) | CAN-INF-008 | AC-INF-003 | EV-INF-001 | TBD | integration-fake | pass |
+| TRC-INF-003 | REQ-INF-004 (max_tokens MUST be sent) | CAN-INF-009 | AC-INF-001/002 | EV-INF-001 | TBD | integration-fake | pass |
+| TRC-INF-004 | REQ-INF-005/006 (estimate + cap pre-call, fail-closed) | CAN-INF-009 | AC-INF-002 | EV-INF-001 | TBD | integration-fake | pass |
+| TRC-INF-005 | REQ-INF-008 (dry-run, 0 credits) | CAN-INF-009 | AC-INF-004 | EV-INF-001 | TBD | integration-fake | pass |
+| TRC-INF-006 | REQ-INF-009 (post-call reconcile vs usage) | CAN-INF-EVN-004 | AC-INF-005 | EV-INF-003 (smoke) | TBD | real-boundary-smoke | pass |
+| TRC-INF-007 | REQ-INF-010 (free default, configurable, runtime-verified) | CAN-INF-008 | AC-INF-010 | EV-INF-001/003 | TBD | integration-fake | pass |
+| TRC-INF-008 | REQ-INF-011 (key presence-only, never leaked) | CAN-INF-011 | AC-INF-011 | EV-INF-002 | TBD | integration-fake | pass |
+| TRC-INF-009 | REQ-INF-012/013 (finer 402/429/5xx/timeout codes; 429 fail-closed) | CAN-INF-010 | AC-INF-006..009 | EV-INF-001 | TBD | integration-fake | pass |
+| TRC-INF-010 | REQ-INF-015 (tests network-free, 0 credits) | CAN-INF-EVN-001 | AC-INF-012 | EV-INF-001 | TBD | integration-fake | pass |
+| TRC-INF-011 | REQ-INF-016/017 (smoke out-of-CI, classifies-not-crashes) | CAN-INF-EVN-003 | AC-INF-015 | EV-INF-003 | TBD | real-boundary-smoke (1 model only) | pass |
+| TRC-INF-012 | REQ-INF-018 (chat/completions contract ungeprüft until smoke) | CAN-INF-EVN-004 | AC-INF-005 | EV-INF-003 | TBD | OPEN (OQ-3, ungeprüft) | pass |
+
+**Reality Ledger (OI, honest ceiling):** offline logic = `integration-fake`. Invocability +
+post-call `usage` reconciliation reach `real-boundary-smoke` only via the ONE opt-in smoke,
+for the ONE probed model only (EV-INF-003). Estimate-accuracy, broader invocability, and the
+`cost`-field assumption stay `PASS(tests)/RED(confidence)` / `ungeprüft` (OQ-3) — only the user
+reclassifies at the acceptance gate. NOT YET BUILT — all `wired-in-prod?` = TBD until Phase 2/3.
