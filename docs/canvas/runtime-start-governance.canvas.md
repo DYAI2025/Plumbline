@@ -91,6 +91,35 @@ nicht**. Ein behavioraler real-boundary-Trace friert genau diesen Halt als Evide
 
 > Vorgeschlagen vom Orchestrator, geerdet am Repo. Final-OK durch den User am Pre-Build-Gate.
 
+**Machine-parseable scope (PRIL `plumbline-scope-check`).** Clean one-path-per-line mirror of
+the confirmed prose below, so the runtime scope guard can parse it (the prose bullets carry
+inline descriptions the parser cannot read):
+
+- `backlog.md`
+- `.gitignore`
+- `config/claude/commands/agileteam.md`
+- `config/claude/install.sh`
+- `config/claude/hooks/pretool-vision-gate.sh`
+- `config/claude/tests/run_all.sh`
+- `config/claude/tests/test_pretool_vision_gate_hook.sh`
+- `config/claude/tests/test_runtime_start_governance_gate.sh`
+- `config/claude/tests/test_agileteam_start_gate.sh`
+- `docs/benchmarks/2026-06-18-runtime-start-governance.md`
+- `docs/canvas/runtime-start-governance.canvas.md`
+- `docs/prd/runtime-start-governance.prd.md`
+- `docs/vision/runtime-start-governance.vision.md`
+- `docs/traceability.md`
+- `docs/plans/2026-06-18-runtime-start-governance.md`
+
+Co-located sibling-feature intake — confirmed present on this shared intake branch (commit
+`babd9e8`, Paket B OpenRouter Council Backend), **NOT modified by this build**; listed only so
+the branch-spanning scope guard (`merge-base…HEAD`) does not misread pre-existing sibling
+artifacts as out-of-scope edits:
+
+- `docs/canvas/openrouter-council-backend.canvas.md`
+- `docs/prd/openrouter-council-backend.prd.md`
+- `docs/vision/openrouter-council-backend.vision.md`
+
 - `config/claude/commands/agileteam.md` — **behaviorale Änderung erlaubt**: Hinzufügen
   eines verbindlichen Phase-0 command-level Gate-Schritts, der `plumbline-start-check`
   aufruft und bei `VISION_MISSING` den Eintritt in Planning/Coding verweigert. (Erweitert
