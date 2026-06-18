@@ -165,6 +165,70 @@ else
   _fail "VISION_MISSING read-only must pass through (rc=$HOOK_RC, out: $HOOK_OUT)"
 fi
 
+# --- Beat 3.5 (Path-2: independent recompute — defense-in-depth) --------------
+# The hook must ALSO derive VISION_MISSING with NO .start-gate marker, from
+# docs/context/.active-feature + the real artifact state, REUSING
+# plumbline-start-check. This is the load-bearing Option-A independence path: it
+# must fire even when the command-gate never wrote a marker. (Without this the
+# whole "dual-path" claim is unproven — the marker path alone would mask a dead
+# recompute, the exact built-but-not-wired failure this file guards against.)
+
+# Active feature whose PRD exists but whose Vision is NOT user-confirmed, and NO
+# .start-gate -> path-2 must DENY planning.
+make_path2_vision_missing_repo() {
+  local repo feat="acme-feature"
+  repo="$(mktemp -d -p "$WORK")"
+  mkdir -p "$repo/docs/context" "$repo/docs/prd" "$repo/docs/vision"
+  printf '%s' "$feat" > "$repo/docs/context/.active-feature"
+  printf '# PRD\n' > "$repo/docs/prd/$feat.prd.md"
+  printf '# Vision\nStatus: draft\n' > "$repo/docs/vision/$feat.vision.md"
+  printf '%s' "$repo"
+}
+
+# Active feature whose Vision IS user-confirmed, NO .start-gate -> pass through.
+make_path2_confirmed_repo() {
+  local repo feat="acme-feature"
+  repo="$(mktemp -d -p "$WORK")"
+  mkdir -p "$repo/docs/context" "$repo/docs/prd" "$repo/docs/vision"
+  printf '%s' "$feat" > "$repo/docs/context/.active-feature"
+  printf '# PRD\n' > "$repo/docs/prd/$feat.prd.md"
+  printf '# Vision\nStatus: user-confirmed\n' > "$repo/docs/vision/$feat.vision.md"
+  printf '%s' "$repo"
+}
+
+p2_vm_repo="$(make_path2_vision_missing_repo)"
+run_hook "$p2_vm_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"planner","description":"plan"}}'
+TESTS_RUN=$((TESTS_RUN + 1))
+p2decision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
+if is_deny "$p2decision" "$HOOK_RC"; then
+  _pass "path-2: active-feature + PRD + unconfirmed vision DENIES planning (no marker)"
+else
+  _fail "path-2 must deny via independent recompute (rc=$HOOK_RC, out: $HOOK_OUT)"
+fi
+
+p2_ok_repo="$(make_path2_confirmed_repo)"
+run_hook "$p2_ok_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"planner","description":"plan"}}'
+TESTS_RUN=$((TESTS_RUN + 1))
+p2okdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
+if [ "$HOOK_RC" -eq 0 ] && [ "$p2okdecision" != "deny" ]; then
+  _pass "path-2: active-feature + confirmed vision PASSES THROUGH"
+else
+  _fail "path-2 confirmed-vision must pass through (rc=$HOOK_RC, out: $HOOK_OUT)"
+fi
+
+# Matcher precision (verified spec-audit decision): the gate targets PLANNING/
+# CODING roles only. A non-coding ops role (devops) under VISION_MISSING must
+# PASS THROUGH — the backstop must not be a blanket Task-killer (the orchestrator
+# Phase-0 gate is the broad control; this is the planning/coding backstop).
+run_hook "$vm_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"devops","description":"deploy"}}'
+TESTS_RUN=$((TESTS_RUN + 1))
+opsdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
+if [ "$HOOK_RC" -eq 0 ] && [ "$opsdecision" != "deny" ]; then
+  _pass "VISION_MISSING: non-coding ops role (devops) passes through (matcher not over-broad)"
+else
+  _fail "devops dispatch must pass through; matcher over-broad (rc=$HOOK_RC, out: $HOOK_OUT)"
+fi
+
 # --- Beat 4: never reference the deliberately-inert guard. ---------------------
 TESTS_RUN=$((TESTS_RUN + 1))
 if [ -f "$HOOK" ] && grep -Fq 'pretool-plumbline-guard.sh' "$HOOK"; then

@@ -3,3 +3,8 @@ __pycache__/
 *.bak.*
 .DS_Store
 *.log
+
+# Runtime PRIL start-state markers (written by the orchestrator / read by the
+# pretool-vision-gate hook). Session/runtime state, not source artifacts.
+docs/context/.active-feature
+docs/context/.start-gate

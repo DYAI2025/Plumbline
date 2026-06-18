@@ -27,7 +27,28 @@ never weakening — the existing Reality Ledger, escalation-asymmetry, and Gates
 
 ### AgileTeam Start Governance (Sprint 2 contract layer)
 
-`/agileteam` is first an intake gate and only then a delivery orchestrator. When a PRD or PRD-equivalent user request is present but the Product Vision is not explicitly confirmed, classify the start as `VISION_MISSING`: planning and coding are both blocked, the missing artifact is the confirmed Product Vision Canvas, and the next allowed step is Vision Extraction plus explicit user confirmation. This Sprint 2 rule is a contract layer; full live runtime start governance remains unproven until a real `/agileteam` dry-run and hook/start integration exist.
+`/agileteam` is first an intake gate and only then a delivery orchestrator. When a PRD or PRD-equivalent user request is present but the Product Vision is not explicitly confirmed, classify the start as `VISION_MISSING`: planning and coding are both blocked, the missing artifact is the confirmed Product Vision Canvas, and the next allowed step is Vision Extraction plus explicit user confirmation.
+
+#### Binding start-state gate (executable — runs before any planning or coding)
+
+Before entering planning or coding, run the deterministic start-state classifier and
+**consume its verdict as a hard control-flow precondition** (reuse it; do not re-implement
+its branch logic):
+
+```bash
+config/claude/bin/plumbline-start-check --prd-present --vision-missing   # flags must reflect the real intake state
+```
+
+If the verdict gate is `VISION_MISSING`, **do not enter planning and do not enter coding** —
+both are blocked, and the only allowed next step is the Vision Extraction Procedure below
+plus explicit user confirmation. Re-run the check with flags reflecting the true intake
+state (`--vision-confirmed`, `--canvas-confirmed`, `--traceability-present`) and proceed only
+when the verdict allows planning. This command-level gate is the orchestration layer and is
+honestly **integration-fake** on its own (it proves the instruction exists, not live model
+obedience); the harness-enforced PreToolUse backstop
+(`config/claude/hooks/pretool-vision-gate.sh`, registered by `install.sh`) independently
+denies any planning/coding dispatch under `VISION_MISSING`, so the line holds even if this
+step is skipped.
 
 #### Vision Extraction Procedure
 

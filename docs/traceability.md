@@ -17,22 +17,34 @@ touching I/O / remote / UI that stays `*-fake` is RED regardless of green tests.
 
 | Trace ID | Requirement | Canvas | Acceptance | Evidence | wired-in-prod? | evidence-class (target) | True-Line |
 |---|---|---|---|---|---|---|---|
-| TRC-A-001 | REQ-A-001 (command-level Gate konsumiert Verdict, HALT vor Planning) | CAN-A-010 | AC-A-001 | EV-A-002 | TBD | real-boundary-smoke | pass |
-| TRC-A-002 | REQ-A-002 | CAN-A-011 | AC-A-001 | EV-A-001, EV-A-004 | TBD | integration-fake | pass |
-| TRC-A-003 | REQ-A-003 | CAN-A-012 | AC-A-002 | EV-A-001, EV-A-002, EV-A-004 | TBD | real-boundary-smoke | pass |
-| TRC-A-004 | REQ-A-004 | CAN-A-012 | AC-A-003 | EV-A-001, EV-A-002, EV-A-004 | TBD | real-boundary-smoke | pass |
-| TRC-A-005 | REQ-A-005 | CAN-A-013 | AC-A-004 | EV-A-002, EV-A-004 | TBD | integration-fake | pass |
-| TRC-A-006 | REQ-A-006 (behavioraler real-boundary-Trace) | CAN-A-013 | AC-A-005 | EV-A-002 | TBD | real-boundary-smoke | pass |
-| TRC-A-007 | REQ-A-007 (LOCAL-Session, steuernd nicht fatal) | CAN-A-012 | AC-A-002, AC-A-003 | EV-A-002, EV-A-004 | TBD | real-boundary-smoke | pass |
-| TRC-A-008 | REQ-A-008 (Reuse, keine Duplizierung) | CAN-A-010 | AC-A-001 | EV-A-001 | TBD | integration-fake | pass |
-| TRC-A-009 | REQ-A-009 | CAN-A-011 | AC-A-001..005 | EV-A-001, EV-A-004 | TBD | integration-fake | pass |
-| TRC-A-010 | REQ-A-010 | CAN-A-013 | AC-A-005 | EV-A-002 | TBD | integration-fake | pass |
-| TRC-A-011 | REQ-A-011 (PreToolUse-Hook-Backstop, harness-erzwungen) | CAN-A-014 | AC-A-006 | EV-A-005 | TBD | real-boundary-smoke | pass |
+| TRC-A-001 | REQ-A-001 (command-level Gate konsumiert Verdict, HALT vor Planning) | CAN-A-010 | AC-A-001 | EV-A-002 | instruction-only (cmd); realer HALT via Hook TRC-A-011 | real-boundary-smoke | pass |
+| TRC-A-002 | REQ-A-002 | CAN-A-011 | AC-A-001 | EV-A-001, EV-A-004 | instruction-only | integration-fake | pass |
+| TRC-A-003 | REQ-A-003 | CAN-A-012 | AC-A-002 | EV-A-001, EV-A-002, EV-A-004 | yes — Hook denied Planning (trace §2) | real-boundary-smoke | pass |
+| TRC-A-004 | REQ-A-004 | CAN-A-012 | AC-A-003 | EV-A-001, EV-A-002, EV-A-004 | yes — Hook denied Coding (trace §3) | real-boundary-smoke | pass |
+| TRC-A-005 | REQ-A-005 | CAN-A-013 | AC-A-004 | EV-A-002, EV-A-004 | instruction-only | integration-fake | pass |
+| TRC-A-006 | REQ-A-006 (behavioraler real-boundary-Trace) | CAN-A-013 | AC-A-005 | EV-A-002 | yes — trace artifact (real run) | real-boundary-smoke | pass |
+| TRC-A-007 | REQ-A-007 (LOCAL-Session, steuernd nicht fatal) | CAN-A-012 | AC-A-002, AC-A-003 | EV-A-002, EV-A-004 | yes — Hook fail-open (trace §5 + tests) | real-boundary-smoke | pass |
+| TRC-A-008 | REQ-A-008 (Reuse, keine Duplizierung) | CAN-A-010 | AC-A-001 | EV-A-001 | instruction-only (Reuse per Test geprüft) | integration-fake | pass |
+| TRC-A-009 | REQ-A-009 | CAN-A-011 | AC-A-001..005 | EV-A-001, EV-A-004 | instruction-only | integration-fake | pass |
+| TRC-A-010 | REQ-A-010 | CAN-A-013 | AC-A-005 | EV-A-002 | instruction-only | integration-fake | pass |
+| TRC-A-011 | REQ-A-011 (PreToolUse-Hook-Backstop, harness-erzwungen) | CAN-A-014 | AC-A-006 | EV-A-005 | yes — install.sh→settings.json PreToolUse (trace §2-4) | real-boundary-smoke | pass |
 
-**BL-002/BL-003 closure (F3):** Closure ist an EV-A-002 (`real-boundary-smoke`, behavioraler
-`/agileteam`-Gate-Halt vor Planning) gebunden — nicht an die MUST-Liste allein. Bis der reale
-Boundary erreicht ist, lesen die `real-boundary-smoke`-Zeilen **PASS(tests)/RED(confidence)**;
-dieser RED darf nicht heruntergestuft werden, nur der User darf reklassifizieren.
+**BL-002/BL-003 closure (F3) — Stand 2026-06-18:** Der **Hook-Backstop (TRC-A-011)** und die
+darüber getragenen Planning/Coding-Block-Zeilen (TRC-A-003/004/006/007) haben
+`real-boundary-smoke` erreicht: reale Planning/Coding-Dispatches werden an der PreToolUse-
+Prozessgrenze verweigert (Trace §2-4), wired via `install.sh`→`settings.json`. Der
+**command-level Gate-HALT durch ein lebendes Modell (TRC-A-001/002/005/008/009/010)** bleibt
+`integration-fake` und liest **PASS(tests)/RED(confidence)** — der Runtime bietet keinen
+skriptbaren Zugriff auf den Kontrollfluss des Orchestrators, um „Planning nicht betreten"
+modellseitig zu beweisen. Dieser RED darf NICHT heruntergestuft werden; nur der User darf am
+Acceptance-Gate reklassifizieren.
+
+**User-Reklassifizierung am Acceptance-Gate (Ben, 2026-06-18):** Der Hook-Layer
+(TRC-A-011 + getragene Block-Zeilen) wird als `real-boundary-smoke` **akzeptiert und
+geschlossen** (BL-002). Der command-gate Live-Modell-HALT bleibt `RED(confidence)` und wird
+**als Ceiling akzeptiert** (BL-003) — nicht als „proven" deklariert, da der Runtime keinen
+Kontrollfluss-Probe bietet. Die `Bash`-Tool-Lücke ist als v1-Boundary akzeptiert (Follow-up
+BL-005). Kein autonomes Schließen erfolgte vor dieser User-Entscheidung.
 
 **EDGE-A-002 (F2, verifiziert):** PRD-present + Vision-vorhanden-aber-unconfirmed →
 `VISION_MISSING` (Kurzschluss `plumbline_start.py:25`). `START_ARTIFACTS_MISSING` ist ein
