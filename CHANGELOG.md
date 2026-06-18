@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.0](https://github.com/DYAI2025/Plumbline/compare/v0.15.0...v0.16.0) (2026-06-18)
+
+
+### Features
+
+* **council:** OpenRouter Council Backend (OD-3) — config + diversity gate (integration-fake) ([b5d12b1](https://github.com/DYAI2025/Plumbline/commit/b5d12b13b1087ab88106a440a0483ce767bfc682))
+* **council:** OpenRouter Council Backend (OD-3) — diversity gate [DRAFT: real smoke pending] ([6873690](https://github.com/DYAI2025/Plumbline/commit/68736906d3b7ea36f70066f8ed6328c44ced5f6a))
+* **council:** real-boundary smoke — live OpenRouter catalog reachability (OQ-B-004) ([9878620](https://github.com/DYAI2025/Plumbline/commit/9878620824ac702cd4c1e5a109513ea7b542b242))
+* runtime start governance — PreToolUse VISION_MISSING backstop + command gate ([1228fc1](https://github.com/DYAI2025/Plumbline/commit/1228fc1e4e3a8ff135a8a2a1e37621ae43929f44))
+* runtime start governance — PreToolUse VISION_MISSING backstop + command gate (BL-002/003) ([418cd36](https://github.com/DYAI2025/Plumbline/commit/418cd36fe1aa9608e14a5490610de6aaaaf20b4d))
+
+
+### Bug Fixes
+
+* machine-parseable Allowed change scope for PRIL scope guard ([24347aa](https://github.com/DYAI2025/Plumbline/commit/24347aa7779cd546ae8dc45451e1db4c6124cfbb))
+
 ## [0.15.0](https://github.com/DYAI2025/Plumbline/compare/v0.14.0...v0.15.0) (2026-06-08)
 
 
