@@ -100,6 +100,7 @@ parser cannot read):
 
 - `.gitignore`
 - `.env.example`
+- `CLAUDE.md`
 - `config/claude/lib/council_backend.py`
 - `config/claude/commands/concilium.md`
 - `config/claude/tests/test_council_backend.sh`
