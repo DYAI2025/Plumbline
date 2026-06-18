@@ -28,7 +28,7 @@ touching I/O / remote / UI that stays `*-fake` is RED regardless of green tests.
 | TRC-B-008 | REQ-B-008 | CAN-B-012 | AC-B-003 | EV-B-001 | yes — tests (int-fake) | integration-fake | pass |
 | TRC-B-009 | REQ-B-009 | CAN-B-010 | EDGE-B-003 | EV-B-002 | yes — tests (int-fake) | integration-fake | pass |
 | TRC-B-010 | REQ-B-010 | CAN-B-013 | AC-B-007 | EV-B-004 | yes — tests (int-fake) | integration-fake | pass |
-| TRC-B-011 | REQ-B-011 | CAN-B-014 | AC-B-004..006 | EV-B-002 | gate logic tested (int-fake); real reachability RED(conf) | real-boundary-smoke | pass |
+| TRC-B-011 | REQ-B-011 | CAN-B-014 | AC-B-004..006, EV-B-007 | EV-B-002, smoke §1/§2 | real-boundary-smoke: catalog reachability live-verified; invocability RED(conf) | real-boundary-smoke | pass |
 | TRC-B-012 | REQ-B-012 | CAN-B-014 | AC-B-004, AC-B-005 | EV-B-002 | gate logic tested (int-fake); real RED(conf) | real-boundary-smoke | pass |
 | TRC-B-013 | REQ-B-013 | CAN-B-014 | AC-B-010 | EV-B-002 | logic tested (int-fake); real RED(conf) | real-boundary-smoke | pass |
 | TRC-B-014 | REQ-B-014 | CAN-B-015 | AC-B-008 | EV-B-005 | yes — tests (int-fake) | integration-fake | pass |
@@ -39,12 +39,16 @@ touching I/O / remote / UI that stays `*-fake` is RED regardless of green tests.
 | TRC-B-019 | REQ-B-019 | CAN-B-013, CAN-B-015 | AC-B-008 | EV-B-004, EV-B-005 | yes — tests (int-fake) | integration-fake | pass |
 | TRC-B-020 | REQ-B-020 | CAN-B-014 | AC-B-010 | EV-B-002 | cmd instruction-only (int-fake) | integration-fake | pass |
 
-**Reality Ledger (OD-3, honest ceiling):** all delivered evidence is `integration-fake` — the
-gate/config/redaction/prompt/report LOGIC is exercised only against injected (fake) reachability,
-offline, no real key. The `real-boundary-smoke` target on TRC-B-001/011/012/013/017 is **NOT
-achieved**: real OpenRouter reachability + real model diversity stay **PASS(tests)/RED(confidence)**
-until an optional real-boundary smoke (EV-B-007, outside repo/tests, no key leak) runs, AND the
-reachability METHOD is verified (OQ-B-004, `ungeprüft`). This RED may not be downgraded; only the
-user may reclassify at the acceptance gate.
+**Reality Ledger (OD-3, honest ceiling) — updated 2026-06-18 after the real-boundary smoke:**
+- The config/redaction/prompt/report/fail-closed LOGIC is `integration-fake` (offline, injected reachability).
+- **TRC-B-011 reachability is now `real-boundary-smoke`:** the catalog-/list-models method was run
+  **live against the OpenRouter API** with a real key (`docs/benchmarks/2026-06-18-openrouter-council-backend-smoke.md`
+  §1: two distinct normalized bases reachable → proceed; §2: `:nitro`/`:floor` collapse to one → abort).
+  The key never leaked (leak-check = 0).
+- **Still `PASS(tests)/RED(confidence)`:** **invocability** (reachable ≠ invocable — a listed model may
+  still 402/429; no completion probe was run, NGOAL-B-004) and **deep model diversity** (RISK-B-007 —
+  two distinct base slugs could still be mirrored/similar models). The command-gate wiring
+  (TRC-B-001/B-020) remains `cmd instruction-only (int-fake)`.
+This RED may not be downgraded; only the user may reclassify at the acceptance gate.
 
 ---

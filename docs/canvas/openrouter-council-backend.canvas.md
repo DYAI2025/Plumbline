@@ -110,6 +110,7 @@ parser cannot read):
 - `docs/traceability.md`
 - `docs/plans/2026-06-18-openrouter-council-backend.md`
 - `docs/reality/openrouter-council-backend.evidence.jsonl`
+- `docs/benchmarks/2026-06-18-openrouter-council-backend-smoke.md`
 - `backlog.md`
 
 - `config/claude/lib/` (neues Council-Backend-Modul, z.B. `council_backend.py`)
@@ -136,7 +137,7 @@ True-Line status: pass
 | OQ-B-001 | lowercase `council_1..4` Aliase oder canonical? | **RESOLVED** at confirmation: Aliase; canonical = uppercase. |
 | OQ-B-002 / M-B-003 | 4 Bodies auf 3 Slots? | **RESOLVED** at confirmation: **`COUNCIL_4_MODEL` ergänzen → 4 Slots, 1 pro Body** (User-Entscheidung). |
 | OQ-B-003 | canonical Prompt-Pfad? | **RESOLVED** at confirmation: `concilium/{market-realist,tech-arbiter,skeptic,distribution-realist}.md`. |
-| OQ-B-004 | Reachability generell: Welche **Methode** prüft Erreichbarkeit (Katalog/list-models vs. Probe-Completion)? Und gilt **`erreichbar ≠ invocable`** (ein gelistetes Modell kann für den Key/das Guthaben des Users trotzdem 402/429 liefern)? Schließt den früheren `openrouter/free`-Teil ein. | **OPEN QUESTION** — externe-API-Prämisse, `ungeprüft`. Zur Implementierungszeit gegen die **live OpenRouter API** zu verifizieren; nicht als Wahrheit hardcoden. REQ-B-011 („erreichbar/verwendbar") ist hieran gebunden, damit der Coder keine einzelne unverifizierte Definition still festschreibt. Bleibt `ungeprüft` bis impl-verifiziert. |
+| OQ-B-004 | Reachability generell: Welche **Methode** prüft Erreichbarkeit (Katalog/list-models vs. Probe-Completion)? Und gilt **`erreichbar ≠ invocable`** (ein gelistetes Modell kann für den Key/das Guthaben des Users trotzdem 402/429 liefern)? Schließt den früheren `openrouter/free`-Teil ein. | **OPEN QUESTION** — externe-API-Prämisse, `ungeprüft`. Zur Implementierungszeit gegen die **live OpenRouter API** zu verifizieren; nicht als Wahrheit hardcoden. REQ-B-011 („erreichbar/verwendbar") ist hieran gebunden, damit der Coder keine einzelne unverifizierte Definition still festschreibt. **TEILWEISE GELÖST (Real-Boundary-Smoke, 2026-06-18):** Katalog-/list-models-Methode gewählt **und live gegen die OpenRouter API verifiziert** (`docs/benchmarks/2026-06-18-openrouter-council-backend-smoke.md` §1/§2 → Katalog-Erreichbarkeit + normalisierte Basis-Diversität = `real-boundary-smoke`). **`erreichbar ≠ invocable` bleibt OFFEN/`ungeprüft`** — Invocability erfordert eine (kostenpflichtige) Completion-Probe, die bewusst nicht gelaufen ist (NGOAL-B-004); bleibt `RED(confidence)`. |
 
 ## User confirmation
 

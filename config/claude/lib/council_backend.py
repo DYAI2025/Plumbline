@@ -6,10 +6,14 @@ model-id normalization, the diversity / fail-closed gate, editable role-prompt
 loading, model-disclosure reporting, and the no-silent-fallback policy.
 
 Reality Ledger / house rules (mirrors plumbline_start.py):
-  * NO network and NO real OPENROUTER_API_KEY are ever required or used.
-  * Reachability is ALWAYS INJECTED (`--fake-reachable`), NEVER probed. The real
-    OpenRouter reachability boundary is SCOPED OUT (OQ-B-004) and stays
-    RED(confidence) under the Reality Ledger; these are integration-fake checks.
+  * The governance subcommands (config/normalize/gate/prompt/report/fallback) need
+    NO network and NO real OPENROUTER_API_KEY; reachability is INJECTED there
+    (`--fake-reachable`), NEVER probed — those are integration-fake checks.
+  * The `reachable` subcommand (OQ-B-004 "catalog-list" method) is the ONE live
+    boundary: a single GET to the fixed OpenRouter models endpoint. Its PURE core
+    (`reachable_bases_from_catalog`) is offline-testable; the live HTTP call is
+    NEVER exercised by the offline test suite (REQ-B-015 — tests stay network-free)
+    and only the orchestrator runs it for real-boundary-smoke evidence.
   * The raw OPENROUTER_API_KEY value is read as a boolean presence only and MUST
     NEVER appear in any subcommand's output (REQ-B-016, AC-B-009, RISK-B-001).
   * Normalization is GENERIC suffix-stripping — no hardcoded model list
@@ -21,6 +25,8 @@ import argparse
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from typing import Any
 
 # A role/body name must be a safe slug — no path separators, no traversal, no
@@ -31,6 +37,11 @@ SLOT_COUNT = 4
 DEFAULT_MIN_BACKENDS = 2
 DEFAULT_TIMEOUT_SECONDS = 45
 DEFAULT_BACKEND = "openrouter"
+
+# Fixed, hardcoded OpenRouter catalog endpoint. A CONSTANT (not derived from any
+# input/env) so the `reachable` subcommand has ZERO SSRF surface — the host can
+# never be steered by an attacker, and the scheme is locked to https.
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 
 CODE_DIVERSITY_UNAVAILABLE = "COUNCIL_DIVERSITY_UNAVAILABLE"
 CODE_MISSING_SECRET = "COUNCIL_MISSING_SECRET"
@@ -114,6 +125,28 @@ def split_model_id(model_id: str) -> dict[str, str | None]:
 def distinct_base_count(reachable: list[str]) -> int:
     """Count DISTINCT normalized base slugs among injected-reachable ids."""
     return len({normalize_model_id(m) for m in reachable if normalize_model_id(m)})
+
+
+def reachable_bases_from_catalog(catalog_ids: list[str], configured_ids: list[str]) -> dict[str, Any]:
+    """Pure core of OQ-B-004 catalog-list reachability — NO I/O (offline-testable).
+
+    Given the raw catalog ids (``data[].id`` from the OpenRouter models list) and
+    the configured council model ids, both sides are normalized via
+    ``normalize_model_id`` (stripping any ``:nitro``/``:floor``/``:exacto``/
+    ``:<variant>`` suffix, REQ-B-009/011). The result is the set of DISTINCT
+    normalized bases that are BOTH configured AND present in the catalog — i.e. the
+    genuinely reachable bases. A configured model whose base is absent from the
+    catalog is NOT counted; catalog variant-aliases of one base collapse to that
+    single base before counting.
+
+    Returns ``{"reachable_bases": [<sorted distinct normalized bases>],
+    "distinct_base_count": <int>}``. Pure and deterministic: order-independent
+    inputs yield a stable (sorted) output.
+    """
+    catalog_bases = {normalize_model_id(m) for m in catalog_ids if normalize_model_id(m)}
+    configured_bases = {normalize_model_id(m) for m in configured_ids if normalize_model_id(m)}
+    reachable = sorted(configured_bases & catalog_bases)
+    return {"reachable_bases": reachable, "distinct_base_count": len(reachable)}
 
 
 def evaluate_gate(
@@ -223,6 +256,81 @@ def evaluate_fallback(config: dict[str, Any], allow_claude_only: bool) -> dict[s
     return {"continue_claude_only": False, "disclosed": True, "fail_closed": config["fail_closed"]}
 
 
+def _configured_model_ids(config: dict[str, Any]) -> list[str]:
+    """Collect the non-empty configured model ids from a loaded config."""
+    return [model for model in config["slots"].values() if model is not None]
+
+
+def _fetch_catalog_ids(api_key: str, timeout_seconds: int) -> list[str]:
+    """Do the ONE live GET to the fixed OpenRouter models endpoint, parse ``data[].id``.
+
+    The api_key is used SOLELY to build the ``Authorization`` header; it is never
+    returned, logged, or placed into any structure. The URL is the module constant
+    ``OPENROUTER_MODELS_URL`` (no caller-supplied host → no SSRF). Raises
+    ``urllib.error.URLError`` (incl. timeout) and ``ValueError`` (non-JSON / wrong
+    shape) for the caller to CLASSIFY — never lets a raw traceback escape.
+    """
+    request = urllib.request.Request(  # noqa: S310 - host is a fixed https constant, not caller-controlled
+        OPENROUTER_MODELS_URL,
+        headers={"Authorization": f"Bearer {api_key}"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+        payload = json.loads(response.read().decode("utf-8"))
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        raise ValueError("OpenRouter models payload missing a 'data' list")
+    return [str(entry["id"]) for entry in data if isinstance(entry, dict) and "id" in entry]
+
+
+def evaluate_reachable(env: dict[str, str]) -> dict[str, Any]:
+    """LIVE OQ-B-004 reachability: probe the OpenRouter catalog, gate on diversity.
+
+    Reads ``OPENROUTER_API_KEY`` (missing → classified ``COUNCIL_MISSING_SECRET``,
+    NO key/env dump) and the council slots (same precedence as ``config``). Does a
+    single GET to the fixed catalog URL, derives the genuinely reachable distinct
+    bases via the pure ``reachable_bases_from_catalog``, and reuses the diversity
+    threshold logic against that LIVE set.
+
+    Classification (always exit 0, never an uncaught traceback):
+      * missing key            → ``COUNCIL_MISSING_SECRET``
+      * URLError / timeout     → ``COUNCIL_TIMEOUT``
+      * HTTP error / non-JSON  → ``COUNCIL_MODEL_UNAVAILABLE``
+      * < min_backends distinct→ ``COUNCIL_DIVERSITY_UNAVAILABLE`` (decision=abort)
+      * >= min_backends        → ``COUNCIL_DIVERSITY_OK`` (decision=proceed)
+
+    The raw key and the Authorization header value NEVER enter the returned dict.
+    """
+    config = load_config(env)
+    min_backends = config["min_backends"]
+    base: dict[str, Any] = {"reachable_bases": [], "distinct_base_count": 0, "min_backends": min_backends}
+
+    api_key = env.get("OPENROUTER_API_KEY")
+    if not api_key:
+        return {**base, "decision": "abort", "code": CODE_MISSING_SECRET}
+
+    try:
+        catalog_ids = _fetch_catalog_ids(api_key, config["timeout_seconds"])
+    except urllib.error.HTTPError:
+        # A non-2xx HTTP status (401/403/5xx, …) → the catalog is unusable.
+        # HTTPError is a subclass of URLError, so it MUST be caught first.
+        return {**base, "decision": "abort", "code": CODE_MODEL_UNAVAILABLE}
+    except (urllib.error.URLError, TimeoutError):
+        # Connection failures and socket timeouts. A read timeout can surface as a
+        # bare TimeoutError (not wrapped in URLError), so both are classified here.
+        return {**base, "decision": "abort", "code": CODE_TIMEOUT}
+    except (ValueError, KeyError, OSError):
+        # Non-JSON body, wrong shape, or a malformed entry → model-unavailable.
+        return {**base, "decision": "abort", "code": CODE_MODEL_UNAVAILABLE}
+
+    result = reachable_bases_from_catalog(catalog_ids, _configured_model_ids(config))
+    count = result["distinct_base_count"]
+    decision_base = {**result, "min_backends": min_backends}
+    if count < min_backends:
+        return {**decision_base, "decision": "abort", "code": CODE_DIVERSITY_UNAVAILABLE}
+    return {**decision_base, "decision": "proceed", "code": CODE_PROCEED}
+
+
 def _yes_no(value: bool) -> str:
     return "YES" if value else "NO"
 
@@ -272,6 +380,18 @@ def render_report_panel(state: dict[str, Any]) -> str:
             f"- role={role['role']} model={role['model']} backend={role['backend']} "
             f"prompt_source={role['prompt_source']} reachable={_yes_no(bool(role['reachable']))}"
         )
+    return "\n".join(lines)
+
+
+def render_reachable_panel(state: dict[str, Any]) -> str:
+    bases = state.get("reachable_bases") or []
+    lines = ["COUNCIL REACHABLE", f"Distinct base count: {state['distinct_base_count']}",
+             f"Min backends: {state['min_backends']}", f"Decision: {state['decision']}",
+             f"Code: {state['code']}", "Reachable bases:"]
+    if bases:
+        lines.extend(f"- {b}" for b in bases)
+    else:
+        lines.append("(none)")
     return "\n".join(lines)
 
 
@@ -344,6 +464,12 @@ def _parser() -> argparse.ArgumentParser:
     p_fb = sub.add_parser("fallback", help="Claude-only fallback policy decision (never silent).", parents=[common])
     p_fb.add_argument("--allow-claude-only", action="store_true", help="Explicitly opt into a disclosed Claude-only run.")
 
+    sub.add_parser(
+        "reachable",
+        help="LIVE OQ-B-004: probe the OpenRouter catalog and gate on real diversity.",
+        parents=[common],
+    )
+
     return parser
 
 
@@ -384,6 +510,9 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "fallback":
         state = evaluate_fallback(load_config(env), args.allow_claude_only)
         print(json.dumps(state, sort_keys=True, indent=2) if args.json else render_fallback_panel(state))
+    elif args.command == "reachable":
+        state = evaluate_reachable(env)
+        print(json.dumps(state, sort_keys=True, indent=2) if args.json else render_reachable_panel(state))
     else:  # pragma: no cover - argparse enforces a valid subcommand
         return 2
     return 0

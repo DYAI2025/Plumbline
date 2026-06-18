@@ -301,4 +301,50 @@ assert_contains "MEDIUM malformed --fake-reachable classifies COUNCIL_BAD_INPUT"
 cfg_to="$(council "COUNCIL_TIMEOUT_SECONDS=99" -- config --json)"
 assert_contains "I1 config exposes timeout_seconds from COUNCIL_TIMEOUT_SECONDS" "$cfg_to" "99"
 
+# ===========================================================================
+# 9. OQ-B-004 CATALOG-LIST REACHABILITY — PURE PARSER, OFFLINE ONLY (REQ-B-015)
+#    These: "a real reachability method exists." Gegenthese: a parser could count
+#    catalog variant-aliases as separate backends (fake diversity), or count a
+#    configured model that the catalog never lists (phantom reachability) → the
+#    LIVE gate would proceed on a monoculture / unavailable model.
+#    Schärfung: drive the PURE `reachable_bases_from_catalog` against an in-test
+#    FIXTURE catalog (a Python list literal) — NO network, NO key, NO live GET.
+#    Assert: catalog variant-aliases collapse to one base; a configured model
+#    ABSENT from the catalog is not counted; >=2 genuinely-distinct => count 2.
+#    The live `reachable` subcommand is NEVER invoked here (it would hit the
+#    network); only the offline-testable core is exercised.
+# ===========================================================================
+reach_pure="$(env -i PATH="$PATH" python3 - <<'PYEOF'
+import importlib.util, json, pathlib
+mod_path = pathlib.Path("config/claude/lib/council_backend.py")
+spec = importlib.util.spec_from_file_location("council_backend", mod_path)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+
+# FIXTURE catalog (data[].id values), entirely in-process — never fetched:
+#   - anthropic/claude-3 appears thrice as variant-aliases (:nitro/:floor/base)
+#   - openai/gpt-4 appears once (genuinely distinct second base)
+#   - mistral/large is in the catalog but NOT configured (must be ignored)
+catalog = [
+    "anthropic/claude-3:nitro",
+    "anthropic/claude-3:floor",
+    "anthropic/claude-3",
+    "openai/gpt-4",
+    "mistral/large",
+]
+# Configured council: two distinct bases + one model ABSENT from the catalog.
+configured = [
+    "anthropic/claude-3:exacto",   # variant of a base present in catalog
+    "openai/gpt-4",                # base present in catalog
+    "google/gemini-not-in-catalog" # configured but NOT in catalog => not counted
+]
+print(json.dumps(m.reachable_bases_from_catalog(catalog, configured), sort_keys=True))
+PYEOF
+)"
+assert_contains "OQ-B-004 pure parser: variant-aliases collapse to base anthropic/claude-3" "$reach_pure" "anthropic/claude-3"
+assert_contains "OQ-B-004 pure parser: second distinct base openai/gpt-4 counted" "$reach_pure" "openai/gpt-4"
+assert_contains "OQ-B-004 pure parser: >=2 distinct reachable bases => count 2" "$reach_pure" '"distinct_base_count": 2'
+assert "OQ-B-004 pure parser: configured-but-absent model NOT counted as reachable" "! printf '%s' \"$reach_pure\" | grep -qF 'google/gemini-not-in-catalog'"
+assert "OQ-B-004 pure parser: catalog-only model (not configured) NOT counted" "! printf '%s' \"$reach_pure\" | grep -qF 'mistral/large'"
+
 finish "OpenRouter Council Backend acceptance contract"
