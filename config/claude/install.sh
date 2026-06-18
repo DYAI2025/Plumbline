@@ -271,6 +271,53 @@ register_enforce_hook() {
   fi
 }
 
+# Idempotently add the PreToolUse VISION_MISSING backstop hook to
+# ~/.claude/settings.json. Mirrors register_enforce_hook exactly in structure
+# (jq presence check, DRY_RUN, mkdir, valid-JSON check, dedup, mktemp+mv) but
+# targets .hooks.PreToolUse and carries a matcher so the harness only invokes it
+# for planning/coding-capable tools. A backstop hook that is never wired here is
+# inert (built-but-not-wired), so this is what actually closes REQ-A-011.
+register_pretool_vision_hook() {
+  local settings="$CLAUDE_HOME/settings.json"
+  local hook_script="$REPO_DIR/config/claude/hooks/pretool-vision-gate.sh"
+  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/pretool-vision-gate.sh" ]; then
+    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/pretool-vision-gate.sh"
+  fi
+  local cmd="bash \"$hook_script\""
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "skip pretool-vision-hook: jq not found — install jq and re-run, or add it manually to $settings"
+    return
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_action "would register pretool-vision-hook in $settings with command: $cmd"
+    return
+  fi
+  mkdir -p "$CLAUDE_HOME"
+  [ -f "$settings" ] || echo '{}' > "$settings"
+  if ! jq -e . "$settings" >/dev/null 2>&1; then
+    echo "skip pretool-vision-hook: $settings is not valid JSON — fix it first"
+    return
+  fi
+  if jq -e '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""] | any(test("pretool-vision-gate\\.sh"))' \
+       "$settings" >/dev/null 2>&1; then
+    echo "skip pretool-vision-hook: already registered in $settings"
+    return
+  fi
+  local tmp; tmp="$(mktemp)"
+  if jq --arg cmd "$cmd" '
+    .hooks //= {} |
+    .hooks.PreToolUse //= [] |
+    .hooks.PreToolUse += [ { "matcher": "Task|Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ] } ]
+  ' "$settings" > "$tmp"; then
+    mv "$tmp" "$settings"
+    echo "registered pretool-vision-hook in $settings"
+  else
+    rm -f "$tmp"
+    echo "skip pretool-vision-hook: jq failed to update $settings" >&2
+  fi
+}
+
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "dry-run: no changes will be written (target CLAUDE_HOME=$CLAUDE_HOME)"
 fi
@@ -282,6 +329,7 @@ mkdir -p "$CLAUDE_HOME"
 if [ "$INSTALL_HOOK" -eq 1 ]; then
   register_stop_hook
   register_enforce_hook
+  register_pretool_vision_hook
 fi
 [ "$INSTALL_BIN" -eq 1 ] && install_bin
 
