@@ -175,3 +175,20 @@ rate-limited, 1 unavailable — RISK-DS-007 confirmed: reachable ≠ invocable),
 The smoke CAUGHT a wired-in-prod defect (the live catalog fetch was never wired → fixed + paired
 regression test). Capability proven end-to-end; broader invocability + the quality lift stay
 RED(confidence) — only the user reclassifies at the acceptance gate.
+
+## Slice: Council Diversity Measurement — Slice 3a: the measurement SUBSTRATE (council-diversity-measurement / 3a of 4)
+
+- Feature-Slug: council-diversity-measurement (Slice 3 SPLIT: 3a substrate / 3b deferred measurement run)
+- canvas-link: docs/canvas/council-diversity-measurement.canvas.md (user-confirmed, re-scoped after spec-auditor 4 BLOCKERs, Ben 2026-06-19)
+- vision-link / prd-link: docs/vision/ + docs/prd/council-diversity-measurement.* (user-confirmed)
+- reality-ledger: docs/reality/council-diversity-measurement.evidence.jsonl
+
+| Trace ID | Requirement | Evidence | wired-in-prod? | evidence-class | True-Line |
+|---|---|---|---|---|---|
+| TRC-DM-3a-001 | REQ-DM-3a-001 (frozen council-independent review-catch corpus; seeded-defect oracle + clean controls + recall control + >=2-outcome variance; oracle<->diff fidelity) | metrics/corpus/council-review-catch-v1/ + test (incl. BLOCKER-1 fidelity falsifier) | n/a — offline substrate | integration-fake | pass |
+| TRC-DM-3a-002 | REQ-DM-3a-002 (Arm-A Claude-only review runner; structured flag protocol; separate entrypoint, instrument byte-unchanged) | test_arm_a_review_runner.sh (offline injected transport, live-gate off) | live path DEFERRED to 3b | integration-fake | pass |
+| TRC-DM-3a-004 | REQ-DM-3a-004 (deterministic location-overlap matcher; judge-free; import-pure) OQ-DM-7 | test_council_review_scorer.sh | n/a | integration-fake | pass |
+| TRC-DM-3a-003 | REQ-DM-3a-003 (both metric families together: catch + cry-wolf + recall; n/scope; foreign_only_ok) | test_council_review_scorer.sh | n/a | integration-fake | pass |
+| TRC-DM-3a-005 | REQ-DM-3a-005 (emit-blob review metrics via --raw; round-trip vs real emit_run.py) | test + emit_run --dry-run | n/a | integration-fake | pass |
+
+**Reality Ledger (DM-3a, honest ceiling):** the WHOLE slice is `integration-fake` — 3a builds + offline-validates the measurement substrate and **produces NO measurement number**. There is deliberately NO `real-boundary-smoke` here: the Arm-A runner's live call and the actual Arm-A-vs-Arm-B measurement RUN (with the paid pilot + pre-registered pass/fail eval) are the DEFERRED Slice-3b work (backlog BL-DM-002). The independent code-reviewer caught + measured a BLOCKER (corpus oracle line numbers didn't point at the seeded defects → a correct reviewer would have scored 0 catches) — fixed + guarded by a new oracle↔diff fidelity falsifier; the corpus freeze-hash is `sha256:fb5f22df…`. Goodhart provenance verified (defects authored independently of the council). Nothing in 3a may be read as a diversity/quality result.
