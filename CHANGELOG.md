@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.0](https://github.com/DYAI2025/Plumbline/compare/v0.17.0...v0.18.0) (2026-06-19)
+
+
+### Features
+
+* **concilium:** character/role library (10 council characters) for d… ([37c9d37](https://github.com/DYAI2025/Plumbline/commit/37c9d37e91d05d4afb11592a4d60714b6c4a23eb))
+* **concilium:** character/role library (10 council characters) for diverse-cognition presets ([1a11197](https://github.com/DYAI2025/Plumbline/commit/1a1119759167c3c2c0d17034bc895cfaf56d26ea))
+* **concilium:** foreign-model council — character/preset composition (Slice 2) ([#65](https://github.com/DYAI2025/Plumbline/issues/65)) ([bcad7da](https://github.com/DYAI2025/Plumbline/commit/bcad7da2b3fe067ff49e918693704e6cb50a248e))
+
 ## [0.17.0](https://github.com/DYAI2025/Plumbline/compare/v0.16.0...v0.17.0) (2026-06-19)
 
 
