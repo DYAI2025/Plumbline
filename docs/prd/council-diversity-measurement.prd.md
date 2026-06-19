@@ -4,8 +4,8 @@ Feature-Slug: council-diversity-measurement
 Slice: 3a of 4 — the MEASUREMENT SUBSTRATE (3b = the deferred measurement RUN; Slice 4 = the GUI)
 Status: user-confirmed (Ben 2026-06-19, re-confirmed after the BLOCKER re-scope; OQ-DM-7 = structured flag protocol + location-overlap matching for the primary, blind judge secondary-only).
 Owner: requirements-analyst
-Canvas (re-scoped, draft): docs/canvas/council-diversity-measurement.canvas.md (Status: draft, re-confirmation pending)
-Product Vision: docs/vision/council-diversity-measurement.vision.md (Status: draft — reconciled)
+Canvas (re-scoped, user-confirmed): docs/canvas/council-diversity-measurement.canvas.md (Status: user-confirmed, Ben re-confirmed 2026-06-19)
+Product Vision: docs/vision/council-diversity-measurement.vision.md (Status: user-confirmed — reconciled and re-confirmed)
 Traceability: docs/traceability.md (slice council-diversity-measurement; carries canvas-link)
 Prefix: REQ-DM-3a-* (3a substrate) and REQ-DM-3b-* (deferred measurement RUN)
 
@@ -25,8 +25,9 @@ Prefix: REQ-DM-3a-* (3a substrate) and REQ-DM-3b-* (deferred measurement RUN)
 >   Claude-only) produces FREE-TEXT findings, not a suite — no scorer fits; and
 >   `deepseek_review.py` has only `run`/`preset` (the council = Arm B), so there is no Claude-only
 >   Arm-A runner, and the instrument is read-only (NGOAL-DM-001).
-> - **BLOCKER-4:** the Vision self-contradicted (header `user-confirmed`, body `draft`) — now
->   `draft` throughout.
+> - **BLOCKER-4:** the Vision self-contradicted (header `user-confirmed`, body `draft`) — first
+>   reconciled to a single consistent status, then re-confirmed by the user (Ben, 2026-06-19);
+>   `user-confirmed` throughout.
 >
 > The remediation: **SPLIT.** Slice 3a (this PRD) builds the SUBSTRATE — a NEW review-catch
 > corpus, an Arm-A runner, and a single shared flag-set scorer — all OFFLINE-verifiable. Slice 3b
@@ -368,7 +369,7 @@ Carried from canvas §8 (RISK-DM-001..013). For 3a the dominant, BINDING risks:
 
 ## 7. Traceability stub (TRC-DM-3a-*) — canvas-linked
 
-canvas-link: docs/canvas/council-diversity-measurement.canvas.md (Status: draft, re-confirmation pending, Ben 2026-06-19)
+canvas-link: docs/canvas/council-diversity-measurement.canvas.md (Status: user-confirmed, Ben re-confirmed 2026-06-19)
 
 | TRC-ID | REQ-ID | canvas-value-claim / success-signal | canvas-risk-status | acceptance-test (Phase 0.5+) | impl-task (planner) | pass-evidence (Phase 3) |
 |---|---|---|---|---|---|---|
@@ -391,12 +392,12 @@ canvas-link: docs/canvas/council-diversity-measurement.canvas.md (Status: draft,
 
 ## 8. Definition of Ready (Phase 0 gate)
 
-- [ ] Re-scoped Product Canvas filled, saved, linked, and **user-RE-confirmed** (currently `draft`).
+- [x] Re-scoped Product Canvas filled, saved, linked, and **user-RE-confirmed** (Ben, 2026-06-19, "Bestätigt — 3a bauen").
 - [x] OQ-DM-7 decided = (a) structured flag protocol + deterministic location-overlap for the primary; blind judge secondary-only (Ben 2026-06-19).
 - [x] OQ-DM-8 (instrument seam) surfaced as a DISCLOSED open question (settled after the Phase-3 contract read; default read-only).
 - [x] OPEN-DM-A (pilot budget) moved to Slice 3b (3a runs nothing live).
 - [x] REQ-DM-3a-001..010 are atomic, testable, contradiction-free; each traced to canvas + risk; the deferred REQ-DM-3b-* recorded.
 - [x] §3 data model corrected to the REAL `emit_run.py` schema (IMPORTANT-1).
 - [x] Allowed change scope is machine-parseable; re-run `plumbline-scope-check` after the planner finalizes module/corpus names.
-- [ ] spec-auditor (Phase 0.5) re-audit of the re-scoped intake.
-- [ ] Product Vision reconciled to `draft` and **user-re-confirmed** (Phase 0 not complete until the Canvas, this PRD, AND the Vision are all re-confirmed).
+- [x] spec-auditor (Phase 0.5) re-audit of the re-scoped intake (4 BLOCKERs raised and remediated).
+- [x] Product Vision reconciled and **user-re-confirmed** (Phase 0 complete — the Canvas, this PRD, AND the Vision were all re-confirmed together by Ben, 2026-06-19).

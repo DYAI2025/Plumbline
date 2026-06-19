@@ -1,0 +1,17 @@
+{
+  "corpus_id": "council-review-catch-v1",
+  "version": 1,
+  "created": "2026-06-19",
+  "hash": "sha256:fb5f22df28706b2bae8af3f0187a64201c3e0070d9188be9f0bf0c5356b6fb92",
+  "purpose": "Slice-3a measurement SUBSTRATE: a frozen, council-INDEPENDENT review-catch corpus. Code diffs each carry a seeded-defect oracle (catch), a clean-control region (cry-wolf), and a recall/no-narrowing control. The shared scorer (config/claude/metrics/council_review_scorer.py) consumes a reviewer flag-set + this oracle and scores BOTH metric families deterministically (no judge). 3a produces NO measurement number — that is Slice 3b.",
+  "primary_metric": "review_catch_rate",
+  "secondary_metrics": ["review_cry_wolf_rate", "review_recall_control"],
+  "matching_rule": "OQ-DM-7: deterministic FILE + LINE-RANGE OVERLAP. A flag matches a defect iff SAME file AND the flag's [line_start..line_end] (or single line) intersects the defect's [line_start..line_end] INCLUSIVE on the endpoints (a touch counts); adjacent-non-touch is a miss; wrong file is a miss; one flag matches at most one defect.",
+  "provenance": "Defects were seeded BEFORE and INDEPENDENT of any review (NGOAL-DM-003 Goodhart tripwire): each defect was planted at authoring time from a known anti-pattern, NOT selected because a model caught or missed it. The corpus is FROZEN and version-stamped (corpus_id + content hash over oracle.json + diffs/) and is NEVER re-selected or tuned per a measurement result.",
+  "variance_note": "REAL across-task variance (BLOCKER-2): the tasks carry DISTINCT defect counts (T1-auth-token = 1 seeded defect; T2-pagination = 2), so under a fixed reviewer policy the per-task catch outcomes differ (>=2 distinct outcomes). This is NOT a single saturated task; it lets Slice 3b pin a noise threshold + MDE. 'Underpowered -> unmeasurable' is recorded as DISTINCT from 'refuted' in 3b.",
+  "goodhart_tripwire": "NGOAL-DM-003: this corpus is authored INDEPENDENTLY of the council and NEVER tuned to flatter any arm. If a future change selects/drops diffs because of a model's catch/miss profile, the corpus is compromised and the measurement is Goodharted — re-freeze from independent provenance instead.",
+  "tasks": [
+    {"id": "T1-auth-token", "type": "seeded-defect", "diff": "diffs/T1-auth-token.md", "oracle": "oracles/T1-auth-token.md", "seeded_defects": 1},
+    {"id": "T2-pagination", "type": "seeded-defect", "diff": "diffs/T2-pagination.md", "oracle": "oracles/T2-pagination.md", "seeded_defects": 2}
+  ]
+}

@@ -6,8 +6,8 @@ Status: user-confirmed (Ben 2026-06-19, re-confirmed together with the re-scoped
 Owner: product-owner
 Confirmed by user: yes (Ben 2026-06-19)
 
-Linked Product Canvas (re-scoped, draft — re-confirmation pending): docs/canvas/council-diversity-measurement.canvas.md
-Linked PRD (re-scoped to Slice 3a, draft, canvas-bound): docs/prd/council-diversity-measurement.prd.md (REQ-DM-3a-001..010 + deferred REQ-DM-3b-*)
+Linked Product Canvas (re-scoped, user-confirmed — Ben re-confirmed 2026-06-19): docs/canvas/council-diversity-measurement.canvas.md
+Linked PRD (re-scoped to Slice 3a, user-confirmed, canvas-bound): docs/prd/council-diversity-measurement.prd.md (REQ-DM-3a-001..010 + deferred REQ-DM-3b-*)
 Traceability: docs/traceability.md (slice council-diversity-measurement)
 Carried-falsifier provenance: docs/canvas/deepseek-review-agent.canvas.md (NGOAL-DS-003 / NGOAL-DS-011); docs/vision/deepseek-review-agent.vision.md §5
 Method precedent: metrics/SUMMARY-2026-05-30-dna-investigation.md (a published null/tradeoff result)
@@ -21,7 +21,8 @@ Method precedent: metrics/SUMMARY-2026-05-30-dna-investigation.md (a published n
 > Vision self-contradicted (header `user-confirmed`, body `draft`). Ben decided: BUILD a new
 > review-catch corpus; SPLIT into Slice 3a (the SUBSTRATE — new corpus + Arm-A runner + shared
 > flag-set scorer, all offline-verifiable) and Slice 3b (the measurement RUN, deferred). BLOCKER-4 is
-> fixed here: the WHOLE Vision is now consistently `draft`, re-confirmation pending.
+> fixed here: the WHOLE Vision was first reconciled to a single consistent status, then re-confirmed
+> by the user (Ben, 2026-06-19) — header and body are now consistently `user-confirmed`.
 
 > This Vision is bound to the re-scoped Canvas and the re-scoped PRD above and must stay consistent
 > with them. It is the customer-value line — the *direction* — not a second PRD. Where the
@@ -233,8 +234,8 @@ construction (clean controls, deterministic matcher, schema fields), even though
 
 ## 7. Traceability links
 
-Product Canvas: docs/canvas/council-diversity-measurement.canvas.md (re-scoped, draft — re-confirmation pending, Ben 2026-06-19)
-PRD: docs/prd/council-diversity-measurement.prd.md (re-scoped to Slice 3a; REQ-DM-3a-001..010 + deferred REQ-DM-3b-*; draft, canvas-bound)
+Product Canvas: docs/canvas/council-diversity-measurement.canvas.md (re-scoped, user-confirmed — Ben re-confirmed 2026-06-19)
+PRD: docs/prd/council-diversity-measurement.prd.md (re-scoped to Slice 3a; REQ-DM-3a-001..010 + deferred REQ-DM-3b-*; user-confirmed, canvas-bound)
 Traceability Matrix: docs/traceability.md (slice council-diversity-measurement)
 Reality Ledger (authored Phase 3 / Gate C): docs/reality/council-diversity-measurement.evidence.jsonl
 Method precedent (published null/tradeoff result): metrics/SUMMARY-2026-05-30-dna-investigation.md
@@ -245,10 +246,11 @@ Reused harness: config/claude/metrics/{emit_run,process_health,rule_ledger}.py; 
 The one genuinely-new 3a open item: OQ-DM-7 (the flag→seeded-defect matching rule for the primary) — a user decision, a BLOCKER until decided. Plus OQ-DM-8 (instrument seam, disclosed; default read-only).
 Deferred to Slice 3b (backlog BL-DM-002): the measurement RUN, the pre-registered pass/fail evaluation, the PAID pilot (OPEN-DM-A budget, named by the user immediately before the paid pilot — never guessed), the runs.jsonl emission + process_health analysis, and the honest write-up.
 
-True-Line status: draft — Vision NOT self-confirmed (this is the SINGLE consistent status throughout
-this document; the prior header/body contradiction was BLOCKER-4, now fixed). Phase 0 completes only
-when the re-scoped Canvas, the PRD, AND this Vision are all user-confirmed together at the next gate,
-using the confirmation phrase:
+True-Line status: user-confirmed — Vision NOT self-confirmed by any agent; the USER re-confirmed it
+(Ben, 2026-06-19). This is the SINGLE consistent status throughout this document; the prior
+header/body contradiction was BLOCKER-4, now fixed. Phase 0 is complete — the re-scoped Canvas, the
+PRD, AND this Vision were all user-confirmed together at the Phase-0.15 re-scope gate (Ben,
+2026-06-19, "Bestätigt — 3a bauen"). The confirmation phrase was UTTERED by the user:
 
 ```text
 I confirm this re-scoped Slice-3a Product Vision as the basis for AgileTeam planning.

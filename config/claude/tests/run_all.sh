@@ -108,6 +108,12 @@ bash config/claude/tests/test_council_inference.sh || fail=1
 stage "deepseek-review council runner acceptance contract"
 bash config/claude/tests/test_deepseek_review.sh || fail=1
 
+stage "council diversity measurement substrate — review-catch corpus + scorer (Slice 3a)"
+bash config/claude/tests/test_council_review_scorer.sh || fail=1
+
+stage "council diversity measurement substrate — Arm-A review runner (Slice 3a)"
+bash config/claude/tests/test_arm_a_review_runner.sh || fail=1
+
 
 stage "runtime integrity layer tests"
 bash config/claude/tests/test_runtime_integrity_layer.sh || fail=1

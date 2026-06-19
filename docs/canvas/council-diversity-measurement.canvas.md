@@ -4,7 +4,7 @@ Status: user-confirmed
 Owner: requirements-analyst
 Confirmed by user: yes (Ben 2026-06-19, re-confirmed after the BLOCKER re-scope; OQ-DM-7 = structured flag protocol + location-overlap)
 Confirmation date: 2026-06-19
-Confirmation note: This canvas was previously `user-confirmed` (Ben, 2026-06-19) for a Slice-3 that bundled SUBSTRATE + MEASUREMENT. The spec-auditor (Phase 0.5) found **4 BLOCKERs**: the measurement SUBSTRATE the design assumed does not exist, and the named corpus was wrong (read off the wrong file). Ben decided (2026-06-19): (1) BUILD A NEW review-catch corpus; (2) SPLIT this slice into **Slice 3a (substrate, this canvas)** and **Slice 3b (the measurement RUN, deferred)**. This is a material re-scope, so Status returns to `draft` and the user MUST re-confirm before PRD finalization / development. No agent self-confirmed it.
+Confirmation note: This canvas was previously `user-confirmed` (Ben, 2026-06-19) for a Slice-3 that bundled SUBSTRATE + MEASUREMENT. The spec-auditor (Phase 0.5) found **4 BLOCKERs**: the measurement SUBSTRATE the design assumed does not exist, and the named corpus was wrong (read off the wrong file). Ben decided (2026-06-19): (1) BUILD A NEW review-catch corpus; (2) SPLIT this slice into **Slice 3a (substrate, this canvas)** and **Slice 3b (the measurement RUN, deferred)**. This was a material re-scope, so the re-scoped canvas was put to the user for explicit re-confirmation — and Ben RE-CONFIRMED it on 2026-06-19 ("Bestätigt — 3a bauen"), choosing OQ-DM-7 = structured flag protocol + location-overlap. Status is therefore `user-confirmed`. No agent self-confirmed it; the user re-confirmed it.
 Canvas file: docs/canvas/council-diversity-measurement.canvas.md
 Feature-Slug: council-diversity-measurement  (UNCHANGED — the branch `agileteam/council-diversity-measurement` and the PRIL Allowed-change-scope use it; the SCOPE is reframed, not the slug)
 Slice: 3a of 4 — the MEASUREMENT SUBSTRATE. (3b = the deferred measurement RUN; Slice 4 = the GUI.)
@@ -14,7 +14,8 @@ Slice: 3a of 4 — the MEASUREMENT SUBSTRATE. (3b = the deferred measurement RUN
 > linked to PRD/Vision/traceability, and **explicitly (re-)confirmed by the user**.
 >
 > Allowed `Status` values: `draft` | `user-confirmed` | `blocked`. This canvas is
-> **`draft`** pending the user's re-confirmation of the re-scope. The six original
+> **`user-confirmed`** — the user re-confirmed the re-scope on 2026-06-19 (Ben,
+> "Bestätigt — 3a bauen"). The six original
 > `OPEN QUESTION`s (OQ-DM-1..6) about the MEASUREMENT were resolved by the user on
 > 2026-06-19 and remain binding **for Slice 3b**; Slice 3a inherits them as the design
 > constraints the substrate must SATISFY, and adds one genuinely-new open question of its
@@ -47,7 +48,9 @@ Slice: 3a of 4 — the MEASUREMENT SUBSTRATE. (3b = the deferred measurement RUN
 >    Arm-A runner**, and the instrument libs are READ-ONLY (NGOAL-DM-001). → 3a must BUILD a
 >    separate Arm-A runner + a NEW shared flag-set scorer.
 > 4. **BLOCKER-4 (Vision self-contradiction).** The Vision header said `user-confirmed` while
->    its body (line ~210) said `draft`. → The WHOLE Vision is set to `draft` consistently.
+>    its body (line ~210) said `draft`. → The WHOLE Vision was first reconciled to a single
+>    consistent status, then re-confirmed by the user (Ben, 2026-06-19) — header and body now
+>    consistently `user-confirmed`.
 
 > **What Slice 3a IS — the SUBSTRATE, not the result.** Slice 3a delivers three buildable,
 > OFFLINE-verifiable artifacts that make the 3b measurement POSSIBLE. It does NOT run the
@@ -337,8 +340,8 @@ Answer:
 
 ## Allowed change scope
 
-> Proposed by the requirements-analyst, grounded against the repo. Final OK by the user at the
-> Phase-0.15 / 0.6 gate (re-confirmation pending). The instrument under measurement
+> Proposed by the requirements-analyst, grounded against the repo. Final OK given by the user at the
+> Phase-0.15 / 0.6 re-scope gate (Ben re-confirmed 2026-06-19). The instrument under measurement
 > (`config/claude/lib/{deepseek_review,council_presets,council_inference,council_backend}.py`) and
 > `concilium/**` are **read-only** — measured, not modified. The Arm-A runner is a SEPARATE entrypoint,
 > NOT an edit to those files. A genuinely-needed measurement seam in them is an OPEN QUESTION to the user
@@ -355,6 +358,10 @@ intentionally does NOT start with `-`/`*`/`+` so the parser does not read it as 
 - `config/claude/metrics/emit_run.py`
 - `config/claude/metrics/process_health.py`
 - `config/claude/metrics/rule_ledger.py`
+- `config/claude/tests/test_arm_a_review_runner.sh`
+- `config/claude/tests/test_council_review_scorer.sh`
+- `config/claude/tests/run_all.sh`
+- `config/claude/tests/lib.sh`
 - `metrics/runs.jsonl`
 - `metrics/*`
 - `docs/benchmarks/*`
@@ -378,15 +385,15 @@ intentionally does NOT start with `-`/`*`/`+` so the parser does not read it as 
 
 ## 10. Traceability links
 
-PRD: docs/prd/council-diversity-measurement.prd.md (re-scoped to Slice 3a; REQ-DM-3a-* traced to this canvas — canvas Status `draft`, so PRD finalization is BLOCKED until re-confirmation)
-Product Vision: docs/vision/council-diversity-measurement.vision.md (set to `draft`; reconcile pending re-confirmation; Phase 0 not complete until BOTH PRD and Vision are re-confirmed)
+PRD: docs/prd/council-diversity-measurement.prd.md (re-scoped to Slice 3a; REQ-DM-3a-* traced to this canvas — canvas Status `user-confirmed`, PRD finalization unblocked by Ben's 2026-06-19 re-confirmation)
+Product Vision: docs/vision/council-diversity-measurement.vision.md (`user-confirmed`; reconciled and re-confirmed; Phase 0 complete — Canvas, PRD, and Vision all re-confirmed together 2026-06-19)
 Traceability Matrix: docs/traceability.md (slice council-diversity-measurement; canvas-link: docs/canvas/council-diversity-measurement.canvas.md)
 Related REQ IDs: REQ-DM-3a-001..REQ-DM-3a-010 (3a substrate) + deferred REQ-DM-3b-* (the measurement RUN), assigned by the PRD
 Carried-falsifier provenance: docs/canvas/deepseek-review-agent.canvas.md (NGOAL-DS-003 / NGOAL-DS-011), docs/vision/deepseek-review-agent.vision.md §5
 Measured instrument (read-only): config/claude/lib/deepseek_review.py, council_presets.py, council_inference.py, council_backend.py
 Reused harness: config/claude/metrics/{emit_run,process_health,rule_ledger}.py; metrics/corpus/**; metrics/SUMMARY-2026-05-30-dna-investigation.md (method precedent)
 Backlog hand-off: backlog.md BL-DM-001 (model-resolution fallback cascade — separate slice, NGOAL-DM-010)
-True-Line status: canvas RE-CONFIRMATION PENDING (Status `draft`, Ben re-confirms the re-scope); Phase 0 completes when the re-scoped canvas, PRD, and Vision are all user-confirmed
+True-Line status: canvas RE-CONFIRMED (Status `user-confirmed`, Ben re-confirmed the re-scope 2026-06-19); Phase 0 complete — the re-scoped canvas, PRD, and Vision are all user-confirmed
 
 ---
 
@@ -427,16 +434,18 @@ must SATISFY, and surfaces TWO genuinely-new substrate open questions (OQ-DM-7, 
 
 ## User confirmation
 
-Confirmed by user: NO — re-confirmation PENDING
-Confirmation date: (pending)
+Confirmed by user: YES — re-confirmed (Ben, 2026-06-19, "Bestätigt — 3a bauen")
+Confirmation date: 2026-06-19
 Confirmation note:
 This canvas was previously confirmed by Ben (2026-06-19) for a Slice-3 that bundled SUBSTRATE +
 MEASUREMENT. The spec-auditor found 4 BLOCKERs (the substrate does not exist; the named corpus was
 wrong). Ben decided (2026-06-19): BUILD a new review-catch corpus; SPLIT into Slice 3a (substrate,
-this canvas) and Slice 3b (the measurement RUN, deferred to BL-DM-002). This is a material re-scope,
-so Status returns to `draft` and the user must RE-CONFIRM before PRD finalization / development.
+this canvas) and Slice 3b (the measurement RUN, deferred to BL-DM-002). This was a material re-scope,
+so the re-scoped canvas was put back to the user — and Ben RE-CONFIRMED it on 2026-06-19, choosing
+OQ-DM-7 = structured flag protocol + location-overlap. Status is `user-confirmed`. No agent
+self-confirmed it; the user re-confirmed it.
 
-What the user is being asked to re-confirm:
+What the user re-confirmed:
 - The SPLIT: 3a delivers the substrate (new corpus + Arm-A runner + shared flag-set scorer), all
   offline-verifiable; 3b runs the measurement (deferred).
 - The NEW corpus design (ART-3a-1): seeded defects (seeded before/independent of review) + clean
@@ -452,7 +461,7 @@ distinct ids != uncorrelated cognition per RISK-B-007; corpus independent of the
 the measurement refutable; underpowered ≠ refuted). The instrument files stay READ-ONLY unless a
 genuine seam is user-authorized (OQ-DM-8), never silently edited.
 
-Confirmation phrase (when the user is ready):
+Confirmation phrase (SATISFIED — Ben re-confirmed 2026-06-19, "Bestätigt — 3a bauen"):
 
 ```text
 I confirm this re-scoped Slice-3a Product Canvas as the basis for AgileTeam planning.
