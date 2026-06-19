@@ -32,6 +32,19 @@ assert_contains() { # assert_contains <description> <haystack> <needle>
   fi
 }
 
+assert_not_contains() { # assert_not_contains <description> <haystack> <needle>
+  # Passes when <needle> is ABSENT from <haystack>. Both args are passed as
+  # ordinary parameters (NOT eval'd), so shell-meta characters in the haystack
+  # (e.g. '(', ')', ';', backticks) can never break parsing or change the
+  # assertion's meaning. The needle is matched fixed-string via grep -F.
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if printf '%s\n' "$2" | grep -qF -- "$3"; then
+    _fail "$1 (found forbidden '$3')"
+  else
+    _pass "$1"
+  fi
+}
+
 repo_version() { # repo_version <repo-root>
   # VERSION is release-please-managed and may contain marker comments. Return
   # the first non-comment, non-empty semver so release tests follow each bump.

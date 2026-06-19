@@ -120,6 +120,44 @@ invocable) is an **OPEN QUESTION (OQ-B-004), `ungeprüft`** until verified again
 API. So "real model diversity via OpenRouter" stays **PASS(tests)/RED(confidence)** — this
 wiring documents the governed path; it does not certify live diversity.
 
+### Step 0.7 — Optional foreign-model body/character runner (config-driven, fail-closed)
+
+When `COUNCIL_BACKEND=openrouter` and a real foreign (non-Claude) position is wanted for a
+body, a character, or a typed preset roster, route it through the deterministic runner
+`config/claude/lib/deepseek_review.py` (built on the reused Slice-1 `run_inference` path;
+see `docs/prd/deepseek-review-agent.prd.md`). Offline it is driven entirely by INJECTED
+seams (0 credits, 0 network); the real OpenRouter call is reached ONLY behind the double
+live gate (`--live` AND `COUNCIL_INFERENCE_LIVE=1`):
+
+```bash
+# Run ONE concilium body OR ONE character as a foreign-model position. The model is
+# resolved by the editable, preference-ordered free-family resolver (council_presets.py)
+# over the LIVE catalog; explicit --model / COUNCIL_INFERENCE_MODEL override it.
+python3 config/claude/lib/deepseek_review.py run --body <body> --subject '<subject>' --dry-run --json
+python3 config/claude/lib/deepseek_review.py run --character <slug> --subject '<subject>' --dry-run --json
+
+# Run a typed preset roster (default A); distinct free families are assigned across the
+# roles so a multi-family catalog yields >=2 distinct bases (necessary-not-sufficient).
+python3 config/claude/lib/deepseek_review.py preset --preset A --subject '<subject>' --dry-run --json
+```
+
+- **Fail-closed everywhere:** an empty/unreachable catalog classifies `catalog-unreachable`
+  (never a stale pick); a missing/malformed body or character classifies `prompt-missing` /
+  `character-missing` / `xml-block-missing` / `xml-block-malformed` / `xml-block-empty`; a
+  5xx/2xx-empty/`{error}` response classifies `COUNCIL_MODEL_UNAVAILABLE`; over the per-call
+  token cap classifies `COUNCIL_BUDGET_EXCEEDED` BEFORE any call. **No silent Claude-only
+  substitution** on an unresolvable role — it returns its classified code.
+- **Diversity** over the resolved set reuses `distinct_base_count`: `>=2 →
+  COUNCIL_DIVERSITY_OK`, `<2 → COUNCIL_DIVERSITY_UNAVAILABLE`, carrying the same
+  necessary-not-sufficient disclosure as Step 0.6. The raw `OPENROUTER_API_KEY` is never
+  printed.
+
+**Honest evidence ceiling (Reality Ledger):** this wiring is `integration-fake` — the runner
+LOGIC is exercised only against injected transport + injected catalog; a real foreign
+position, real invocability, and real diversity are earned ONLY by the opt-in env-gated
+full-preset smoke (REQ-DS-011), which lives OUTSIDE `run_all.sh`. So "real foreign-model
+diversity via OpenRouter" stays PASS(tests)/RED(confidence) here.
+
 ## Step 1 — Round 1: independent positions (parallel, maximum friction)
 Dispatch all four bodies **simultaneously** with the framed subject. Each returns its
 Output-Contract block (POSITION + evidence + falsifier + …). Forbid cross-talk this round.

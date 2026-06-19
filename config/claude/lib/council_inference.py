@@ -40,9 +40,21 @@ OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 DEFAULT_TIMEOUT_SECONDS = 45
 DEFAULT_MAX_TOKENS_PER_RUN = 20000
-# A FREE OpenRouter model id used only as the default. Per REQ-INF-010 this is NOT
-# asserted stable-true; its availability is runtime-verified, never hardcoded truth.
-DEFAULT_INFERENCE_MODEL = "meta-llama/llama-3.1-8b-instruct:free"
+# A FREE OpenRouter model id used only as the LAST-RESORT default when no explicit
+# --model / COUNCIL_INFERENCE_MODEL is given and no live catalog is available to the
+# dynamic resolver. Per REQ-INF-010 this is NOT asserted stable-true; its availability
+# is runtime-verified, never hardcoded truth.
+#
+# REQ-DS-016 (Slice-2): the previous value "meta-llama/llama-3.1-8b-instruct:free" went
+# stale (no longer in the live OpenRouter catalog). Option A (swap the constant) is used
+# here rather than Option B (route this default through the new dynamic resolver in
+# council_presets.resolve_free_default): Option B would require a catalog at THIS path,
+# but the Slice-1 offline suite (test_council_inference.sh) cannot inject one — the
+# resolver would fail closed and the suite's free-default test would regress. The
+# editable, preference-ordered dynamic resolver (council_presets.FREE_MODEL_FAMILY_
+# PREFERENCE) is the preferred runtime path for new code; this constant is only the
+# no-catalog fallback so a stale id can never silently re-enter as "stable truth".
+DEFAULT_INFERENCE_MODEL = "qwen/qwen3-next-80b-a3b-instruct:free"
 
 CODE_OK = "COUNCIL_INFERENCE_OK"
 CODE_BUDGET_EXCEEDED = "COUNCIL_BUDGET_EXCEEDED"
