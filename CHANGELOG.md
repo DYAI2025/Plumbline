@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/DYAI2025/Plumbline/compare/v0.16.0...v0.17.0) (2026-06-19)
+
+
+### Features
+
+* **council:** real OpenRouter inference path (Slice 1) — budget-safe + live invocability smoke ([a9add82](https://github.com/DYAI2025/Plumbline/commit/a9add825489bd50e9441e5a464dc7967cd2ff63b))
+* **council:** real OpenRouter inference path (Slice 1) — budget-safe + live invocability smoke ([609d536](https://github.com/DYAI2025/Plumbline/commit/609d536db96ade45ef9b9b4542a02dbfc84403f5))
+
 ## [0.16.0](https://github.com/DYAI2025/Plumbline/compare/v0.15.0...v0.16.0) (2026-06-18)
 
 
