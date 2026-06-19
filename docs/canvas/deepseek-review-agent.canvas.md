@@ -352,6 +352,7 @@ intentionally does NOT start with `-`/`*`/`+` so the parser does not read it as 
 - `backlog.md`
 - `CLAUDE.md`
 - `explorer/extract-agents.py`
+- `config/claude/tests/lib.sh`
 
 Human note (OQ-DS-2 RESOLVED — integration target is `/concilium`, NOT a standalone CLI).
 This slice adds a NEW `config/claude/lib/deepseek_review.py` — the council-body-runner that

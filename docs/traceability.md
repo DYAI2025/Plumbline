@@ -138,3 +138,40 @@ estimate), and an unavailable free model
 **classified** not crashed (TRC-INF-001/006/009/011 → `real-boundary-smoke`, 1 model only). All
 offline rows = `integration-fake`. OQ-3 contract partially verified live (`usage` confirmed; no
 `cost` field assumed). Broader invocability + general estimate accuracy stay RED(confidence).
+
+## Slice: Foreign-Model Council — Character/Preset Composition (deepseek-review-agent / Slice 2 of 4)
+
+- Feature-Slug: deepseek-review-agent
+- canvas-link: docs/canvas/deepseek-review-agent.canvas.md (user-confirmed, Ben 2026-06-19)
+- vision-link: docs/vision/deepseek-review-agent.vision.md (user-confirmed)
+- reality-ledger: docs/reality/deepseek-review-agent.evidence.jsonl
+- benchmark: docs/benchmarks/2026-06-19-deepseek-review-smoke.md
+
+| Trace ID | Requirement | Canvas | Evidence | wired-in-prod? | evidence-class (target) | True-Line |
+|---|---|---|---|---|---|---|
+| TRC-DS-001 | REQ-DS-001 (body prompt → messages; missing/traversal classified) | CAN-DS-009/018 | test_deepseek_review.sh | yes — see reality ledger | integration-fake | pass |
+| TRC-DS-002 | REQ-DS-002 (character XML system-prompt extraction; 4 fail classes) | CAN-DS-CHR-020 | test + smoke §Macherin | yes — see reality ledger | integration-fake + real-boundary-smoke (1 char run) | pass |
+| TRC-DS-004 | REQ-DS-004 (preset resolution; unknown-preset/slug/model fail-closed; no silent Claude fallback) | CAN-DS-PRE-021 | test_deepseek_review.sh | yes — see reality ledger | integration-fake | pass |
+| TRC-DS-006 | REQ-DS-006 (diversity via distinct_base_count over resolved preset; RISK-B-007) | CAN-DS-PRE-023 | smoke (distinct_bases 4 live) + test (collapse) | yes — see reality ledger | real-boundary-smoke + integration-fake | pass |
+| TRC-DS-008 | REQ-DS-008 (per-call token cap fail-closed; no aggregate cap, accepted) | CAN-DS-010 | test_deepseek_review.sh | yes — see reality ledger | integration-fake | pass |
+| TRC-DS-013 | REQ-DS-013 (key presence-only, never leaked; eval-injection in test harness fixed) | CAN-DS-EVN-006 | smoke (leak-check=0) + security review | yes — see reality ledger | real-boundary-smoke | pass |
+| TRC-DS-015 | REQ-DS-015 (dynamic preference-ordered free-model resolver over LIVE catalog; fail-closed) | CAN-DS-RES-029 | smoke (live fetch wired + reached) + test (paired falsifier) | yes — see reality ledger | real-boundary-smoke + integration-fake | pass |
+| TRC-DS-016 | REQ-DS-016 (Slice-1 stale default fixed → live-verified free id) | CAN-DS-RES-029 | test_council_inference.sh 75/75 | yes — see reality ledger | integration-fake | pass |
+| TRC-DS-012 | REQ-DS-012 (concilium.md wiring routes a body through the runner) | CAN-DS-019 | concilium.md Step 0.7 | cmd instruction-only | integration-fake | pass |
+
+**Reality Ledger (DS, honest ceiling):** offline logic = `integration-fake`. The dynamic live
+catalog fetch, the distinct-family diversity distribution, ONE character running on a real
+foreign model, classified per-role failures, and key-leak=0 reach `real-boundary-smoke` via the
+ONE opt-in full-preset live smoke. The diversity/quality **LIFT** ("foreign cognition catches
+more / is genuinely uncorrelated") is NOT claimed — deferred Slice-3 measurement (NGOAL-DS-003).
+Distinct model ids are a structural floor, not proof of uncorrelated cognition (RISK-B-007).
+
+**BUILT + live smoke (2026-06-19):** modules `config/claude/lib/{deepseek_review,council_presets}.py`
+(126/126 offline), wired into `run_all.sh`; Slice-1 default fixed (75/75), OD-3 unchanged (59/59).
+Full-preset live smoke (`docs/benchmarks/2026-06-19-deepseek-review-smoke.md`): preset A resolved
+**4 distinct free families live** (`COUNCIL_DIVERSITY_OK`), die-macherin returned a real
+in-character position on `google/gemma-4-26b-a4b-it:free`, three roles **classified** (2
+rate-limited, 1 unavailable — RISK-DS-007 confirmed: reachable ≠ invocable), key leak-check = 0.
+The smoke CAUGHT a wired-in-prod defect (the live catalog fetch was never wired → fixed + paired
+regression test). Capability proven end-to-end; broader invocability + the quality lift stay
+RED(confidence) — only the user reclassifies at the acceptance gate.
