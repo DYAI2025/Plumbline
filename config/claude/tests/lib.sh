@@ -67,7 +67,7 @@ assert_json_eq() { # assert_json_eq <description> <json-string> <python-extracto
 import json, os, sys
 with open(sys.argv[1]) as fh:
     d = json.load(fh)
-print(eval(os.environ["EXPR"]))  # EXPR is the test-author's extractor, NOT payload data
+print(eval(os.environ["EXPR"]))  # EXPR is the test-author extractor, NOT payload data
 PY
 )"
   rc=$?
@@ -84,7 +84,7 @@ assert_no_code_token() { # assert_no_code_token <description> <py-file> <regex>
   # (comments and string/docstring literals are ignored via the tokenizer). This is
   # the precise form of "the module has no <seam>": a seam in real code reddens it,
   # but documenting that the module avoids the seam (in a comment/docstring) does not
-  # false-fail it. <regex> is a fixed test-author literal, never payload — no eval of
+  # false-fail it. <regex> is a fixed test-author literal, never payload -- no eval of
   # file content. A tokenizer/parse error fails closed (treated as a hit).
   TESTS_RUN=$((TESTS_RUN + 1))
   local desc="$1" file="$2" rx="$3" hits rc
