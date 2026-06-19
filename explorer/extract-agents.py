@@ -34,6 +34,7 @@ for path in sorted(glob.glob("**/*.md", recursive=True)):
         or path.startswith(("explorer/", "config/", "docs/", "metrics/"))
         or "/proposed/" in path          # concilium/proposed = draft, not-active agents
         or "/reports/" in path           # concilium/reports = prose, not agents
+        or "/characters/" in path        # concilium/characters = role/preset CHARACTER SKILLS, not agents
     ):
         continue
     cat = path.split("/")[0] if "/" in path else "(root)"
