@@ -283,6 +283,18 @@ web bootstrap, and (if installed) shell scripts via `shellcheck`.
 
 ---
 
+## Experiments & empirical honesty
+
+Plumbline's central claims are *measured*, not asserted — and we log every run to scientific
+standards, including the ones that did not go our way. The Plumbline knows only one direction:
+toward the truth. Null results, tradeoffs, underpowered pilots, and RED outcomes are reported
+faithfully, both anti-Goodhart metrics together, every number traced to a real artifact.
+
+**[▶ Read the Experiment Register](docs/experiments/)** — the methodology charter and every
+run, including the one where our cleverest idea turned out not to work.
+
+---
+
 ## Repository layout
 
 ```text
