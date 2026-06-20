@@ -308,6 +308,23 @@ assert "REQ-DS-015 module source exposes a NAMED editable preference-order famil
 assert "REQ-DS-015 the preference constant names DeepSeek" "grep -qi 'deepseek' '$MOD' '$PRESETS_MOD'"
 assert "REQ-DS-015 the preference constant names Qwen" "grep -qi 'qwen' '$MOD' '$PRESETS_MOD'"
 
+# --- Updated free-model family preference (verified-current strong free families) ---
+# These: "the resolver prefers the right free families." Gegenthese: the named list
+# went stale (Slice-2 sin, replicated) -- its families are no longer in the live free
+# catalog, so the resolver silently drops to the arbitrary free-route fallback and the
+# council's "preferred strong free model" guarantee is gone, invisibly. Schaerfung: the
+# constant source must NAME the verified-current strong families and must NO LONGER name
+# the catalog-absent stale ones (kimi / glm-5) it is replacing. (Mirrors the existing
+# names-DeepSeek / names-Qwen assertions; same integration-fake source-grep honesty.)
+# RED now: the strong families are absent and the stale families are still present.
+assert "FREE-PREF the preference constant names GPT-OSS (new strong free family)" "grep -qi 'gpt-oss' '$MOD' '$PRESETS_MOD'"
+assert "FREE-PREF the preference constant names Nemotron (new strong free family)" "grep -qi 'nemotron' '$MOD' '$PRESETS_MOD'"
+assert "FREE-PREF the preference constant names Gemma (new strong free family)" "grep -qi 'gemma' '$MOD' '$PRESETS_MOD'"
+assert "FREE-PREF the preference constant names Llama (new strong free family)" "grep -qi 'llama' '$MOD' '$PRESETS_MOD'"
+# Stale, catalog-absent families being DROPPED must no longer be named in the constant.
+assert "FREE-PREF the preference constant NO LONGER names the stale Kimi family" "! grep -qi 'kimi' '$MOD' '$PRESETS_MOD'"
+assert "FREE-PREF the preference constant NO LONGER names the stale GLM-5 family" "! grep -qi 'glm-5' '$MOD' '$PRESETS_MOD'"
+
 # ===========================================================================
 # 4. PRECEDENCE — explicit --model > env (COUNCIL_INFERENCE_MODEL) > resolver.
 #    These: "you can override the model." Gegenthese: a resolver that overrides an
@@ -362,6 +379,44 @@ assert_contains "REQ-DS-006 all-roles-same-base collapses to COUNCIL_DIVERSITY_U
 # RISK-B-007 disclosure carried verbatim from concilium.md:104-107 (HIGH-2).
 assert_contains "REQ-DS-006 diversity disclosure carries the necessary-not-sufficient wording" "$presetSame" "necessary-not-sufficient"
 assert_contains "REQ-DS-006 diversity disclosure carries the 'does not prove real model diversity' wording" "$presetSame" "does not prove real model diversity"
+
+# ===========================================================================
+# 5b. FREE-PREF -- Updated strong-free-family resolution across distinct roles.
+#    These: "a deepseek-absent free catalog of the strong families resolves a diverse
+#    roster." Gegenthese: with the stale preference list, only Qwen matches a named
+#    family; the other three strong ids resolve only via the ARBITRARY free-route
+#    fallback (sorted-order pick), so the resolver never PREFERS gpt-oss/nemotron/gemma
+#    by name -- it just happens to grab whichever :free ids sort first, and gpt-oss (which
+#    sorts AFTER gemma/llama/nemotron/qwen) is silently dropped from the 4-role roster.
+#    Schaerfung: inject a deepseek-ABSENT catalog of EXACTLY the new strong families and
+#    assert preset A resolves the FIRST-FOUR-PREFERRED named families
+#    (qwen3 + gpt-oss + nemotron + gemma), with 4 distinct bases + diversity OK, and that
+#    llama (the 5th preference) is NOT picked for the 4-role roster. This is the
+#    discriminator: the stale list picks llama and drops gpt-oss; the updated list picks
+#    gpt-oss and drops llama.
+#    RED now: gpt-oss is absent from the roster (free-route picks llama instead).
+#    Beat 0 (boundary gate): PURE in-process resolution over an INJECTED catalog
+#    (0 network, 0 credits) -- same integration-fake honesty as the rest of the suite.
+# ===========================================================================
+# DeepSeek (top preference) is ABSENT here -> skip-unavailable-family -> the resolver
+# walks to the next preferred-present families. Only the four strong :free families plus
+# qwen are offered; deepseek is intentionally NOT in this catalog.
+cat_strong='qwen/qwen3-coder:free,openai/gpt-oss-120b:free,nvidia/nemotron-3-super-120b-a12b:free,google/gemma-4-26b-a4b-it:free,meta-llama/llama-3.3-70b-instruct:free'
+presetStrong="$(dsr "OPENROUTER_API_KEY=$SENTINEL" -- preset --preset A --subject "$SUBJECT" --dry-run --inject-catalog "$cat_strong" --json)"
+# The four FIRST-PREFERRED-present strong families each resolve into the roster.
+assert_contains "FREE-PREF preset A resolves the Qwen3 strong free id" "$presetStrong" "qwen/qwen3-coder:free"
+assert_contains "FREE-PREF preset A resolves the GPT-OSS strong free id (named-preferred, not free-route)" "$presetStrong" "openai/gpt-oss-120b:free"
+assert_contains "FREE-PREF preset A resolves the Nemotron strong free id" "$presetStrong" "nvidia/nemotron-3-super-120b-a12b:free"
+assert_contains "FREE-PREF preset A resolves the Gemma strong free id" "$presetStrong" "google/gemma-4-26b-a4b-it:free"
+# Llama is the 5th preference; with only 4 roles it must NOT displace a higher-preferred
+# family. The stale list (which lacks gpt-oss as a named family) picks llama via the
+# sorted free-route fallback -> this FAILS now and passes once gpt-oss is preferred.
+assert "FREE-PREF the 5th-preferred Llama is NOT picked for the 4-role roster (gpt-oss outranks it)" "! printf '%s' \"$presetStrong\" | grep -qF 'meta-llama/llama-3.3-70b-instruct:free'"
+# DeepSeek (top, absent) must not be fabricated into the roster.
+assert "FREE-PREF absent DeepSeek is not fabricated into the strong-catalog roster" "! printf '%s' \"$presetStrong\" | grep -qF 'deepseek'"
+# Four distinct strong families -> diversity floor met across the resolved set.
+assert_contains "FREE-PREF strong-family roster yields 4 distinct bases" "$presetStrong" '"distinct_bases": 4'
+assert_contains "FREE-PREF strong-family roster passes the diversity gate" "$presetStrong" "COUNCIL_DIVERSITY_OK"
 
 # ===========================================================================
 # 6. MEDIUM-1 — FALSIFYING no-Claude-fallback assertion (RISK-DS-PRE-015).
@@ -460,7 +515,7 @@ assert "REQ-DS-009 no-injection run does NOT raise a Python traceback" "! printf
 #     leak the key in an error/result structure. Schärfung: the sentinel appears in
 #     NONE of the collected outputs across run/preset/resolver/error paths.
 # ===========================================================================
-for label in "body:$body_ok" "char:$char_ok" "wrap:$wrap_ok" "wrap_err:$wrap_err" "over:$over" "presetA:$presetA" "presetSame:$presetSame" "res_ds:$res_ds" "res_empty:$res_empty" "allunavail:$allunavail" "live:$live_nogate"; do
+for label in "body:$body_ok" "char:$char_ok" "wrap:$wrap_ok" "wrap_err:$wrap_err" "over:$over" "presetA:$presetA" "presetSame:$presetSame" "presetStrong:$presetStrong" "res_ds:$res_ds" "res_empty:$res_empty" "allunavail:$allunavail" "live:$live_nogate"; do
   name="${label%%:*}"; payload="${label#*:}"
   # Use assert_not_contains (parameter-passed, NOT eval-interpolated) so a payload
   # carrying shell-meta chars (e.g. the disclosed prompt "Die Visionaerin (The
