@@ -137,7 +137,7 @@ assert_contains "REQ-MR-002 protocol instruction demands the flags JSON envelope
 
 # (b) The SAME parse_flag_set yields the SAME flags for a given protocol-JSON regardless of arm.
 #     Driven through the orchestrator's own parsing helper so we test the CODE PATH, not a copy.
-PARSE_SAME="$(env -i PATH="$PATH" python3 - "$REPO_DIR" "$PROTO_OK" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$REPO_DIR" "$PROTO_OK" >"$WORK/cap_parse_same.txt" 2>&1 <<'PY'
 import importlib.util, json, sys, pathlib
 repo, proto = sys.argv[1], sys.argv[2]
 spec = importlib.util.spec_from_file_location(
@@ -151,7 +151,7 @@ fb, cb = m.parse_arm_output(proto, arm="council-A")
 print(json.dumps({"flags_equal": fa==fb, "code_equal": ca==cb,
                   "n_flags": len(fa), "code": ca}, sort_keys=True))
 PY
-)"
+PARSE_SAME="$(cat "$WORK/cap_parse_same.txt")"
 assert_json_eq "REQ-MR-002 same protocol JSON -> SAME flags for both arms (shared parse_flag_set)" \
   "$PARSE_SAME" 'd["flags_equal"] is True and d["code_equal"] is True' True
 assert_json_eq "REQ-MR-002 a single well-formed flag parses to exactly 1 flag (exact, not substring)" \
@@ -159,7 +159,7 @@ assert_json_eq "REQ-MR-002 a single well-formed flag parses to exactly 1 flag (e
 
 # (c) A non-protocol (free-prose) output -> the SAME classified parse failure -> EMPTY flag-set
 #     for BOTH arms (never a fabricated flag, never zeroing only Arm B).
-PARSE_BAD="$(env -i PATH="$PATH" python3 - "$REPO_DIR" "$PROTO_MALFORMED" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$REPO_DIR" "$PROTO_MALFORMED" >"$WORK/cap_parse_bad.txt" 2>&1 <<'PY'
 import importlib.util, json, sys, pathlib
 repo, proto = sys.argv[1], sys.argv[2]
 spec = importlib.util.spec_from_file_location(
@@ -171,7 +171,7 @@ fb, cb = m.parse_arm_output(proto, arm="council-A")
 print(json.dumps({"a_empty": fa==[], "b_empty": fb==[], "code_equal": ca==cb,
                   "code": ca}, sort_keys=True))
 PY
-)"
+PARSE_BAD="$(cat "$WORK/cap_parse_bad.txt")"
 assert_json_eq "REQ-MR-002 non-protocol output -> EMPTY flag-set for Arm A (no fabricated flag)" \
   "$PARSE_BAD" 'd["a_empty"] is True' True
 assert_json_eq "REQ-MR-002 non-protocol output -> EMPTY flag-set for Arm B (symmetric, not zeroed-only-B)" \
@@ -195,7 +195,7 @@ assert_contains "REQ-MR-002 malformed output classifies to the SAME ARM_A_FLAG_P
 #     as attrition; NOT present as a scored record for either arm.
 INJ_A_BOTH="{\"T1-auth-token\": $(printf '%s' "$PROTO_OK" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))'), \"T2-pagination\": $(printf '%s' "$PROTO_OK" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')}"
 # Arm B: T1 has a non-OK role (budget-exhausted) -> excluded; T2 all-OK with flags -> scored.
-INJ_B_EXCL="$(env -i PATH="$PATH" python3 - "$PROTO_OK" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PROTO_OK" >"$WORK/cap_inj_b_excl.txt" 2>&1 <<'PY'
 import json, sys
 proto = sys.argv[1]
 out = {
@@ -208,7 +208,7 @@ out = {
 }
 print(json.dumps(out))
 PY
-)"
+INJ_B_EXCL="$(cat "$WORK/cap_inj_b_excl.txt")"
 EXCL="$(mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
          --inject-arm-a "$INJ_A_BOTH" --inject-arm-b "$INJ_B_EXCL" \
          --inject-call-counter "$WORK/c_excl" --json 2>&1)"
@@ -223,7 +223,7 @@ assert_json_eq "REQ-MR-004 attrition carries the task difficulty (disclosed by d
 
 # (b) A code==OK role with 0 flags is a LEGITIMATE empty review -> SCORED (a real miss),
 #     NOT excluded. T2 all-OK-empty must yield a scored council-A record with catch 0.0.
-INJ_B_OKEMPTY="$(env -i PATH="$PATH" python3 - "$PROTO_EMPTY" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PROTO_EMPTY" >"$WORK/cap_inj_b_okempty.txt" 2>&1 <<'PY'
 import json, sys
 empty = sys.argv[1]
 out = {
@@ -236,7 +236,7 @@ out = {
 }
 print(json.dumps(out))
 PY
-)"
+INJ_B_OKEMPTY="$(cat "$WORK/cap_inj_b_okempty.txt")"
 OKEMPTY="$(mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
             --inject-arm-a "$INJ_A_BOTH" --inject-arm-b "$INJ_B_OKEMPTY" \
             --inject-call-counter "$WORK/c_ok" --json 2>&1)"
@@ -249,12 +249,12 @@ assert_json_eq "REQ-MR-004 code==OK empty review -> council-A catch rate is exac
 
 # (c) Survivors < the pre-registered minimum -> outcome forced to the EXACT string "underpowered".
 #     Both tasks paired-excluded -> 0 survivors -> below any positive min.
-INJ_B_ALLEXCL="$(env -i PATH="$PATH" python3 - <<'PY' 2>&1
+env -i PATH="$PATH" python3 - >"$WORK/cap_inj_b_allexcl.txt" 2>&1 <<'PY'
 import json
 role = {"role": "Pruefer", "model": "openai/gpt-4o", "code": "COUNCIL_TIMEOUT", "position": None}
 print(json.dumps({"T1-auth-token": [role], "T2-pagination": [role]}))
 PY
-)"
+INJ_B_ALLEXCL="$(cat "$WORK/cap_inj_b_allexcl.txt")"
 cat > "$WORK/prereg_min2.json" <<'JSON'
 {"frozen_at": "2026-06-20T00:00:00Z", "n": 2, "min_survivors": 2,
  "mde": 0.5, "noise_model": "cross-task-variance",
@@ -359,19 +359,19 @@ cat > "$WORK/prereg_pilot.json" <<'JSON'
  "mde": 0.5, "noise_model": "cross-task-variance",
  "rubric": "pilot-n2"}
 JSON
-INJ_A_EMPTY="$(env -i PATH="$PATH" python3 - "$PROTO_EMPTY" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PROTO_EMPTY" >"$WORK/cap_inj_a_empty.txt" 2>&1 <<'PY'
 import json, sys
 e = sys.argv[1]
 print(json.dumps({"T1-auth-token": e, "T2-pagination": e}))
 PY
-)"
-INJ_B_BOTHOK="$(env -i PATH="$PATH" python3 - "$PROTO_OK" <<'PY' 2>&1
+INJ_A_EMPTY="$(cat "$WORK/cap_inj_a_empty.txt")"
+env -i PATH="$PATH" python3 - "$PROTO_OK" >"$WORK/cap_inj_b_bothok.txt" 2>&1 <<'PY'
 import json, sys
 p = sys.argv[1]
 role = {"role": "Pruefer", "model": "openai/gpt-4o", "code": "COUNCIL_INFERENCE_OK", "position": p}
 print(json.dumps({"T1-auth-token": [role], "T2-pagination": [role]}))
 PY
-)"
+INJ_B_BOTHOK="$(cat "$WORK/cap_inj_b_bothok.txt")"
 SPLIT="$(mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
           --pre-registration "$WORK/prereg_pilot.json" \
           --inject-arm-a "$INJ_A_EMPTY" --inject-arm-b "$INJ_B_BOTHOK" \
@@ -403,11 +403,11 @@ assert "REQ-MR-007 scoring with NO frozen pre-registration REFUSES (fail-closed,
 # ---------------------------------------------------------------------------
 # The mde value comes from the FROZEN pre-registration artifact (cross-task-variance noise).
 PREREG_ARTIFACT="metrics/pre-registration-council-measurement-run.json"
-MDE_VALUE="$(env -i PATH="$PATH" python3 - "$PREREG_ARTIFACT" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PREREG_ARTIFACT" >"$WORK/cap_mde_value.txt" 2>&1 <<'PY'
 import json, sys
 print(json.load(open(sys.argv[1], encoding="utf-8"))["mde"])
 PY
-)"
+MDE_VALUE="$(cat "$WORK/cap_mde_value.txt")"
 assert "REQ-MR-007 the frozen artifact carries a positive numeric MDE (read, not hardcoded)" \
   "env -i PATH=\"$PATH\" python3 -c \"import sys; v=float(sys.argv[1]); sys.exit(0 if v>0 else 1)\" \"$MDE_VALUE\""
 # Build a pre-registration that carries the EXACT mde read from the artifact.
@@ -422,19 +422,19 @@ PY
 # (a) FALSIFYING: survivors==2 (>= min) but Arm-A and Arm-B produce IDENTICAL flag-sets ->
 #     catch delta == 0 (BELOW the positive MDE) -> outcome MUST be "underpowered".
 #     (Current code checks only survivors -> emits "tradeoff-signal-to-investigate" -> RED now.)
-INJ_A_IDENT="$(env -i PATH="$PATH" python3 - "$PROTO_OK" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PROTO_OK" >"$WORK/cap_inj_a_ident.txt" 2>&1 <<'PY'
 import json, sys
 p = sys.argv[1]
 print(json.dumps({"T1-auth-token": p, "T2-pagination": p}))
 PY
-)"
-INJ_B_IDENT="$(env -i PATH="$PATH" python3 - "$PROTO_OK" <<'PY' 2>&1
+INJ_A_IDENT="$(cat "$WORK/cap_inj_a_ident.txt")"
+env -i PATH="$PATH" python3 - "$PROTO_OK" >"$WORK/cap_inj_b_ident.txt" 2>&1 <<'PY'
 import json, sys
 p = sys.argv[1]
 role = {"role": "Pruefer", "model": "openai/gpt-4o", "code": "COUNCIL_INFERENCE_OK", "position": p}
 print(json.dumps({"T1-auth-token": [role], "T2-pagination": [role]}))
 PY
-)"
+INJ_B_IDENT="$(cat "$WORK/cap_inj_b_ident.txt")"
 MDE_ZERO="$(mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
              --pre-registration "$WORK/prereg_mde.json" \
              --inject-arm-a "$INJ_A_IDENT" --inject-arm-b "$INJ_B_IDENT" \
@@ -449,7 +449,7 @@ assert_json_eq "REQ-MR-007 MDE: a below-MDE delta is NEVER laundered as tradeoff
 # (b) Catch delta ABOVE the MDE (council catches both seeded defects -> 1.0; claude catches
 #     none -> 0.0; delta 1.0 > MDE) WITH cry-wolf UP for claude (false flags at clean
 #     controls) -> stays "tradeoff-signal-to-investigate" (a real catch-vs-cry-wolf trade).
-INJ_B_CATCH="$(env -i PATH="$PATH" python3 - <<'PY' 2>&1
+env -i PATH="$PATH" python3 - >"$WORK/cap_inj_b_catch.txt" 2>&1 <<'PY'
 import json
 t1 = json.dumps({"flags": [{"file": "auth/token.py", "line": 17, "description": "timing side channel"}]})
 t2 = json.dumps({"flags": [{"file": "api/list.py", "line": 25, "description": "resource exhaustion"},
@@ -458,14 +458,14 @@ r1 = {"role": "Pruefer", "model": "openai/gpt-4o", "code": "COUNCIL_INFERENCE_OK
 r2 = {"role": "Pruefer", "model": "openai/gpt-4o", "code": "COUNCIL_INFERENCE_OK", "position": t2}
 print(json.dumps({"T1-auth-token": [r1], "T2-pagination": [r2]}))
 PY
-)"
-INJ_A_CRYWOLF="$(env -i PATH="$PATH" python3 - <<'PY' 2>&1
+INJ_B_CATCH="$(cat "$WORK/cap_inj_b_catch.txt")"
+env -i PATH="$PATH" python3 - >"$WORK/cap_inj_a_crywolf.txt" 2>&1 <<'PY'
 import json
 t1 = json.dumps({"flags": [{"file": "auth/token.py", "line": 20, "description": "false flag at clean control"}]})
 t2 = json.dumps({"flags": [{"file": "api/list.py", "line": 40, "description": "false flag at clean control"}]})
 print(json.dumps({"T1-auth-token": t1, "T2-pagination": t2}))
 PY
-)"
+INJ_A_CRYWOLF="$(cat "$WORK/cap_inj_a_crywolf.txt")"
 MDE_ABOVE="$(mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
               --pre-registration "$WORK/prereg_mde.json" \
               --inject-arm-a "$INJ_A_CRYWOLF" --inject-arm-b "$INJ_B_CATCH" \
@@ -495,7 +495,7 @@ mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
    --out "$RUNS_OUT" --inject-call-counter "$WORK/c_emit" --json >/dev/null 2>&1
 assert "REQ-MR-006 the orchestrator wrote runs.jsonl outside the tree (emit_run round-trip)" "[ -s \"$RUNS_OUT\" ]"
 # Inspect the emitted records via the REAL emit_run schema (record.raw vs top-level).
-EMITCHK="$(env -i PATH="$PATH" python3 - "$RUNS_OUT" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$RUNS_OUT" >"$WORK/cap_emitchk.txt" 2>&1 <<'PY'
 import json, sys
 recs = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 def has_raw(r, k): return k in r.get("raw", {})
@@ -513,7 +513,7 @@ out = {
 }
 print(json.dumps(out, sort_keys=True))
 PY
-)"
+EMITCHK="$(cat "$WORK/cap_emitchk.txt")"
 assert_json_eq "REQ-MR-006 at least 2 surviving records emitted (>= 2 arms x >= 1 surviving task)" \
   "$EMITCHK" 'd["n_records"]>=2' True
 assert_json_eq "REQ-MR-006 every record carries corpus_id top-level == council-review-catch-v1" \
@@ -539,13 +539,13 @@ assert "REQ-MR-006 process_health reads the emitted runs.jsonl without crashing"
 #    as a council result); the result records arm identity. Reuses the scorer's
 #    foreign_only_ok contract (a council record must carry foreign_only_ok == false here).
 # ===========================================================================
-INJ_B_CLAUDE="$(env -i PATH="$PATH" python3 - "$PROTO_OK" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PROTO_OK" >"$WORK/cap_inj_b_claude.txt" 2>&1 <<'PY'
 import json, sys
 p = sys.argv[1]
 role = {"role": "Pruefer", "model": "anthropic/claude-3-opus", "code": "COUNCIL_INFERENCE_OK", "position": p}
 print(json.dumps({"T1-auth-token": [role], "T2-pagination": [role]}))
 PY
-)"
+INJ_B_CLAUDE="$(cat "$WORK/cap_inj_b_claude.txt")"
 mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
    --pre-registration "$WORK/prereg_pilot.json" \
    --inject-arm-a "$INJ_A_EMPTY" --inject-arm-b "$INJ_B_CLAUDE" \
@@ -553,7 +553,7 @@ mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
 RC_CLAUDE=$?
 assert "REQ-MR-004 Claude-contaminated Arm B -> run fails closed for that subject (non-zero exit)" "[ $RC_CLAUDE -ne 0 ]"
 # Whatever it emits, NO contaminated council record may be written as a valid (foreign_only_ok true) result.
-CLAUDECHK="$(env -i PATH="$PATH" python3 - "$WORK/runs_claude.jsonl" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$WORK/runs_claude.jsonl" >"$WORK/cap_claudechk.txt" 2>&1 <<'PY'
 import json, os, sys
 path = sys.argv[1]
 recs = [json.loads(l) for l in open(path)] if os.path.isfile(path) else []
@@ -563,7 +563,7 @@ council = [r for r in recs if r.get("raw",{}).get("arm")=="council-A"]
 ok = all(r.get("raw",{}).get("foreign_only_ok") is False for r in council)
 print(json.dumps({"council_records": len(council), "all_flagged_false": ok}, sort_keys=True))
 PY
-)"
+CLAUDECHK="$(cat "$WORK/cap_claudechk.txt")"
 assert_json_eq "REQ-MR-004 no contaminated council record is emitted as a valid (foreign_only_ok true) result" \
   "$CLAUDECHK" 'd["council_records"]==0 or d["all_flagged_false"] is True' True
 
@@ -609,8 +609,7 @@ assert "REQ-MR-005 orchestrator source calls council_inference.run_inference dir
 # Real-invariant check (AST/source, eval-free, file by path): the module must DEFINE no
 # transport and IMPORT no http; consuming the instrument's _real_transport by plain
 # reference is permitted. Fails closed on a parse error.
-# shellcheck disable=SC2034  # DEFCHK is consumed inside the assert condition strings below
-DEFCHK="$(env -i PATH="$PATH" python3 - "$RUNNER" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$RUNNER" >"$WORK/cap_defchk.txt" 2>&1 <<'PY'
 import ast, sys
 src = open(sys.argv[1], encoding="utf-8").read()
 tree = ast.parse(src)
@@ -636,7 +635,8 @@ print("DEF" if defines_transport else "nodef")
 print("IMP" if imports_http else "noimp")
 print("URL" if calls_urlopen else "nourl")
 PY
-)"
+# shellcheck disable=SC2034  # DEFCHK is consumed inside the assert condition strings below
+DEFCHK="$(cat "$WORK/cap_defchk.txt")"
 assert "REQ-MR-005 orchestrator DEFINES no transport of its own (no def _real_transport)" \
   "printf '%s\n' \"\$DEFCHK\" | grep -qx 'nodef'"
 assert "REQ-MR-005 orchestrator IMPORTS no http transport (no import urllib/http/requests)" \
@@ -688,12 +688,12 @@ assert_not_contains "NFR-MR-001 no API key material appears in the emitted runs.
 
 # (N3 / never-fabricate) A malformed injected Arm-A response classifies to an EMPTY flag-set
 #  -> the scored claude-only record has catch 0.0 (a real miss), NEVER a fabricated flag.
-INJ_A_MALFORMED="$(env -i PATH="$PATH" python3 - "$PROTO_MALFORMED" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$PROTO_MALFORMED" >"$WORK/cap_inj_a_malformed.txt" 2>&1 <<'PY'
 import json, sys
 bad = sys.argv[1]
 print(json.dumps({"T1-auth-token": bad, "T2-pagination": bad}))
 PY
-)"
+INJ_A_MALFORMED="$(cat "$WORK/cap_inj_a_malformed.txt")"
 MALF="$(mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
          --pre-registration "$WORK/prereg_pilot.json" \
          --inject-arm-a "$INJ_A_MALFORMED" --inject-arm-b "$INJ_B_BOTHOK" \
@@ -717,7 +717,7 @@ mr run --corpus "$CORPUS" --preset A --claude-model test-tier \
    --inject-arm-a "$INJ_A_EMPTY" --inject-arm-b "$INJ_B_BOTHOK" \
    --out "$WORK/runs_det2.jsonl" --inject-call-counter "$WORK/c_det2" --json >/dev/null 2>&1
 # Compare the per-arm metric tuples (deterministic, numeric equality), independent of run_id.
-DET="$(env -i PATH="$PATH" python3 - "$WORK/runs_det1.jsonl" "$WORK/runs_det2.jsonl" <<'PY' 2>&1
+env -i PATH="$PATH" python3 - "$WORK/runs_det1.jsonl" "$WORK/runs_det2.jsonl" >"$WORK/cap_det.txt" 2>&1 <<'PY'
 import json, sys
 def metrics(path):
     out = []
@@ -730,7 +730,7 @@ def metrics(path):
 a, b = metrics(sys.argv[1]), metrics(sys.argv[2])
 print(json.dumps({"equal": a==b, "n": len(a)}, sort_keys=True))
 PY
-)"
+DET="$(cat "$WORK/cap_det.txt")"
 assert_json_eq "NFR-MR-002 the primary score is deterministic: identical numbers on re-run (numeric equality)" \
   "$DET" 'd["equal"] is True and d["n"]>=2' True
 assert "REQ-MR-008 offline determinism run fired 0 transport calls" "[ \"\$(cat \"$WORK/c_det1\" 2>/dev/null)\" = \"0\" ]"
