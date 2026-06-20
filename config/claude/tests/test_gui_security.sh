@@ -339,13 +339,25 @@ env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
 big_status="$(head -n 1 "$OUT_BIG")"
 big_body="$(tail -n +2 "$OUT_BIG")"
 big_log="$(cat "$ERR_BIG" "$ERR_CLI")"
-assert_not_contains "AC-8 oversized-body response carries no key sentinel" "$big_body" "$SENTINEL"
-assert_not_contains "AC-8 oversized-body server log carries no key sentinel" "$big_log" "$SENTINEL"
-assert_eq "AC-8 oversized-body over the real socket yields a generic 500" "500" "$big_status"
-assert_not_contains "AC-8 oversized-body response carries no traceback" "$big_body" "Traceback (most recent call last)"
-assert_not_contains "AC-8 oversized-body server log carries no traceback" "$big_log" "Traceback (most recent call last)"
-# The proxy must NOT dump the 2 MiB body back (no body echo): assert the response is small.
-assert "AC-8 oversized-body response is NOT an echo of the 2 MiB body (bounded size)" "[ \"\$(wc -c < '$OUT_BIG')\" -lt 65536 ]"
+# macOS-CI loopback skip (NARROW / LOUD / Linux stays HARD): when the spawned `serve` is
+# alive but its loopback socket was never connectable within the FULL retry budget
+# (SERVER_NOT_READY) AND the OS is macOS, these socket-LISTENING assertions are SKIPPED
+# with a counted GUI_SRV_SKIP notice -- the diagnosed macOS-CI-runner limitation, NOT a
+# product defect (the leak/loopback/generic-500 logic is proven by the in-process render
+# seams above + the real socket on Linux CI). On Linux (any non-Darwin) SERVER_NOT_READY
+# HARD-fails as before; when the server IS reachable, the assertions ALWAYS run (a wrong
+# status / a leak is a HARD fail on every OS).
+if gui_macos_skip_active "$big_status"; then
+  gui_srv_skip_notice "AC-8 oversized-body socket POST block"
+else
+  assert_not_contains "AC-8 oversized-body response carries no key sentinel" "$big_body" "$SENTINEL"
+  assert_not_contains "AC-8 oversized-body server log carries no key sentinel" "$big_log" "$SENTINEL"
+  assert_eq "AC-8 oversized-body over the real socket yields a generic 500" "500" "$big_status"
+  assert_not_contains "AC-8 oversized-body response carries no traceback" "$big_body" "Traceback (most recent call last)"
+  assert_not_contains "AC-8 oversized-body server log carries no traceback" "$big_log" "Traceback (most recent call last)"
+  # The proxy must NOT dump the 2 MiB body back (no body echo): assert the response is small.
+  assert "AC-8 oversized-body response is NOT an echo of the 2 MiB body (bounded size)" "[ \"\$(wc -c < '$OUT_BIG')\" -lt 65536 ]"
+fi
 gui_srv_diag "$BIG_DIAG" "oversized-body socket POST (/run)"
 
 # (c) The log must never dump the environment (env-leak guard). Even on the happy path,
@@ -603,10 +615,21 @@ PIPE_DIAG="$SCRATCH/pipe.diag"
 env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
   python3 "$PIPE_CLIENT" "$PROXY_MOD" "$ERR_PIPE" "$PIPE_DIAG" > "$OUT_PIPE" 2>"$ERR_PIPE_CLI"
 pipe_log="$(cat "$ERR_PIPE" "$ERR_PIPE_CLI")"
-# RED now: a disconnect mid-response prints a full Python traceback to the server log.
-assert_not_contains "NOTE-1 client disconnect mid-response prints NO Python traceback in the server log" "$pipe_log" "Traceback (most recent call last)"
-# Already-true: the disconnect traceback (if any) carries no key sentinel (honesty, not a leak).
-assert_not_contains "NOTE-1 client-disconnect server log carries no key sentinel" "$pipe_log" "$SENTINEL"
+# The pipe client prints DISCONNECTED on a reachable server, or SERVER_NOT_READY when the
+# spawned `serve` never became connectable. Marker is stdout line 1 of $OUT_PIPE.
+pipe_marker="$(head -n 1 "$OUT_PIPE")"
+# macOS-CI loopback skip (NARROW / LOUD / Linux stays HARD): SERVER_NOT_READY + Darwin ->
+# skip this socket-LISTENING block (the broken-pipe path only exists once a real client
+# connects, which it cannot on the macOS CI runner). Linux keeps it HARD; a reachable
+# server that DID print a traceback / leaked the key is a HARD fail on every OS.
+if gui_macos_skip_active "$pipe_marker"; then
+  gui_srv_skip_notice "NOTE-1 client-disconnect (broken-pipe) socket POST block"
+else
+  # RED now: a disconnect mid-response prints a full Python traceback to the server log.
+  assert_not_contains "NOTE-1 client disconnect mid-response prints NO Python traceback in the server log" "$pipe_log" "Traceback (most recent call last)"
+  # Already-true: the disconnect traceback (if any) carries no key sentinel (honesty, not a leak).
+  assert_not_contains "NOTE-1 client-disconnect server log carries no key sentinel" "$pipe_log" "$SENTINEL"
+fi
 gui_srv_diag "$PIPE_DIAG" "client-disconnect socket POST (/run)"
 
 finish "test_gui_security"
