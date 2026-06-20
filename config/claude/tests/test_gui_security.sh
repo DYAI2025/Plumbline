@@ -58,6 +58,16 @@ SENTINEL="sk-or-v1-LEAK-SENTINEL-00000000000000000000000000000000000000000000000
 SCRATCH="$(mktemp -d)" || { echo "FAIL mktemp -d"; exit 1; }
 trap 'rm -rf "$SCRATCH"' EXIT
 
+# LOUD, CI-visible root cause if a socket server never became connectable. Emitted to THIS
+# test's stderr (which run_all shows) AFTER the relevant assertions, tagged GUI_SRV_DIAG:
+# so it is grep-able in the macOS CI log. Dormant on success (the diag file is only written
+# by the python client on SERVER_NOT_READY); does NOT touch the stdout the assertions parse.
+gui_srv_diag() { # gui_srv_diag <diag-file> <label>
+  [ -s "$1" ] || return 0
+  printf 'GUI_SRV_DIAG: ---- %s ----\n' "$2" >&2
+  cat "$1" >&2
+}
+
 DISCLOSURE="Diversity is a necessary-not-sufficient guard per RISK-B-007 and it does not prove real model diversity."
 CANNED_OK="$SCRATCH/canned_ok.json"
 cat > "$CANNED_OK" <<EOF
@@ -164,16 +174,25 @@ cat > "$SEC_SOCK_CLIENT" <<'PY'
 # stderr is captured to the caller-supplied file (argv[3]) so the leak guard can inspect
 # it AND a REAL bind failure is distinguishable from a slow start (the same file holds
 # the start error on failure).
+#
+# DIAGNOSTIC: on SERVER_NOT_READY a LOUD, CI-visible root cause (the server's stderr +
+# stdout tail, the subprocess exit code, the launching python sys.version/sys.executable,
+# the exact serve argv, and the chosen port) is written to the diag file (argv[4]) -- a
+# DEDICATED file, NEVER stdout -- each line tagged `GUI_SRV_DIAG:`. The bash caller cats
+# it (to stderr) AFTER the assertions, so the stdout status/body parsing and the
+# SERVER_NOT_READY marker are unchanged. Dormant on success.
 import http.client
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 
 READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner safe)
 CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
 POLL_SLEEP = 0.1  # gap between connect attempts
 LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
+DIAG_TAG = "GUI_SRV_DIAG:"  # grep-friendly marker for the CI log
 
 
 def _free_port():
@@ -184,44 +203,95 @@ def _free_port():
     return port
 
 
-def _start_server(module, srv_err):
-    # Returns (proc, port) or (None, None). The server's stderr is written to the
-    # caller-supplied open file `srv_err`; on early exit we retry a fresh port so a
-    # slow port release on the runner is not a hard failure.
+def _tail(text, limit=4000):
+    if text and len(text) > limit:
+        return "...<truncated>...\n" + text[-limit:]
+    return text
+
+
+def _read_file(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _write_diag(diag_file, argv, port, returncode, srv_err_file, srv_out):
+    if not diag_file:
+        return
+    lines = []
+    lines.append("==== server failed to become ready ====")
+    lines.append("launching python sys.executable: " + str(sys.executable))
+    lines.append("launching python sys.version: " + sys.version.replace("\n", " "))
+    lines.append("serve argv: " + repr(argv))
+    lines.append("chosen port: " + str(port))
+    lines.append("subprocess exit/returncode: " + str(returncode))
+    lines.append("---- server stderr (begin) ----")
+    for ln in _tail(_read_file(srv_err_file)).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stderr (end) ----")
+    lines.append("---- server stdout tail (begin) ----")
+    for ln in _tail(srv_out).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stdout tail (end) ----")
+    try:
+        with open(diag_file, "w", encoding="utf-8") as fh:
+            for ln in lines:
+                fh.write(DIAG_TAG + " " + ln + "\n")
+    except OSError:
+        pass
+
+
+def _start_server(module, srv_err, srv_out):
+    # Returns (proc, port, argv, rc) -- proc is None on failure. The server's stderr is
+    # written to the caller-supplied open file `srv_err` and stdout to `srv_out`; on early
+    # exit we retry a fresh port so a slow port release on the runner is not a hard failure.
+    argv = None
+    rc = None
     for _ in range(LAUNCH_ATTEMPTS):
         port = _free_port()
-        proc = subprocess.Popen(
-            [sys.executable, module, "serve", "--port", str(port)],
-            stdout=subprocess.DEVNULL,
-            stderr=srv_err,
-        )
+        argv = [sys.executable, module, "serve", "--port", str(port)]
+        proc = subprocess.Popen(argv, stdout=srv_out, stderr=srv_err)
         deadline = time.time() + READY_BUDGET
         while time.time() < deadline:
-            if proc.poll() is not None:
+            rc = proc.poll()
+            if rc is not None:
                 break  # exited before accepting -- relaunch on a fresh port
             try:
                 probe = socket.create_connection(
                     ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
                 )
                 probe.close()
-                return proc, port
+                return proc, port, argv, rc
             except OSError:
                 time.sleep(POLL_SLEEP)
         else:
-            return None, None  # budget elapsed, still alive but not accepting
-    return None, None
+            return None, port, argv, proc.poll()  # alive but not accepting
+    return None, port, argv, rc
 
 
 def main():
-    # argv: <proxy-module> <body-file> <server-stderr-file>
+    # argv: <proxy-module> <body-file> <server-stderr-file> [diag-file]
     module, body_file, srv_err_file = sys.argv[1], sys.argv[2], sys.argv[3]
+    diag_file = sys.argv[4] if len(sys.argv) > 4 else ""
     with open(body_file, "rb") as fh:
         body = fh.read()
     srv_err = open(srv_err_file, "wb")
-    proc, port = _start_server(module, srv_err)
+    srv_out_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".srvout", delete=False)
+    proc, port, argv, rc = _start_server(module, srv_err, srv_out_file)
     if proc is None:
-        print("SERVER_NOT_READY")
+        srv_err.flush()
+        srv_out_file.flush()
+        try:
+            srv_out_file.seek(0)
+            srv_out = srv_out_file.read()
+        except OSError:
+            srv_out = ""
         srv_err.close()
+        srv_out_file.close()
+        print("SERVER_NOT_READY")
+        _write_diag(diag_file, argv, port, rc, srv_err_file, srv_out)
         return 0
     try:
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
@@ -244,6 +314,10 @@ def main():
         except subprocess.TimeoutExpired:
             proc.kill()
         srv_err.close()
+        try:
+            srv_out_file.close()
+        except (OSError, AttributeError):
+            pass
 
 
 if __name__ == "__main__":
@@ -259,8 +333,9 @@ head -c 2097152 /dev/zero | tr '\0' 'A' > "$BIGFILE"
 # bash-side stderr goes to a SEPARATE file so we never read+write one file in a pipeline
 # (shellcheck SC2094). The leak guard then inspects BOTH captured streams.
 OUT_BIG="$SCRATCH/big.out"; ERR_BIG="$SCRATCH/big_srv.err"; ERR_CLI="$SCRATCH/big_cli.err"
+BIG_DIAG="$SCRATCH/big.diag"
 env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
-  python3 "$SEC_SOCK_CLIENT" "$PROXY_MOD" "$BIGFILE" "$ERR_BIG" > "$OUT_BIG" 2>"$ERR_CLI"
+  python3 "$SEC_SOCK_CLIENT" "$PROXY_MOD" "$BIGFILE" "$ERR_BIG" "$BIG_DIAG" > "$OUT_BIG" 2>"$ERR_CLI"
 big_status="$(head -n 1 "$OUT_BIG")"
 big_body="$(tail -n +2 "$OUT_BIG")"
 big_log="$(cat "$ERR_BIG" "$ERR_CLI")"
@@ -271,6 +346,7 @@ assert_not_contains "AC-8 oversized-body response carries no traceback" "$big_bo
 assert_not_contains "AC-8 oversized-body server log carries no traceback" "$big_log" "Traceback (most recent call last)"
 # The proxy must NOT dump the 2 MiB body back (no body echo): assert the response is small.
 assert "AC-8 oversized-body response is NOT an echo of the 2 MiB body (bounded size)" "[ \"\$(wc -c < '$OUT_BIG')\" -lt 65536 ]"
+gui_srv_diag "$BIG_DIAG" "oversized-body socket POST (/run)"
 
 # (c) The log must never dump the environment (env-leak guard). Even on the happy path,
 #     the captured log must not contain the env var NAME=value pairing for the key.
@@ -366,12 +442,19 @@ cat > "$PIPE_CLIENT" <<'PY'
 # loopback port, send a raw POST /run, then force an RST-on-close (SO_LINGER {1,0}) before
 # reading the response so the server's wfile.write hits a broken pipe / connection reset.
 # The server's stderr is captured to argv[2] so the test can inspect it for a traceback.
-# argv: <proxy-module> <server-stderr-file>.
+# argv: <proxy-module> <server-stderr-file> [diag-file].
+#
+# DIAGNOSTIC: on SERVER_NOT_READY a LOUD, CI-visible root cause (the server's stderr +
+# stdout tail, the subprocess exit code, the launching python sys.version/sys.executable,
+# the exact serve argv, and the chosen port) is written to the diag file (argv[3]) -- a
+# DEDICATED file, NEVER stdout -- each line tagged `GUI_SRV_DIAG:`. The bash caller cats it
+# (to stderr) AFTER the assertions, so the existing parsing is unchanged. Dormant on success.
 import json
 import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -387,42 +470,95 @@ READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner
 CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
 POLL_SLEEP = 0.1  # gap between connect attempts
 LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
+DIAG_TAG = "GUI_SRV_DIAG:"  # grep-friendly marker for the CI log
 
 
-def _start_server(module, srv_err):
-    # Returns (proc, port) or (None, None); the server's stderr goes to `srv_err`.
-    # Retries a fresh port on early exit so a slow port release is not a hard failure.
+def _tail(text, limit=4000):
+    if text and len(text) > limit:
+        return "...<truncated>...\n" + text[-limit:]
+    return text
+
+
+def _read_file(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _write_diag(diag_file, argv, port, returncode, srv_err_file, srv_out):
+    if not diag_file:
+        return
+    lines = []
+    lines.append("==== server failed to become ready ====")
+    lines.append("launching python sys.executable: " + str(sys.executable))
+    lines.append("launching python sys.version: " + sys.version.replace("\n", " "))
+    lines.append("serve argv: " + repr(argv))
+    lines.append("chosen port: " + str(port))
+    lines.append("subprocess exit/returncode: " + str(returncode))
+    lines.append("---- server stderr (begin) ----")
+    for ln in _tail(_read_file(srv_err_file)).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stderr (end) ----")
+    lines.append("---- server stdout tail (begin) ----")
+    for ln in _tail(srv_out).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stdout tail (end) ----")
+    try:
+        with open(diag_file, "w", encoding="utf-8") as fh:
+            for ln in lines:
+                fh.write(DIAG_TAG + " " + ln + "\n")
+    except OSError:
+        pass
+
+
+def _start_server(module, srv_err, srv_out):
+    # Returns (proc, port, argv, rc); proc is None on failure. The server's stderr goes to
+    # `srv_err`, stdout to `srv_out`. Retries a fresh port on early exit so a slow port
+    # release is not a hard failure.
+    argv = None
+    rc = None
     for _ in range(LAUNCH_ATTEMPTS):
         port = _free_port()
-        proc = subprocess.Popen(
-            [sys.executable, module, "serve", "--port", str(port)],
-            stdout=subprocess.DEVNULL,
-            stderr=srv_err,
-        )
+        argv = [sys.executable, module, "serve", "--port", str(port)]
+        proc = subprocess.Popen(argv, stdout=srv_out, stderr=srv_err)
         deadline = time.time() + READY_BUDGET
         while time.time() < deadline:
-            if proc.poll() is not None:
+            rc = proc.poll()
+            if rc is not None:
                 break  # exited before accepting -- relaunch on a fresh port
             try:
                 probe = socket.create_connection(
                     ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
                 )
                 probe.close()
-                return proc, port
+                return proc, port, argv, rc
             except OSError:
                 time.sleep(POLL_SLEEP)
         else:
-            return None, None  # budget elapsed, still alive but not accepting
-    return None, None
+            return None, port, argv, proc.poll()  # alive but not accepting
+    return None, port, argv, rc
 
 
 def main():
     module, srv_err_file = sys.argv[1], sys.argv[2]
+    diag_file = sys.argv[3] if len(sys.argv) > 3 else ""
     srv_err = open(srv_err_file, "wb")
-    proc, port = _start_server(module, srv_err)
+    srv_out_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".srvout", delete=False)
+    proc, port, argv, rc = _start_server(module, srv_err, srv_out_file)
     if proc is None:
-        print("SERVER_NOT_READY")
+        srv_err.flush()
+        srv_out_file.flush()
+        try:
+            srv_out_file.seek(0)
+            srv_out = srv_out_file.read()
+        except OSError:
+            srv_out = ""
         srv_err.close()
+        srv_out_file.close()
+        print("SERVER_NOT_READY")
+        _write_diag(diag_file, argv, port, rc, srv_err_file, srv_out)
         return 0
     try:
         # Send a complete, valid POST /run, then abort the connection with an RST
@@ -452,6 +588,10 @@ def main():
         except subprocess.TimeoutExpired:
             proc.kill()
         srv_err.close()
+        try:
+            srv_out_file.close()
+        except (OSError, AttributeError):
+            pass
 
 
 if __name__ == "__main__":
@@ -459,12 +599,14 @@ if __name__ == "__main__":
 PY
 
 OUT_PIPE="$SCRATCH/pipe.out"; ERR_PIPE="$SCRATCH/pipe_srv.err"; ERR_PIPE_CLI="$SCRATCH/pipe_cli.err"
+PIPE_DIAG="$SCRATCH/pipe.diag"
 env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
-  python3 "$PIPE_CLIENT" "$PROXY_MOD" "$ERR_PIPE" > "$OUT_PIPE" 2>"$ERR_PIPE_CLI"
+  python3 "$PIPE_CLIENT" "$PROXY_MOD" "$ERR_PIPE" "$PIPE_DIAG" > "$OUT_PIPE" 2>"$ERR_PIPE_CLI"
 pipe_log="$(cat "$ERR_PIPE" "$ERR_PIPE_CLI")"
 # RED now: a disconnect mid-response prints a full Python traceback to the server log.
 assert_not_contains "NOTE-1 client disconnect mid-response prints NO Python traceback in the server log" "$pipe_log" "Traceback (most recent call last)"
 # Already-true: the disconnect traceback (if any) carries no key sentinel (honesty, not a leak).
 assert_not_contains "NOTE-1 client-disconnect server log carries no key sentinel" "$pipe_log" "$SENTINEL"
+gui_srv_diag "$PIPE_DIAG" "client-disconnect socket POST (/run)"
 
 finish "test_gui_security"

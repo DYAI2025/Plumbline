@@ -495,14 +495,22 @@ SOCK_CLIENT="$SCRATCH/sock_post.py"
 cat > "$SOCK_CLIENT" <<'PY'
 # Drive the REAL served path: start `serve` on an ephemeral loopback port, POST the
 # request body over a real TCP socket (NO CLI inject), print the response status line
-# and body. argv: <proxy-module> <subject> <preset> <mode>. A live transport call
-# would need the network; this offline POST must reach NONE -- it is purely loopback.
+# and body. argv: <proxy-module> <diag-file> <subject> <preset> <mode>. A live transport
+# call would need the network; this offline POST must reach NONE -- it is purely loopback.
 #
 # Readiness is HARDENED for slow CI runners (macOS): a generous ~30s budget, a real
 # TCP-connect probe loop, the server given time to import+bind before the first attempt,
-# the server's stderr captured to a temp file so a REAL bind failure is distinguishable
-# from a slow start, and a relaunch on early exit (slow ephemeral-port release / EADDRINUSE)
-# so a transient bind race does not produce a flaky SERVER_NOT_READY.
+# the server's stdout AND stderr captured to temp files so a REAL bind failure is
+# distinguishable from a slow start, and a relaunch on early exit (slow ephemeral-port
+# release / EADDRINUSE) so a transient bind race does not produce a flaky SERVER_NOT_READY.
+#
+# DIAGNOSTIC: on SERVER_NOT_READY the LOUD, CI-visible root cause (the server's stderr +
+# stdout tail, the subprocess exit code, the launching python's sys.version/sys.executable,
+# the exact serve argv, and the chosen port) is written to <diag-file> -- a DEDICATED file,
+# NEVER stdout -- each line tagged `GUI_SRV_DIAG:` so it is unmistakable in the CI log. The
+# bash caller cats this file (to its stderr) AFTER the assertions, so the existing stdout
+# parsing (status line + body) and the `SERVER_NOT_READY` marker are byte-for-byte
+# unchanged. The diagnostic is DORMANT on success (the file is only written on failure).
 import http.client
 import json
 import socket
@@ -515,6 +523,7 @@ READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner
 CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
 POLL_SLEEP = 0.1  # gap between connect attempts
 LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
+DIAG_TAG = "GUI_SRV_DIAG:"  # grep-friendly marker for the CI log
 
 
 def _free_port():
@@ -525,65 +534,116 @@ def _free_port():
     return port
 
 
-def _start_server(module):
-    # Returns (proc, port, err_file) with the server's stderr captured to a temp file,
-    # retrying on early exit so a slow port release on the runner is not a hard failure.
+def _read_reset(fh):
+    # Read a temp file opened in w+ mode without losing the write position.
+    try:
+        fh.flush()
+        fh.seek(0)
+        return fh.read()
+    except OSError:
+        return ""
+
+
+def _tail(text, limit=4000):
+    if text and len(text) > limit:
+        return "...<truncated>...\n" + text[-limit:]
+    return text
+
+
+def _write_diag(diag_file, argv, port, returncode, srv_err, srv_out):
+    # Write the LOUD, CI-visible diagnostic for a server that never became connectable.
+    # Every line is tagged so it survives grep in a noisy CI log. Written to a DEDICATED
+    # file (NOT stdout), so assertion parsing of stdout is untouched.
+    lines = []
+    lines.append("==== server failed to become ready ====")
+    lines.append("launching python sys.executable: " + str(sys.executable))
+    lines.append("launching python sys.version: " + sys.version.replace("\n", " "))
+    lines.append("serve argv: " + repr(argv))
+    lines.append("chosen port: " + str(port))
+    lines.append("subprocess exit/returncode: " + str(returncode))
+    lines.append("---- server stderr (begin) ----")
+    for ln in _tail(srv_err).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stderr (end) ----")
+    lines.append("---- server stdout tail (begin) ----")
+    for ln in _tail(srv_out).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stdout tail (end) ----")
+    try:
+        with open(diag_file, "w", encoding="utf-8") as fh:
+            for ln in lines:
+                fh.write(DIAG_TAG + " " + ln + "\n")
+    except OSError:
+        pass
+
+
+def _start_server(module, diag_file):
+    # Returns (proc, port, out_file, err_file) on success, or (None, None, None, None) on
+    # failure -- writing the LOUD diagnostic to diag_file before returning. Retries on
+    # early exit so a slow port release on the runner is not a hard failure.
     last_err = ""
+    last_out = ""
+    last_argv = None
+    last_port = None
+    last_rc = None
     for _ in range(LAUNCH_ATTEMPTS):
         port = _free_port()
+        out_file = tempfile.NamedTemporaryFile(
+            mode="w+", suffix=".srvout", delete=False
+        )
         err_file = tempfile.NamedTemporaryFile(
             mode="w+", suffix=".srverr", delete=False
         )
-        proc = subprocess.Popen(
-            [sys.executable, module, "serve", "--port", str(port)],
-            stdout=subprocess.DEVNULL,
-            stderr=err_file,
-        )
+        argv = [sys.executable, module, "serve", "--port", str(port)]
+        proc = subprocess.Popen(argv, stdout=out_file, stderr=err_file)
+        last_argv, last_port = argv, port
         # Give the subprocess a moment to import + bind before the first connect attempt.
         deadline = time.time() + READY_BUDGET
         while time.time() < deadline:
-            if proc.poll() is not None:
+            rc = proc.poll()
+            if rc is not None:
                 # Exited before accepting -- capture why, then retry a fresh port.
-                err_file.flush()
-                try:
-                    err_file.seek(0)
-                    last_err = err_file.read()
-                except OSError:
-                    last_err = ""
+                last_err = _read_reset(err_file)
+                last_out = _read_reset(out_file)
+                last_rc = rc
                 err_file.close()
+                out_file.close()
                 break
             try:
                 probe = socket.create_connection(
                     ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
                 )
                 probe.close()
-                return proc, port, err_file
+                return proc, port, out_file, err_file
             except OSError:
                 time.sleep(POLL_SLEEP)
         else:
             # Budget elapsed with the process still alive but not accepting: real timeout.
-            err_file.flush()
-            try:
-                err_file.seek(0)
-                last_err = err_file.read()
-            except OSError:
-                last_err = ""
+            last_err = _read_reset(err_file)
+            last_out = _read_reset(out_file)
+            last_rc = proc.poll()  # likely None: alive but not accepting
             err_file.close()
-            return None, None, last_err
+            out_file.close()
+            _write_diag(diag_file, last_argv, last_port, last_rc, last_err, last_out)
+            return None, None, None, None
         # Loop: relaunch on early exit.
-    return None, None, last_err
+    _write_diag(diag_file, last_argv, last_port, last_rc, last_err, last_out)
+    return None, None, None, None
 
 
 def main():
-    module, subject, preset, mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-    proc, port, err = _start_server(module)
+    module, diag_file, subject, preset, mode = (
+        sys.argv[1],
+        sys.argv[2],
+        sys.argv[3],
+        sys.argv[4],
+        sys.argv[5],
+    )
+    proc, port, out_file, err_file = _start_server(module, diag_file)
     if proc is None:
-        # Distinguish a real bind/start failure (stderr captured) from a slow start.
-        if err:
-            print("SERVER_NOT_READY")
-            sys.stderr.write(err)
-        else:
-            print("SERVER_NOT_READY")
+        # SERVER_NOT_READY stays on stdout line 1 exactly where the asserts expect it;
+        # the LOUD root cause is in <diag-file>, which the bash caller cats afterward.
+        print("SERVER_NOT_READY")
         return 0
     try:
         body = json.dumps({"subject": subject, "preset": preset, "mode": mode})
@@ -602,10 +662,11 @@ def main():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-        try:
-            err.close()
-        except (OSError, AttributeError):
-            pass
+        for fh in (out_file, err_file):
+            try:
+                fh.close()
+            except (OSError, AttributeError):
+                pass
 
 
 if __name__ == "__main__":
@@ -615,11 +676,21 @@ PY
 # Run the server under a CLEAN env that STILL carries the SENTINEL key (proving the key
 # is resident in the serving process yet never leaks) and NO live gate (offline default).
 SOCK_OUT="$SCRATCH/sock_offline.out"
+SOCK_DIAG="$SCRATCH/sock_offline.diag"
 env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
-  python3 "$SOCK_CLIENT" "$PROXY_MOD" "Should we ship slice 4" "A" "offline" \
+  python3 "$SOCK_CLIENT" "$PROXY_MOD" "$SOCK_DIAG" "Should we ship slice 4" "A" "offline" \
   > "$SOCK_OUT" 2>&1
 sock_status="$(head -n 1 "$SOCK_OUT")"
 sock_body="$(tail -n +2 "$SOCK_OUT")"
+# LOUD, CI-visible root cause if the server never became connectable. Emitted to THIS
+# test's stderr (which run_all shows) AFTER the assertions below, tagged GUI_SRV_DIAG: so
+# it is grep-able in the macOS CI log. Dormant on success (diag file only exists on
+# SERVER_NOT_READY); does NOT touch the stdout the assertions parse.
+gui_srv_diag() { # gui_srv_diag <diag-file> <label>
+  [ -s "$1" ] || return 0
+  printf 'GUI_SRV_DIAG: ---- %s ----\n' "$2" >&2
+  cat "$1" >&2
+}
 
 # The headline falsifier: the REAL served offline-no-live POST must return an HONEST
 # classified "live required" response (non-2xx) -- NOT a fabricated demo council.
@@ -645,6 +716,7 @@ assert_not_contains "AC-1 offline-no-live socket response does NOT claim demo:tr
 assert_contains "AC-1 offline-no-live socket response renders an honest 'enable live' message" "$(printf '%s' "$sock_body" | tr '[:upper:]' '[:lower:]')" "enable live"
 # Reality Ledger floor stays integration-fake: 0 key leak over the real served path.
 assert_not_contains "AC-1 offline-no-live socket response carries no key sentinel (0 key leak)" "$sock_body" "$SENTINEL"
+gui_srv_diag "$SOCK_DIAG" "offline-no-live socket POST (/run)"
 
 # ===========================================================================
 # REQ-GUI-016 / code-review IMPORTANT-2 -- the DOCUMENTED `POST /run` route is REAL and
@@ -678,12 +750,21 @@ ROUTE_CLIENT="$SCRATCH/route_post.py"
 cat > "$ROUTE_CLIENT" <<'PY'
 # Drive the REAL served path with an explicit request PATH: start `serve` on an
 # ephemeral loopback port, POST the body to argv-supplied <path>, print the response
-# status line then the raw body. argv: <proxy-module> <path> <subject> <preset> <mode>.
+# status line then the raw body. argv: <proxy-module> <diag-file> <path> <subject>
+# <preset> <mode>.
 #
 # Readiness is HARDENED for slow CI runners (macOS): a generous ~30s budget, a real
 # TCP-connect probe loop, the server given time to import+bind before the first attempt,
-# the server's stderr captured to a temp file so a REAL bind failure is distinguishable
-# from a slow start, and a relaunch on early exit (slow ephemeral-port release / EADDRINUSE).
+# the server's stdout AND stderr captured to temp files so a REAL bind failure is
+# distinguishable from a slow start, and a relaunch on early exit (slow ephemeral-port
+# release / EADDRINUSE).
+#
+# DIAGNOSTIC: on SERVER_NOT_READY the LOUD, CI-visible root cause (server stderr + stdout
+# tail, subprocess exit code, launching python sys.version/sys.executable, the exact serve
+# argv, and the chosen port) is written to <diag-file> -- a DEDICATED file, NEVER stdout --
+# each line tagged `GUI_SRV_DIAG:`. The bash caller cats it (to stderr) AFTER the
+# assertions, so stdout parsing and the SERVER_NOT_READY marker are unchanged. Dormant on
+# success (the file is only written on failure).
 import http.client
 import json
 import socket
@@ -696,6 +777,7 @@ READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner
 CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
 POLL_SLEEP = 0.1  # gap between connect attempts
 LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
+DIAG_TAG = "GUI_SRV_DIAG:"  # grep-friendly marker for the CI log
 
 
 def _free_port():
@@ -706,64 +788,106 @@ def _free_port():
     return port
 
 
-def _start_server(module):
-    # Returns (proc, port, err_file) with the server's stderr captured to a temp file,
-    # retrying on early exit so a slow port release on the runner is not a hard failure.
+def _read_reset(fh):
+    try:
+        fh.flush()
+        fh.seek(0)
+        return fh.read()
+    except OSError:
+        return ""
+
+
+def _tail(text, limit=4000):
+    if text and len(text) > limit:
+        return "...<truncated>...\n" + text[-limit:]
+    return text
+
+
+def _write_diag(diag_file, argv, port, returncode, srv_err, srv_out):
+    lines = []
+    lines.append("==== server failed to become ready ====")
+    lines.append("launching python sys.executable: " + str(sys.executable))
+    lines.append("launching python sys.version: " + sys.version.replace("\n", " "))
+    lines.append("serve argv: " + repr(argv))
+    lines.append("chosen port: " + str(port))
+    lines.append("subprocess exit/returncode: " + str(returncode))
+    lines.append("---- server stderr (begin) ----")
+    for ln in _tail(srv_err).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stderr (end) ----")
+    lines.append("---- server stdout tail (begin) ----")
+    for ln in _tail(srv_out).splitlines() or ["<empty>"]:
+        lines.append("  " + ln)
+    lines.append("---- server stdout tail (end) ----")
+    try:
+        with open(diag_file, "w", encoding="utf-8") as fh:
+            for ln in lines:
+                fh.write(DIAG_TAG + " " + ln + "\n")
+    except OSError:
+        pass
+
+
+def _start_server(module, diag_file):
+    # Returns (proc, port, out_file, err_file) on success, or (None, None, None, None) on
+    # failure -- writing the LOUD diagnostic to diag_file first.
     last_err = ""
+    last_out = ""
+    last_argv = None
+    last_port = None
+    last_rc = None
     for _ in range(LAUNCH_ATTEMPTS):
         port = _free_port()
+        out_file = tempfile.NamedTemporaryFile(
+            mode="w+", suffix=".srvout", delete=False
+        )
         err_file = tempfile.NamedTemporaryFile(
             mode="w+", suffix=".srverr", delete=False
         )
-        proc = subprocess.Popen(
-            [sys.executable, module, "serve", "--port", str(port)],
-            stdout=subprocess.DEVNULL,
-            stderr=err_file,
-        )
+        argv = [sys.executable, module, "serve", "--port", str(port)]
+        proc = subprocess.Popen(argv, stdout=out_file, stderr=err_file)
+        last_argv, last_port = argv, port
         deadline = time.time() + READY_BUDGET
         while time.time() < deadline:
-            if proc.poll() is not None:
-                err_file.flush()
-                try:
-                    err_file.seek(0)
-                    last_err = err_file.read()
-                except OSError:
-                    last_err = ""
+            rc = proc.poll()
+            if rc is not None:
+                last_err = _read_reset(err_file)
+                last_out = _read_reset(out_file)
+                last_rc = rc
                 err_file.close()
+                out_file.close()
                 break
             try:
                 probe = socket.create_connection(
                     ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
                 )
                 probe.close()
-                return proc, port, err_file
+                return proc, port, out_file, err_file
             except OSError:
                 time.sleep(POLL_SLEEP)
         else:
-            err_file.flush()
-            try:
-                err_file.seek(0)
-                last_err = err_file.read()
-            except OSError:
-                last_err = ""
+            last_err = _read_reset(err_file)
+            last_out = _read_reset(out_file)
+            last_rc = proc.poll()
             err_file.close()
-            return None, None, last_err
-    return None, None, last_err
+            out_file.close()
+            _write_diag(diag_file, last_argv, last_port, last_rc, last_err, last_out)
+            return None, None, None, None
+    _write_diag(diag_file, last_argv, last_port, last_rc, last_err, last_out)
+    return None, None, None, None
 
 
 def main():
-    module, path, subject, preset, mode = (
+    module, diag_file, path, subject, preset, mode = (
         sys.argv[1],
         sys.argv[2],
         sys.argv[3],
         sys.argv[4],
         sys.argv[5],
+        sys.argv[6],
     )
-    proc, port, err = _start_server(module)
+    proc, port, out_file, err_file = _start_server(module, diag_file)
     if proc is None:
         print("SERVER_NOT_READY")
-        if err:
-            sys.stderr.write(err)
         return 0
     try:
         body = json.dumps({"subject": subject, "preset": preset, "mode": mode})
@@ -781,10 +905,11 @@ def main():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-        try:
-            err.close()
-        except (OSError, AttributeError):
-            pass
+        for fh in (out_file, err_file):
+            try:
+                fh.close()
+            except (OSError, AttributeError):
+                pass
 
 
 if __name__ == "__main__":
@@ -794,8 +919,9 @@ PY
 # (1) POST /run -> the documented route is REACHED (NOT a 404): offline-no-live returns
 #     the HONEST classified COUNCIL_LIVE_REQUIRED response, never a fabricated demo council.
 RUN_OUT="$SCRATCH/route_run.out"
+RUN_DIAG="$SCRATCH/route_run.diag"
 env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
-  python3 "$ROUTE_CLIENT" "$PROXY_MOD" "/run" "Should we ship slice 4" "A" "offline" \
+  python3 "$ROUTE_CLIENT" "$PROXY_MOD" "$RUN_DIAG" "/run" "Should we ship slice 4" "A" "offline" \
   > "$RUN_OUT" 2>&1
 run_status="$(head -n 1 "$RUN_OUT")"
 run_body="$(tail -n +2 "$RUN_OUT")"
@@ -803,16 +929,19 @@ run_body="$(tail -n +2 "$RUN_OUT")"
 assert_eq "IMPORTANT-2 POST /run is NOT a 404 (the documented route is real and reached)" "0" "$([ "$run_status" = "404" ] && echo 1 || echo 0)"
 assert_contains "IMPORTANT-2 POST /run offline-no-live surfaces the classified COUNCIL_LIVE_REQUIRED" "$run_body" "COUNCIL_LIVE_REQUIRED"
 assert_not_contains "IMPORTANT-2 POST /run renders NO fabricated demo council" "$run_body" "die-visionaerin"
+gui_srv_diag "$RUN_DIAG" "route POST /run"
 
 # (2) POST /unknown -> 404 (unknown POST paths are refused, not silently run as a council).
 UNK_OUT="$SCRATCH/route_unknown.out"
+UNK_DIAG="$SCRATCH/route_unknown.diag"
 env -i PATH="$PATH" OPENROUTER_API_KEY="$SENTINEL" \
-  python3 "$ROUTE_CLIENT" "$PROXY_MOD" "/unknown" "Should we ship slice 4" "A" "offline" \
+  python3 "$ROUTE_CLIENT" "$PROXY_MOD" "$UNK_DIAG" "/unknown" "Should we ship slice 4" "A" "offline" \
   > "$UNK_OUT" 2>&1
 unk_status="$(head -n 1 "$UNK_OUT")"
 unk_body="$(tail -n +2 "$UNK_OUT")"
 assert_eq "IMPORTANT-2 POST /unknown returns HTTP 404 (unknown POST path refused, NOT a silent council run)" "404" "$unk_status"
 # A refused unknown path must never crash with a raw traceback (true now AND after the fix).
 assert_not_contains "IMPORTANT-2 POST /unknown does not crash with a raw traceback" "$unk_body" "Traceback (most recent call last)"
+gui_srv_diag "$UNK_DIAG" "route POST /unknown"
 
 finish "test_gui_proxy"
