@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.19.0](https://github.com/DYAI2025/Plumbline/compare/v0.18.0...v0.19.0) (2026-06-20)
+
+
+### Features
+
+* **metrics:** council-diversity-measurement Slice 3a — the measurement substrate ([#66](https://github.com/DYAI2025/Plumbline/issues/66)) ([ab82b60](https://github.com/DYAI2025/Plumbline/commit/ab82b60637e5e794f6eb55a5ce3db72b53916b96))
+* **metrics:** council-measurement-run Slice 3b — measurement orchestrator + live n=2 pilot (underpowered) ([#68](https://github.com/DYAI2025/Plumbline/issues/68)) ([af6c1e2](https://github.com/DYAI2025/Plumbline/commit/af6c1e29a0990ec4ab5250974326f5f22ecb9a59))
+* **metrics:** free-only council diversity probe (EXP-009) — no-budget reframe of [#1](https://github.com/DYAI2025/Plumbline/issues/1) ([5b5a85f](https://github.com/DYAI2025/Plumbline/commit/5b5a85f3b292fbb60ba63f83a1846088ed5fb0dc))
+* **metrics:** free-only council diversity probe (EXP-009) — no-budget reframe of [#1](https://github.com/DYAI2025/Plumbline/issues/1) ([7bf7714](https://github.com/DYAI2025/Plumbline/commit/7bf771438abf4d563cb305b1bec501606880777a))
+
 ## [0.18.0](https://github.com/DYAI2025/Plumbline/compare/v0.17.0...v0.18.0) (2026-06-19)
 
 
