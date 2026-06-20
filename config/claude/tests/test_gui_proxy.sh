@@ -497,12 +497,24 @@ cat > "$SOCK_CLIENT" <<'PY'
 # request body over a real TCP socket (NO CLI inject), print the response status line
 # and body. argv: <proxy-module> <subject> <preset> <mode>. A live transport call
 # would need the network; this offline POST must reach NONE -- it is purely loopback.
+#
+# Readiness is HARDENED for slow CI runners (macOS): a generous ~30s budget, a real
+# TCP-connect probe loop, the server given time to import+bind before the first attempt,
+# the server's stderr captured to a temp file so a REAL bind failure is distinguishable
+# from a slow start, and a relaunch on early exit (slow ephemeral-port release / EADDRINUSE)
+# so a transient bind race does not produce a flaky SERVER_NOT_READY.
 import http.client
 import json
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+
+READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner safe)
+CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
+POLL_SLEEP = 0.1  # gap between connect attempts
+LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
 
 
 def _free_port():
@@ -513,34 +525,69 @@ def _free_port():
     return port
 
 
-def main():
-    module, subject, preset, mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-    port = _free_port()
-    proc = subprocess.Popen(
-        [sys.executable, module, "serve", "--port", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        # Poll for readiness on the loopback socket (condition-based wait, no fixed sleep).
-        deadline = time.time() + 10.0
-        ready = False
+def _start_server(module):
+    # Returns (proc, port, err_file) with the server's stderr captured to a temp file,
+    # retrying on early exit so a slow port release on the runner is not a hard failure.
+    last_err = ""
+    for _ in range(LAUNCH_ATTEMPTS):
+        port = _free_port()
+        err_file = tempfile.NamedTemporaryFile(
+            mode="w+", suffix=".srverr", delete=False
+        )
+        proc = subprocess.Popen(
+            [sys.executable, module, "serve", "--port", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=err_file,
+        )
+        # Give the subprocess a moment to import + bind before the first connect attempt.
+        deadline = time.time() + READY_BUDGET
         while time.time() < deadline:
             if proc.poll() is not None:
-                print("SERVER_EXITED_EARLY")
-                return 0
-            try:
-                probe = socket.create_connection(("127.0.0.1", port), timeout=0.25)
-                probe.close()
-                ready = True
+                # Exited before accepting -- capture why, then retry a fresh port.
+                err_file.flush()
+                try:
+                    err_file.seek(0)
+                    last_err = err_file.read()
+                except OSError:
+                    last_err = ""
+                err_file.close()
                 break
+            try:
+                probe = socket.create_connection(
+                    ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
+                )
+                probe.close()
+                return proc, port, err_file
             except OSError:
-                time.sleep(0.05)
-        if not ready:
+                time.sleep(POLL_SLEEP)
+        else:
+            # Budget elapsed with the process still alive but not accepting: real timeout.
+            err_file.flush()
+            try:
+                err_file.seek(0)
+                last_err = err_file.read()
+            except OSError:
+                last_err = ""
+            err_file.close()
+            return None, None, last_err
+        # Loop: relaunch on early exit.
+    return None, None, last_err
+
+
+def main():
+    module, subject, preset, mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+    proc, port, err = _start_server(module)
+    if proc is None:
+        # Distinguish a real bind/start failure (stderr captured) from a slow start.
+        if err:
             print("SERVER_NOT_READY")
-            return 0
+            sys.stderr.write(err)
+        else:
+            print("SERVER_NOT_READY")
+        return 0
+    try:
         body = json.dumps({"subject": subject, "preset": preset, "mode": mode})
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         conn.request("POST", "/run", body, {"Content-Type": "application/json"})
         resp = conn.getresponse()
         payload = resp.read().decode("utf-8", "replace")
@@ -555,6 +602,10 @@ def main():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+        try:
+            err.close()
+        except (OSError, AttributeError):
+            pass
 
 
 if __name__ == "__main__":
@@ -628,12 +679,23 @@ cat > "$ROUTE_CLIENT" <<'PY'
 # Drive the REAL served path with an explicit request PATH: start `serve` on an
 # ephemeral loopback port, POST the body to argv-supplied <path>, print the response
 # status line then the raw body. argv: <proxy-module> <path> <subject> <preset> <mode>.
+#
+# Readiness is HARDENED for slow CI runners (macOS): a generous ~30s budget, a real
+# TCP-connect probe loop, the server given time to import+bind before the first attempt,
+# the server's stderr captured to a temp file so a REAL bind failure is distinguishable
+# from a slow start, and a relaunch on early exit (slow ephemeral-port release / EADDRINUSE).
 import http.client
 import json
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+
+READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner safe)
+CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
+POLL_SLEEP = 0.1  # gap between connect attempts
+LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
 
 
 def _free_port():
@@ -644,6 +706,51 @@ def _free_port():
     return port
 
 
+def _start_server(module):
+    # Returns (proc, port, err_file) with the server's stderr captured to a temp file,
+    # retrying on early exit so a slow port release on the runner is not a hard failure.
+    last_err = ""
+    for _ in range(LAUNCH_ATTEMPTS):
+        port = _free_port()
+        err_file = tempfile.NamedTemporaryFile(
+            mode="w+", suffix=".srverr", delete=False
+        )
+        proc = subprocess.Popen(
+            [sys.executable, module, "serve", "--port", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=err_file,
+        )
+        deadline = time.time() + READY_BUDGET
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                err_file.flush()
+                try:
+                    err_file.seek(0)
+                    last_err = err_file.read()
+                except OSError:
+                    last_err = ""
+                err_file.close()
+                break
+            try:
+                probe = socket.create_connection(
+                    ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
+                )
+                probe.close()
+                return proc, port, err_file
+            except OSError:
+                time.sleep(POLL_SLEEP)
+        else:
+            err_file.flush()
+            try:
+                err_file.seek(0)
+                last_err = err_file.read()
+            except OSError:
+                last_err = ""
+            err_file.close()
+            return None, None, last_err
+    return None, None, last_err
+
+
 def main():
     module, path, subject, preset, mode = (
         sys.argv[1],
@@ -652,31 +759,15 @@ def main():
         sys.argv[4],
         sys.argv[5],
     )
-    port = _free_port()
-    proc = subprocess.Popen(
-        [sys.executable, module, "serve", "--port", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    proc, port, err = _start_server(module)
+    if proc is None:
+        print("SERVER_NOT_READY")
+        if err:
+            sys.stderr.write(err)
+        return 0
     try:
-        deadline = time.time() + 10.0
-        ready = False
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                print("SERVER_EXITED_EARLY")
-                return 0
-            try:
-                probe = socket.create_connection(("127.0.0.1", port), timeout=0.25)
-                probe.close()
-                ready = True
-                break
-            except OSError:
-                time.sleep(0.05)
-        if not ready:
-            print("SERVER_NOT_READY")
-            return 0
         body = json.dumps({"subject": subject, "preset": preset, "mode": mode})
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         conn.request("POST", path, body, {"Content-Type": "application/json"})
         resp = conn.getresponse()
         payload = resp.read().decode("utf-8", "replace")
@@ -690,6 +781,10 @@ def main():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+        try:
+            err.close()
+        except (OSError, AttributeError):
+            pass
 
 
 if __name__ == "__main__":

@@ -158,11 +158,22 @@ assert_not_contains "AC-8 log does NOT echo the raw request body" "$bad_log" "oo
 # to a separate file so a leak-to-log is distinguishable from a leak-to-body.
 SEC_SOCK_CLIENT="$SCRATCH/sec_sock_post.py"
 cat > "$SEC_SOCK_CLIENT" <<'PY'
+# Readiness is HARDENED for slow CI runners (macOS): a generous ~30s budget, a real
+# TCP-connect probe loop, the server given time to import+bind before the first attempt,
+# and a relaunch on early exit (slow ephemeral-port release / EADDRINUSE). The server's
+# stderr is captured to the caller-supplied file (argv[3]) so the leak guard can inspect
+# it AND a REAL bind failure is distinguishable from a slow start (the same file holds
+# the start error on failure).
 import http.client
 import socket
 import subprocess
 import sys
 import time
+
+READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner safe)
+CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
+POLL_SLEEP = 0.1  # gap between connect attempts
+LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
 
 
 def _free_port():
@@ -173,35 +184,46 @@ def _free_port():
     return port
 
 
+def _start_server(module, srv_err):
+    # Returns (proc, port) or (None, None). The server's stderr is written to the
+    # caller-supplied open file `srv_err`; on early exit we retry a fresh port so a
+    # slow port release on the runner is not a hard failure.
+    for _ in range(LAUNCH_ATTEMPTS):
+        port = _free_port()
+        proc = subprocess.Popen(
+            [sys.executable, module, "serve", "--port", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=srv_err,
+        )
+        deadline = time.time() + READY_BUDGET
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                break  # exited before accepting -- relaunch on a fresh port
+            try:
+                probe = socket.create_connection(
+                    ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
+                )
+                probe.close()
+                return proc, port
+            except OSError:
+                time.sleep(POLL_SLEEP)
+        else:
+            return None, None  # budget elapsed, still alive but not accepting
+    return None, None
+
+
 def main():
     # argv: <proxy-module> <body-file> <server-stderr-file>
     module, body_file, srv_err_file = sys.argv[1], sys.argv[2], sys.argv[3]
     with open(body_file, "rb") as fh:
         body = fh.read()
-    port = _free_port()
     srv_err = open(srv_err_file, "wb")
-    proc = subprocess.Popen(
-        [sys.executable, module, "serve", "--port", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=srv_err,
-    )
+    proc, port = _start_server(module, srv_err)
+    if proc is None:
+        print("SERVER_NOT_READY")
+        srv_err.close()
+        return 0
     try:
-        deadline = time.time() + 10.0
-        ready = False
-        while time.time() < deadline:
-            if proc.poll() is not None:
-                print("SERVER_EXITED_EARLY")
-                return 0
-            try:
-                probe = socket.create_connection(("127.0.0.1", port), timeout=0.25)
-                probe.close()
-                ready = True
-                break
-            except OSError:
-                time.sleep(0.05)
-        if not ready:
-            print("SERVER_NOT_READY")
-            return 0
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
         try:
             conn.request("POST", "/run", body, {"Content-Type": "application/json"})
@@ -361,32 +383,48 @@ def _free_port():
     return port
 
 
-def main():
-    module, srv_err_file = sys.argv[1], sys.argv[2]
-    port = _free_port()
-    srv_err = open(srv_err_file, "wb")
-    proc = subprocess.Popen(
-        [sys.executable, module, "serve", "--port", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=srv_err,
-    )
-    try:
-        deadline = time.time() + 10.0
-        ready = False
+READY_BUDGET = 30.0  # total seconds to wait for the port to accept (slow-runner safe)
+CONNECT_TIMEOUT = 0.5  # per-attempt TCP connect timeout
+POLL_SLEEP = 0.1  # gap between connect attempts
+LAUNCH_ATTEMPTS = 3  # relaunch on early exit (transient bind race)
+
+
+def _start_server(module, srv_err):
+    # Returns (proc, port) or (None, None); the server's stderr goes to `srv_err`.
+    # Retries a fresh port on early exit so a slow port release is not a hard failure.
+    for _ in range(LAUNCH_ATTEMPTS):
+        port = _free_port()
+        proc = subprocess.Popen(
+            [sys.executable, module, "serve", "--port", str(port)],
+            stdout=subprocess.DEVNULL,
+            stderr=srv_err,
+        )
+        deadline = time.time() + READY_BUDGET
         while time.time() < deadline:
             if proc.poll() is not None:
-                print("SERVER_EXITED_EARLY")
-                return 0
+                break  # exited before accepting -- relaunch on a fresh port
             try:
-                probe = socket.create_connection(("127.0.0.1", port), timeout=0.25)
+                probe = socket.create_connection(
+                    ("127.0.0.1", port), timeout=CONNECT_TIMEOUT
+                )
                 probe.close()
-                ready = True
-                break
+                return proc, port
             except OSError:
-                time.sleep(0.05)
-        if not ready:
-            print("SERVER_NOT_READY")
-            return 0
+                time.sleep(POLL_SLEEP)
+        else:
+            return None, None  # budget elapsed, still alive but not accepting
+    return None, None
+
+
+def main():
+    module, srv_err_file = sys.argv[1], sys.argv[2]
+    srv_err = open(srv_err_file, "wb")
+    proc, port = _start_server(module, srv_err)
+    if proc is None:
+        print("SERVER_NOT_READY")
+        srv_err.close()
+        return 0
+    try:
         # Send a complete, valid POST /run, then abort the connection with an RST
         # (SO_LINGER {1,0}) WITHOUT reading the response -> the server's response write
         # hits BrokenPipeError / ConnectionResetError mid-response.
