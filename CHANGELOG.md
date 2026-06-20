@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.20.0](https://github.com/DYAI2025/Plumbline/compare/v0.19.0...v0.20.0) (2026-06-20)
+
+
+### Features
+
+* **council:** refresh free-model family preference to current strong free families ([af22f1f](https://github.com/DYAI2025/Plumbline/commit/af22f1fc83b88a9f9fdebba6b3634040b46d7c83))
+* **council:** refresh free-model family preference to current strong free families ([aa3e567](https://github.com/DYAI2025/Plumbline/commit/aa3e5670ce471bd99ed43f9bcb66381ca1ac12b7))
+* **gui:** OpenRouter Council-Runner GUI (Slice 4) — live-real, no demo ([fe57133](https://github.com/DYAI2025/Plumbline/commit/fe571334ff3bd79d9d0148c732c7fcad27ba00a3))
+* **gui:** OpenRouter Council-Runner GUI (Slice 4) — live-real, no demo ([351de83](https://github.com/DYAI2025/Plumbline/commit/351de83ed27a2f7f4b464768ccc23d3e9d72c597))
+
+
+### Bug Fixes
+
+* **tests:** harden GUI socket-test readiness for macOS CI ([49b16c5](https://github.com/DYAI2025/Plumbline/commit/49b16c54a1e1ed9addb4b5d81e8147c130caa766))
+
 ## [0.19.0](https://github.com/DYAI2025/Plumbline/compare/v0.18.0...v0.19.0) (2026-06-20)
 
 
