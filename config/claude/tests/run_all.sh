@@ -117,6 +117,12 @@ bash config/claude/tests/test_arm_a_review_runner.sh || fail=1
 stage "council measurement-run orchestrator — Arm A vs preset-A run loop (Slice 3b)"
 bash config/claude/tests/test_council_measurement_run.sh || fail=1
 
+stage "openrouter council-runner GUI proxy/launcher acceptance contract (Slice 4)"
+bash config/claude/tests/test_gui_proxy.sh || fail=1
+
+stage "openrouter council-runner GUI security / key-leak gate (Slice 4)"
+bash config/claude/tests/test_gui_security.sh || fail=1
+
 
 stage "runtime integrity layer tests"
 bash config/claude/tests/test_runtime_integrity_layer.sh || fail=1
