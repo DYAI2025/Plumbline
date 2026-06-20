@@ -81,17 +81,26 @@ PRESETS: dict[str, list[dict[str, Any]]] = {
 # Edit THIS list to change which free families the dynamic resolver prefers — the
 # resolver never hardcodes a single id. Each entry is {name, match} where `match`
 # is a deterministic substring/token predicate over a catalog id's BASE slug.
-# Order is preference order:
-#   1 DeepSeek v4 -> 2 Qwen3.x -> 3 Kimi K2.7 -> 4 Kimi K2.6 -> 5 GLM 5.x
+#
+# The named families are an EDITABLE preference order verified against the LIVE
+# OpenRouter free catalog as of 2026-06-20 (re-check periodically). The resolver
+# fails gracefully — skip-absent-family -> next preference -> free-route fallback ->
+# fail-closed on no :free id — so a family LATER dropping from the catalog degrades
+# gracefully and is NOT a stale-hardcode risk (REQ-DS-015). DeepSeek v4 is KEPT at
+# the top per the contract even though it is absent from the live catalog today
+# (it is simply skipped until it returns). Order is preference order:
+#   1 DeepSeek v4 -> 2 Qwen3.x -> 3 GPT-OSS 120B -> 4 NVIDIA Nemotron Super ->
+#   5 Google Gemma 4 -> 6 Meta Llama 3.3
 # After these named families, the OpenRouter free-route fallback picks any :free id.
 # (No Claude/anthropic family is or may be listed — MEDIUM-1.)
 # ---------------------------------------------------------------------------
 FREE_MODEL_FAMILY_PREFERENCE: tuple[dict[str, Any], ...] = (
-    {"name": "DeepSeek v4", "match": ("deepseek", "v4")},
-    {"name": "Qwen3.x", "match": ("qwen3",)},
-    {"name": "Kimi K2.7", "match": ("kimi", "k2-7")},
-    {"name": "Kimi K2.6", "match": ("kimi", "k2-6")},
-    {"name": "GLM 5.x", "match": ("glm-5",)},
+    {"name": "DeepSeek v4", "match": ("deepseek", "v4")},            # KEEP: contract Branch A top preference; absent in the live catalog today -> skipped
+    {"name": "Qwen3.x", "match": ("qwen3",)},                        # KEEP: contract Branch B
+    {"name": "GPT-OSS 120B", "match": ("gpt-oss", "120")},           # NEW (openai/gpt-oss-120b:free)
+    {"name": "NVIDIA Nemotron Super", "match": ("nemotron", "super")},# NEW (nvidia/nemotron-3-super-120b-a12b:free)
+    {"name": "Google Gemma 4", "match": ("gemma-4",)},               # NEW (google/gemma-4-26b-a4b-it:free)
+    {"name": "Meta Llama 3.3", "match": ("llama-3.3",)},             # NEW (meta-llama/llama-3.3-70b-instruct:free)
 )
 
 # RISK-B-007 disclosure — carried VERBATIM (substrings asserted by the contract).

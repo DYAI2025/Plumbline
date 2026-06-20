@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plumbline Council Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <h1>Plumbline Council Runner</h1>
+    <p class="note">
+      This runs the REAL council live -- there is no demo and no fabricated
+      positions. Choose <strong>mode=live</strong> to run it (the server must have
+      the live gate enabled and the provider secret configured); otherwise the
+      server returns an honest "live required" message instead of any sample. The
+      council uses foreign, non-Claude free-tier models, which may rate-limit or be
+      unavailable -- those roles are shown honestly, never faked. This view shows
+      positions and the diversity disclosure; it never presents a verdict or an
+      approval.
+    </p>
+
+    <p class="diversity-note">
+      Foreign-model-only council: every role is a non-Claude model, chosen for
+      independence from the reviewing model. Model diversity is a
+      <em>necessary-not-sufficient</em> guard (RISK-B-007) and does not by itself
+      prove genuine reasoning diversity.
+    </p>
+
+    <form id="run-form" autocomplete="off">
+      <label for="subject">Subject</label>
+      <textarea id="subject" name="subject" rows="4"
+        placeholder="Paste the subject for the council to consider"></textarea>
+
+      <div class="controls">
+        <label for="preset">Preset</label>
+        <select id="preset" name="preset">
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+        </select>
+
+        <label for="mode">Mode</label>
+        <select id="mode" name="mode">
+          <option value="offline" selected>offline</option>
+          <option value="live">live (run the real council)</option>
+        </select>
+
+        <button type="submit" id="run">Run</button>
+      </div>
+    </form>
+
+    <section id="status" class="status" aria-live="polite"></section>
+    <section id="attrition" class="attrition" aria-live="polite" hidden></section>
+    <section id="results" class="results"></section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

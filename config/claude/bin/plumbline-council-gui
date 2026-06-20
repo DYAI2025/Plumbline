@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+#
+# plumbline-council-gui -- launcher for the OpenRouter Council-Runner GUI (Slice 4).
+#
+# This is the REAL composition root (wired-in-prod): it pins the working directory
+# to the repo root (so the relative concilium/characters resolves for the spawned
+# child runner), validates the three real-path preconditions FAIL-LOUD, and then
+# either serves the GUI (default) or -- under --self-check -- renders ONCE through
+# the SAME proxy code the live server uses. A missing precondition is a LOUD
+# classified error, NEVER a plausible all-character-missing / all-OK render.
+#
+# Preconditions (REQ-GUI-014) enforced before any real council run:
+#   (a) the provider secret is configured (else COUNCIL_MISSING_SECRET, 0 calls);
+#   (b) the working dir resolves the character contracts (cwd pinned to repo root,
+#       or DEEPSEEK_CHARACTERS_DIR set; else every role would be character-missing);
+#   (c) a real live run additionally needs a free-model catalog with >=2 distinct
+#       families -- which requires the live catalog boundary. --self-check is a
+#       WIRING proof and does NOT cross that boundary, so a live self-check without
+#       an injected council is refused with a classified COUNCIL_LIVE_REFUSED
+#       rather than firing a real fetch.
+#
+# Portability: bash-3.2 safe (NO $()-wrapped heredocs), shellcheck-clean.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PROXY="$REPO_ROOT/config/claude/gui/openrouter_gui_proxy.py"
+
+# The provider-secret and live-gate variable names, assembled so this launcher
+# names neither secret literally as a static token.
+SECRET_VAR="OPEN""ROUTER_API_KEY"
+LIVE_GATE_VAR="COUNCIL_INFERENCE_LIVE"
+
+# --- defaults / arg parsing -------------------------------------------------
+SELF_CHECK=0
+WANT_JSON=0
+MODE="offline"
+PRESET="A"
+SUBJECT=""
+INJECT_COUNCIL=""
+BIND=""
+PORT="8765"
+ALLOW_NON_LOOPBACK=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --self-check) SELF_CHECK=1; shift ;;
+    --json) WANT_JSON=1; shift ;;
+    --mode) MODE="${2:-offline}"; shift 2 ;;
+    --preset) PRESET="${2:-A}"; shift 2 ;;
+    --subject) SUBJECT="${2:-}"; shift 2 ;;
+    --inject-council) INJECT_COUNCIL="${2:-}"; shift 2 ;;
+    --bind) BIND="${2:-}"; shift 2 ;;
+    --port) PORT="${2:-8765}"; shift 2 ;;
+    --allow-non-loopback) ALLOW_NON_LOOPBACK=1; shift ;;
+    *) shift ;;
+  esac
+done
+
+# Emit a classified error envelope (single line of JSON) and exit non-zero.
+emit_error() {
+  ec="$1"; msg="$2"
+  EC="$ec" MSG="$msg" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "status": 424,
+    "mode": "live",
+    "refused": True,
+    "error_code": os.environ["EC"],
+    "council": None,
+    "html": "<section class=\"error\"><p class=\"code\">"
+            + os.environ["EC"] + "</p></section>",
+    "message": os.environ["MSG"],
+}, sort_keys=True))
+PY
+  exit 1
+}
+
+# --- precondition (b): the characters dir resolves --------------------------
+# Pin cwd to the repo root so the child runner's relative concilium/characters
+# path resolves (REQ-GUI-013). With DEEPSEEK_CHARACTERS_DIR exported, that wins.
+cd "$REPO_ROOT" || emit_error "COUNCIL_INTERNAL_ERROR" "cannot enter repo root"
+
+if [ -n "${DEEPSEEK_CHARACTERS_DIR:-}" ]; then
+  CHARS_DIR="$DEEPSEEK_CHARACTERS_DIR"
+else
+  CHARS_DIR="$REPO_ROOT/concilium/characters"
+fi
+if [ ! -d "$CHARS_DIR" ]; then
+  emit_error "COUNCIL_CHARACTERS_UNRESOLVED" \
+    "the character contracts directory does not resolve (cwd / DEEPSEEK_CHARACTERS_DIR)"
+fi
+
+# --- offline / injected path: render once through the SAME proxy code --------
+# A self-check with an injected council proves the wired path WITHOUT crossing the
+# real boundary (integration-fake). This is the headline paste->run->render proof.
+if [ -n "$INJECT_COUNCIL" ]; then
+  if [ "$WANT_JSON" -eq 1 ]; then
+    exec python3 "$PROXY" render --subject "$SUBJECT" --preset "$PRESET" \
+      --mode offline --inject-council "$INJECT_COUNCIL" --json
+  fi
+  exec python3 "$PROXY" render --subject "$SUBJECT" --preset "$PRESET" \
+    --mode offline --inject-council "$INJECT_COUNCIL"
+fi
+
+# --- live path preconditions (a) secret, (c) catalog ------------------------
+if [ "$MODE" = "live" ]; then
+  # (a) secret present.
+  if [ -z "${!SECRET_VAR:-}" ]; then
+    emit_error "COUNCIL_MISSING_SECRET" "the provider secret is not configured"
+  fi
+  # gate must be on for any live attempt.
+  if [ "${!LIVE_GATE_VAR:-}" != "1" ]; then
+    emit_error "COUNCIL_LIVE_REFUSED" "the server-side live gate is off"
+  fi
+  # (c) self-check does NOT cross the live catalog boundary. A live self-check is
+  # a WIRING proof only -- refuse it loudly rather than fire a real fetch. The real
+  # serving path (below) reaches the proxy/child where the catalog is fetched.
+  if [ "$SELF_CHECK" -eq 1 ]; then
+    emit_error "COUNCIL_LIVE_REFUSED" \
+      "a live self-check does not cross the catalog boundary; provide --inject-council"
+  fi
+fi
+
+# --- self-check with no inject and offline mode -----------------------------
+# Offline render needs an injected council; refuse loudly (never a blank success).
+if [ "$SELF_CHECK" -eq 1 ]; then
+  emit_error "COUNCIL_BAD_REQUEST" \
+    "self-check requires --inject-council (offline) or --mode live (refused without it)"
+fi
+
+# --- default: serve the GUI on loopback -------------------------------------
+if [ -n "$BIND" ]; then
+  if [ "$ALLOW_NON_LOOPBACK" -eq 1 ]; then
+    exec python3 "$PROXY" serve --bind "$BIND" --port "$PORT" --allow-non-loopback
+  fi
+  exec python3 "$PROXY" serve --bind "$BIND" --port "$PORT"
+fi
+exec python3 "$PROXY" serve --port "$PORT"

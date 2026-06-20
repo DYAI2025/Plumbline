@@ -1,0 +1,141 @@
+/* Plumbline Council Runner -- presentation only. */
+:root {
+  --bg: #11151c;
+  --panel: #1b2230;
+  --ink: #e6edf3;
+  --muted: #9aa7b4;
+  --accent: #4f8cff;
+  --warn: #f0a830;
+  --err: #ff6b6b;
+  --ok: #5bd6a0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.wrap {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.note {
+  color: var(--warn);
+  background: rgba(240, 168, 48, 0.08);
+  border: 1px solid rgba(240, 168, 48, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+}
+
+.diversity-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+form { margin-top: 1.5rem; }
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+textarea, select {
+  width: 100%;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #2a3445;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.controls select { width: auto; min-width: 7rem; }
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.6rem 1.4rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:hover { filter: brightness(1.08); }
+
+.status {
+  margin-top: 1.25rem;
+  min-height: 1.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.attrition {
+  margin-top: 0.75rem;
+  color: var(--warn);
+  background: rgba(240, 168, 48, 0.08);
+  border: 1px solid rgba(240, 168, 48, 0.3);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.attrition[hidden] { display: none; }
+
+.attrition-line { margin: 0; }
+
+.results { margin-top: 0.5rem; }
+
+.council, .diversity, .error {
+  background: var(--panel);
+  border: 1px solid #2a3445;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.overall { color: var(--muted); font-size: 0.85rem; }
+
+.positions { list-style: none; padding: 0; margin: 0.75rem 0 0; }
+
+.position {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid #232c3b;
+}
+
+.role { font-weight: 600; }
+.model { color: var(--muted); font-size: 0.8rem; grid-column: 1; }
+.text { grid-column: 2; grid-row: 1 / span 2; }
+.code { grid-column: 2; grid-row: 1 / span 2; color: var(--err); font-family: ui-monospace, monospace; }
+
+.diversity .gate { color: var(--ok); }
+.disclosure { color: var(--muted); font-size: 0.85rem; font-style: italic; }
+
+.error .code { color: var(--err); font-family: ui-monospace, monospace; }

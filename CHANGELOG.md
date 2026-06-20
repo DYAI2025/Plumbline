@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.20.0](https://github.com/DYAI2025/Plumbline/compare/v0.19.0...v0.20.0) (2026-06-20)
+
+
+### Features
+
+* **council:** refresh free-model family preference to current strong free families ([af22f1f](https://github.com/DYAI2025/Plumbline/commit/af22f1fc83b88a9f9fdebba6b3634040b46d7c83))
+* **council:** refresh free-model family preference to current strong free families ([aa3e567](https://github.com/DYAI2025/Plumbline/commit/aa3e5670ce471bd99ed43f9bcb66381ca1ac12b7))
+* **gui:** OpenRouter Council-Runner GUI (Slice 4) — live-real, no demo ([fe57133](https://github.com/DYAI2025/Plumbline/commit/fe571334ff3bd79d9d0148c732c7fcad27ba00a3))
+* **gui:** OpenRouter Council-Runner GUI (Slice 4) — live-real, no demo ([351de83](https://github.com/DYAI2025/Plumbline/commit/351de83ed27a2f7f4b464768ccc23d3e9d72c597))
+
+
+### Bug Fixes
+
+* **tests:** harden GUI socket-test readiness for macOS CI ([49b16c5](https://github.com/DYAI2025/Plumbline/commit/49b16c54a1e1ed9addb4b5d81e8147c130caa766))
+
+## [0.19.0](https://github.com/DYAI2025/Plumbline/compare/v0.18.0...v0.19.0) (2026-06-20)
+
+
+### Features
+
+* **metrics:** council-diversity-measurement Slice 3a — the measurement substrate ([#66](https://github.com/DYAI2025/Plumbline/issues/66)) ([ab82b60](https://github.com/DYAI2025/Plumbline/commit/ab82b60637e5e794f6eb55a5ce3db72b53916b96))
+* **metrics:** council-measurement-run Slice 3b — measurement orchestrator + live n=2 pilot (underpowered) ([#68](https://github.com/DYAI2025/Plumbline/issues/68)) ([af6c1e2](https://github.com/DYAI2025/Plumbline/commit/af6c1e29a0990ec4ab5250974326f5f22ecb9a59))
+* **metrics:** free-only council diversity probe (EXP-009) — no-budget reframe of [#1](https://github.com/DYAI2025/Plumbline/issues/1) ([5b5a85f](https://github.com/DYAI2025/Plumbline/commit/5b5a85f3b292fbb60ba63f83a1846088ed5fb0dc))
+* **metrics:** free-only council diversity probe (EXP-009) — no-budget reframe of [#1](https://github.com/DYAI2025/Plumbline/issues/1) ([7bf7714](https://github.com/DYAI2025/Plumbline/commit/7bf771438abf4d563cb305b1bec501606880777a))
+
 ## [0.18.0](https://github.com/DYAI2025/Plumbline/compare/v0.17.0...v0.18.0) (2026-06-19)
 
 
