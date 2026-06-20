@@ -114,6 +114,9 @@ bash config/claude/tests/test_council_review_scorer.sh || fail=1
 stage "council diversity measurement substrate — Arm-A review runner (Slice 3a)"
 bash config/claude/tests/test_arm_a_review_runner.sh || fail=1
 
+stage "council measurement-run orchestrator — Arm A vs preset-A run loop (Slice 3b)"
+bash config/claude/tests/test_council_measurement_run.sh || fail=1
+
 
 stage "runtime integrity layer tests"
 bash config/claude/tests/test_runtime_integrity_layer.sh || fail=1

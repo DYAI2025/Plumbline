@@ -1,0 +1,13 @@
+{
+  "feature": "council-measurement-run",
+  "slice": "3b",
+  "frozen_at": "2026-06-20T00:00:00Z",
+  "n": 2,
+  "min_survivors": 2,
+  "mde": 0.5,
+  "noise_model": "cross-task-variance",
+  "rubric": "pilot-n2: at n=2 the cross-task variance is unestimable, so demonstrated and refuted are definitionally out of reach. The only reachable pilot outcomes are underpowered (survivors below min_survivors, or delta below the MDE) and tradeoff-signal-to-investigate. The powered follow-on run carries the full four-outcome rubric; it is NOT selectable at n=2.",
+  "corpus_id": "council-review-catch-v1",
+  "corpus_hash": "sha256:fb5f22df28706b2bae8af3f0187a64201c3e0070d9188be9f0bf0c5356b6fb92",
+  "note": "Frozen, timestamped pre-registration for the n=2 paid pilot. Authored BEFORE the first scored run (the scored run refuses without a frozen artifact). The pass/fail line is judged against this file and is never moved after seeing results."
+}

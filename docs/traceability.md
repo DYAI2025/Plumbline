@@ -192,3 +192,22 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 | TRC-DM-3a-005 | REQ-DM-3a-005 (emit-blob review metrics via --raw; round-trip vs real emit_run.py) | test + emit_run --dry-run | n/a | integration-fake | pass |
 
 **Reality Ledger (DM-3a, honest ceiling):** the WHOLE slice is `integration-fake` — 3a builds + offline-validates the measurement substrate and **produces NO measurement number**. There is deliberately NO `real-boundary-smoke` here: the Arm-A runner's live call and the actual Arm-A-vs-Arm-B measurement RUN (with the paid pilot + pre-registered pass/fail eval) are the DEFERRED Slice-3b work (backlog BL-DM-002). The independent code-reviewer caught + measured a BLOCKER (corpus oracle line numbers didn't point at the seeded defects → a correct reviewer would have scored 0 catches) — fixed + guarded by a new oracle↔diff fidelity falsifier; the corpus freeze-hash is `sha256:fb5f22df…`. Goodhart provenance verified (defects authored independently of the council). Nothing in 3a may be read as a diversity/quality result.
+
+## Slice: Council Measurement RUN — Slice 3b: the measurement RUN (council-measurement-run / 3b of 4)
+
+- Feature-Slug: council-measurement-run (3a substrate consumed READ-ONLY; 3b RUNS it; Slice 4 = GUI)
+- canvas/prd/vision: docs/{canvas,prd,vision}/council-measurement-run.* (user-confirmed, Ben 2026-06-20; spec-auditor remediated)
+- reality-ledger: docs/reality/council-measurement-run.evidence.jsonl
+- plan: docs/plans/2026-06-20-council-measurement-run.md
+
+| Trace ID | Requirement | Evidence | wired-in-prod? | evidence-class | True-Line |
+|---|---|---|---|---|---|
+| TRC-MR-002 | REQ-MR-002 (ARM SYMMETRY: same structured flag protocol both arms, same parse_flag_set) | test_council_measurement_run.sh | n/a — offline | integration-fake | pass |
+| TRC-MR-004 | REQ-MR-004 (foreign-only fail-closed; paired-exclusion; OK-empty scored; survivors floor→underpowered) | test | n/a | integration-fake | pass |
+| TRC-MR-005 | REQ-MR-005 (Arm-A real boundary via run_inference direct, reachable-when-armed [code-reviewer proved by execution]; MAX-CALLS up-front ceiling; gate off by default) | test + code-review | live call DEFERRED to budget-gated pilot | integration-fake | pass |
+| TRC-MR-006 | REQ-MR-006 (emit_run --raw round-trip; both metric families + n/scope) | test + emit_run | n/a | integration-fake | pass |
+| TRC-MR-007 | REQ-MR-007 (frozen pre-registration; MDE/delta rubric: zero/below-MDE delta→underpowered; demonstrated/refuted unreachable at n=2) | metrics/pre-registration-…json + test (MDE falsifier) | n/a | integration-fake | pass |
+| TRC-MR-009 | REQ-MR-009 (instrument + corpus byte-unchanged; orchestrator defines no transport, imports no http) | git diff --quiet + AST test | n/a | integration-fake | pass |
+| TRC-MR-011 | REQ-MR-011 (security N1/N2/N3: @path confined, OSError surfaced, no fabricated flag, no key leak) | test + security-review | n/a | integration-fake | pass |
+
+**Reality Ledger (MR-3b, honest ceiling):** the offline harness is `integration-fake` throughout and produces NO measurement number. The ONLY real-boundary part — the n=2 paid pilot (Arm A claude-only vs Arm B preset-A foreign, real calls) — is **DEFERRED to the budget-gated pre-run gate** (the user names the cap before any live call); its purpose is a run-mechanism `real-boundary-smoke` + a cost/flakiness estimate, **NOT a value verdict** (n=2 → only `underpowered`/`tradeoff-signal-to-investigate`). The value verdict needs the powered full run (corpus expansion + A/B/C). Defense-in-depth caught + fixed, pre-merge: 4 measurement-integrity BLOCKERs at spec-sanity (arm asymmetry, REQ-MR-005/009 contradiction, unmeasurable aggregate cost, n=2 refutability), 2 HIGH at code-review (MDE rubric unimplemented; MAX-CALLS not enforced), and a getattr test-gaming smell (test relaxed + de-obfuscated). The live Arm-A path was proven reachable BY EXECUTION (not the Slice-2 dead-seam failure).
