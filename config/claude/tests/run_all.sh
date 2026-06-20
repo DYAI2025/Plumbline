@@ -130,6 +130,9 @@ bash config/claude/tests/test_pretool_vision_gate_hook.sh || fail=1
 stage "runtime start governance gate tests"
 bash config/claude/tests/test_runtime_start_governance_gate.sh || fail=1
 
+stage "shell portability / anti-footgun lint (bash-3.2 \$()-heredoc, confusable quotes, jq // default)"
+bash config/claude/tests/test_shell_portability.sh || fail=1
+
 stage "evidence-class vocab consistency"
 bash config/claude/tests/test_evidence_vocab.sh || fail=1
 
