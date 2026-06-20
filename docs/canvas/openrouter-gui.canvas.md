@@ -401,6 +401,7 @@ Allowed change scope:
 - `config/claude/tests/test_gui_proxy.sh`
 - `config/claude/tests/test_gui_security.sh`
 - `config/claude/tests/run_all.sh`
+- `config/claude/tests/lib.sh`
 - `docs/canvas/openrouter-gui.canvas.md`
 - `docs/prd/openrouter-gui.prd.md`
 - `docs/vision/openrouter-gui.vision.md`
