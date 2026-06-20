@@ -1,0 +1,16 @@
+{
+  "experiment": "council-free-diversity-probe",
+  "frozen_at": "2026-06-20T00:00:00Z",
+  "reframe": "free-only diversity probe; baseline (Arm A) is a single FREE model, NOT Claude (no paid budget) -> this is NOT council-vs-Claude",
+  "baseline": "google/gemma-4-31b-it:free",
+  "council": ["openai/gpt-oss-120b:free", "nvidia/nemotron-3-super-120b-a12b:free"],
+  "corpus": "council-review-catch-v1",
+  "corpus_hash": "sha256:fb5f22df28706b2bae8af3f0187a64201c3e0070d9188be9f0bf0c5356b6fb92",
+  "n": 2,
+  "min_survivors": 2,
+  "mde": 0.5,
+  "noise_model": "cross-task-variance",
+  "reachable_outcomes": ["underpowered", "tradeoff-signal-to-investigate"],
+  "decision_rule": "survivors<min_survivors OR abs(catch_delta)<mde -> underpowered; else catch & cry-wolf up -> tradeoff-signal-to-investigate; demonstrated/refuted definitionally unreachable at n=2",
+  "note": "ONE run, no re-roll (no re-running until survivors); free-tier reachability is intermittent so the model set is the one reachable at run time; the council-union flag-volume asymmetry (council unions up to N model flag-sets vs the baseline's single set) must be disclosed as fair scope"
+}
