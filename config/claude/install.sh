@@ -164,12 +164,79 @@ install_skills() {
   done < <(find "$src_dir" -mindepth 1 -maxdepth 1 -type d -print0 | sort -z)
 }
 
+# Write the install-identity anchor ($CLAUDE_HOME/.plumbline-install.json) so the
+# INSTALLED plumbline CLI knows which Plumbline it is and where its updates come
+# from, INDEPENDENT of whatever directory the user later runs it from. Without
+# this anchor the installed lib falls through to the current working directory's
+# VERSION / git origin (the cwd-dependence bug). Idempotent: a re-install always
+# overwrites it with the CURRENT source values. Plain JSON, no secrets.
+write_install_anchor() {
+  local anchor="$CLAUDE_HOME/.plumbline-install.json"
+
+  # version: read from the SOURCE VERSION (the repo being installed FROM), taking
+  # the first MAJOR.MINOR.PATCH token so release-please comment lines are ignored.
+  local version=""
+  if [ -f "$REPO_DIR/VERSION" ]; then
+    version="$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' "$REPO_DIR/VERSION" | head -n1)"
+  fi
+  [ -n "$version" ] || version="0.0.0"
+
+  # repo_slug: from the SOURCE git origin (owner/repo), fallback to the literal.
+  local origin_url="" repo_slug="DYAI2025/Plumbline"
+  origin_url="$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$origin_url" ]; then
+    # Strip a trailing .git and any trailing slash, then take owner/repo.
+    local stripped="${origin_url%.git}"
+    stripped="${stripped%/}"
+    local owner_repo=""
+    case "$stripped" in
+      *github.com[:/]*)
+        owner_repo="${stripped#*github.com}"
+        owner_repo="${owner_repo#:}"
+        owner_repo="${owner_repo#/}"
+        ;;
+    esac
+    # Accept only a clean owner/repo (exactly one slash, no spaces).
+    case "$owner_repo" in
+      */*/*|"") : ;;            # too many slashes or empty -> keep fallback
+      *" "*) : ;;               # whitespace -> keep fallback
+      */*) repo_slug="$owner_repo" ;;
+    esac
+  fi
+
+  # source_commit: best-effort current HEAD of the source checkout.
+  local source_commit=""
+  source_commit="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+
+  # installed_at: UTC timestamp (best-effort; never fail the install on this).
+  local installed_at=""
+  installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_action "would write install anchor: $anchor (version=$version repo_slug=$repo_slug)"
+    return
+  fi
+  mkdir -p "$CLAUDE_HOME"
+  # Emit the anchor via python3's json.dumps so EVERY field is correctly escaped.
+  # An origin/slug containing a double-quote (or any other JSON metacharacter)
+  # would corrupt a raw printf-interpolated body into invalid JSON; json.dumps
+  # makes the file valid JSON for ANY origin. python3 is a hard dependency of
+  # this repo. Values are passed as argv (never interpolated into the program
+  # text), so this is injection-free regardless of how exotic the origin is.
+  python3 -c 'import json, sys
+keys = ["version", "repo_slug", "source_commit", "installed_at"]
+print(json.dumps(dict(zip(keys, sys.argv[1:])), indent=2))' \
+    "$version" "$repo_slug" "$source_commit" "$installed_at" > "$anchor"
+  echo "wrote install anchor: $anchor"
+}
+
 install_bin_libs() {
   local src_dir="$REPO_DIR/config/claude/lib"
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' lib; do
     transfer "$lib" "$CLAUDE_HOME/lib/$(basename "$lib")"
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.py' -print0 | sort -z)
+  write_install_anchor
 }
 
 install_bin() {

@@ -42,7 +42,7 @@ the real installer against the operator's real `~/.claude`.
 | ID | Goal | Status |
 |---|---|---|
 | GOAL-PUR-01 | Installed identity is fixed at install (version+slug+source_commit+installed_at). | EXPLICIT |
-| GOAL-PUR-02 | `version`/`update --check` are cwd-independent for the installed copy. | EXPLICIT |
+| GOAL-PUR-02 | `version`/`update --check` are cwd-independent for the installed copy in BOTH modes (anchor for copy installs; the symlinked checkout's current VERSION/origin for symlink installs). | EXPLICIT |
 | GOAL-PUR-03 | Release fetch is token-aware, rate-limit-resilient, 403-vs-404-distinct. | EXPLICIT |
 | GOAL-PUR-04 | `plumbline update` applies ALL changed content into `$CLAUDE_HOME` via the real installer. | EXPLICIT |
 | GOAL-PUR-05 | Install update-mode refreshes changed targets (no stale skip). | EXPLICIT |
@@ -76,12 +76,30 @@ Acceptance criteria (Given/When/Then):
   is written, **then** `version` equals the source `VERSION` and `repo_slug` equals the origin
   slug; **and given** no readable origin, **then** `repo_slug` falls back to `DYAI2025/Plumbline`.
 
-### REQ-PUR-02 — cwd-independent installed identity (anchor-preferred)
+### REQ-PUR-02 — cwd-independent installed identity (two-mode, honestly sourced)
+
+> **Refinement (C1, user/Ben, 2026-06-21):** installed identity is **cwd-INDEPENDENT in BOTH
+> install modes**, but sourced honestly per mode rather than from a single "anchor authoritative
+> regardless of mode/cwd" rule (which would report a stale install-time version for a symlink
+> install after a `git pull`). This refines the earlier "anchor-preferred / anchor-authoritative"
+> wording; the True-Line invariant "correct INSTALLED identity from any cwd" is unchanged — it now
+> explicitly covers both modes via their honest source. User's own refinement; status stays
+> `user-confirmed`.
 
 `EXPLICIT`: `plumbline_update.py` adds `resolve_install_identity()` that, when running as the
-installed copy (`__file__` under `$CLAUDE_HOME` / no source `install.sh` above it), reads the
-anchor and is PREFERRED by `read_version` and `default_repo_slug`; cwd fall-through only when an
-explicit `--root` is given (dev use). Files: `plumbline_update.py`
+installed copy (`__file__` under `$CLAUDE_HOME` / no source `install.sh` above it), is
+cwd-INDEPENDENT in BOTH modes, sourcing identity by install mode:
+- **copy installs** (web-bootstrap / Windows / frozen): identity comes from the
+  `.plumbline-install.json` ANCHOR (the install-time `version`+`repo_slug`); natural update path =
+  `plumbline update` (Sprint 3 re-stamps the anchor on apply).
+- **symlink installs** (the dev default): the install IS the live checkout — identity is the
+  (symlinked) checkout's CURRENT `VERSION` + git origin, which is cwd-INDEPENDENT because the
+  symlink is a fixed anchor to the checkout (NOT cwd); natural update path = `git pull` (forcing
+  the install-time anchor here would report a STALE version after a pull — wrong; so
+  symlink-tracks-checkout is intended).
+
+In both modes cwd is never the identity source; cwd/root fall-through applies only when an explicit
+`--root` is given (dev use). Files: `plumbline_update.py`
 (`repo_root`/`read_version`/`default_repo_slug` `:43-58,:137-152` + new fn). Closes G1.
 
 Acceptance criteria (Given/When/Then):
@@ -93,9 +111,18 @@ Acceptance criteria (Given/When/Then):
   `DYAI2025/Plumbline` (the installed slug), never the foreign origin.
 - AC-PUR-02.3 — **Given** an explicit `--root <dev-checkout>`, **when** `version` runs, **then**
   cwd/root fall-through applies (dev use preserved).
-- AC-PUR-02.4 — **Given** an old install with NO anchor, **when** identity resolves, **then** it
-  falls back to the DEFAULT slug + emits a clear "re-run install.sh to write the identity anchor"
-  notice (never a wrong cwd pick).
+- AC-PUR-02.4 — **Given** a COPY install with an old anchor-less or anchor-bearing state but NO
+  resolvable identity (e.g. anchor missing on a copy install), **when** identity resolves, **then**
+  it falls back to the DEFAULT slug + emits a clear "re-run install.sh to write the identity
+  anchor" notice (never a wrong cwd pick).
+- AC-PUR-02.5 — **Given** a SYMLINK install whose checkout has been advanced by `git pull` from vN
+  to vN+1, **when** `plumbline version` runs from a foreign cwd, **then** it prints vN+1 (the
+  checkout's CURRENT `VERSION`, cwd-independent) — NOT a stale install-time vN and NOT the foreign
+  cwd's version. (Proves symlink-mode identity tracks the checkout, not a frozen anchor, while
+  staying cwd-independent.)
+
+Per-mode update path: copy installs update via `plumbline update` (Sprint 3); symlink installs
+update via `git pull` on the checkout the symlink points at.
 
 ### REQ-PUR-03 — token-aware, resilient release fetch
 
@@ -221,7 +248,7 @@ Acceptance criteria (Given/When/Then):
 
 | Phase | Sprint | REQs | Verifiable sprint goal | Files |
 |---|---|---|---|---|
-| P1 | Sprint 1 — Fixed install identity | REQ-PUR-01, REQ-PUR-02 | Installed `version`/`--check` correct from ANY cwd incl. a foreign repo; closes G1 + wrong-slug 404. | `install.sh`, `plumbline_update.py`, `test_update_layer.sh` |
+| P1 | Sprint 1 — Fixed install identity | REQ-PUR-01, REQ-PUR-02 | Installed `version`/`--check` correct from ANY cwd incl. a foreign repo, in BOTH install modes (anchor for copy; symlinked checkout for symlink — both cwd-independent); closes G1 + wrong-slug 404. | `install.sh`, `plumbline_update.py`, `test_update_layer.sh` |
 | P2 | Sprint 2 — Authenticated, resilient fetch | REQ-PUR-03 | `--check` token-aware, unauth-fallback, 403-vs-404 distinct; closes G2. | `plumbline_update.py`, `test_update_layer.sh` |
 | P3 | Sprint 3 — The natural update that actually installs | REQ-PUR-04, REQ-PUR-05, REQ-PUR-06 | `update` delivers ALL changed content into a sandbox `$CLAUDE_HOME`, anchor updated, verify-or-revert; closes G3. **HIGH-risk** (touches every install). | `install.sh`, `plumbline_update.py`, `test_update_layer.sh` |
 | P4 | Sprint 4 — Cover masked gaps + on-by-default/opt-out auto-check | REQ-PUR-07, REQ-PUR-08 | Reverting any Sprint-1/2/3 fix reddens a falsifier; on-by-default (env opt-out) notify-only session-start check notifies when behind, never blocks; closes G4. | `test_update_layer.sh`, `run_all.sh`, `session-start.sh` |
@@ -245,7 +272,7 @@ Full matrix in `docs/traceability.md` (slice block: plumbline-update-reliability
 | REQ | AC | Test | Evidence class |
 |---|---|---|---|
 | REQ-PUR-01 | AC-PUR-01.1/.2 | test_update_layer.sh | integration-fake |
-| REQ-PUR-02 | AC-PUR-02.1..4 | test_update_layer.sh | integration-fake |
+| REQ-PUR-02 | AC-PUR-02.1..5 | test_update_layer.sh | integration-fake |
 | REQ-PUR-03 | AC-PUR-03.1..4 | test_update_layer.sh | integration-fake (+ gated real-boundary-smoke for live `--check`) |
 | REQ-PUR-04 | AC-PUR-04.1..4 | test_update_layer.sh | integration-fake (+ real-boundary-smoke: sandbox-HOME apply) |
 | REQ-PUR-05 | AC-PUR-05.1..3 | test_update_layer.sh | integration-fake |

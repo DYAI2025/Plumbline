@@ -285,4 +285,301 @@ rm -rf "$INSTALL_HOME"
 assert_eq "install subcommand exits 0" "0" "$install_sub_status"
 assert "install subcommand shows dry-run marker" "grep -q 'dry-run' '$TMP_ROOT/install-sub.log'"
 
+# --- SPRINT 1 (PUR-1.1): fixed install identity, cwd-INDEPENDENT --------------
+# REQ-PUR-01 (install-identity anchor) + REQ-PUR-02 (cwd-independent version/check).
+# These drive the INSTALLED copy of the CLI (NOT --source / NOT --root), so they
+# exercise the real "what does plumbline report when run from anywhere" path that
+# every user relies on. RED-for-the-right-reason TODAY:
+#   * no anchor file is written by install.sh, so the installed lib falls through to
+#     repo_root()'s Path.cwd() -> it reads the CWD's VERSION/origin, not the
+#     installed Plumbline's. From /tmp that errors ("VERSION not found"); from a
+#     foreign repo it prints 9.9.9 and queries the foreign origin slug.
+# SANDBOX-ONLY (NFR-PUR-01): every path below is under mktemp dirs; the real
+# ~/.claude is NEVER touched. Offline (0 network): the slug assertion uses a local
+# recording http stub via the PLUMBLINE_GITHUB_API seam. bash-3.2-safe (no
+# $()-wrapped heredocs), ASCII-only, eval-free.
+
+# The installed Plumbline version is the source VERSION captured at install time.
+INSTALLED_VERSION="$REPO_VERSION"
+
+# Sandbox CLAUDE_HOME + a fresh --copy install (copy mode so the installed lib runs
+# from $CLAUDE_HOME/lib and resolves identity as the installed copy, not the repo).
+PUR_HOME="$TMP_ROOT/pur-claude-home"
+CLAUDE_HOME="$PUR_HOME" "$REPO_DIR/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/pur-install.log" 2>&1
+PUR_CLI="$PUR_HOME/bin/plumbline"
+assert_file "PUR install: installed plumbline wrapper exists in sandbox" "$PUR_CLI"
+
+# Safety belt: prove this test never wrote to the operator's real ~/.claude.
+assert "PUR safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$PUR_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+
+# A foreign repo with its OWN VERSION=9.9.9 and its OWN git origin. The installed
+# CLI must ignore ALL of it (identity is the install's, not the cwd's).
+FAKEREPO="$TMP_ROOT/fakerepo"
+mkdir -p "$FAKEREPO"
+printf '9.9.9\n' > "$FAKEREPO/VERSION"
+git -C "$FAKEREPO" init -q
+git -C "$FAKEREPO" remote add origin "https://github.com/EVILFORK/NotPlumbline.git"
+
+# AC-PUR-01.1/.2 -- the install-identity anchor is written, carrying version + slug
+# (+ source_commit + installed_at). RED now: install.sh writes no anchor.
+PUR_ANCHOR="$PUR_HOME/.plumbline-install.json"
+assert_file "PUR-1.1 AC-PUR-01.1: install writes .plumbline-install.json anchor" "$PUR_ANCHOR"
+assert "PUR-1.1 AC-PUR-01.2: anchor carries version" "test -f '$PUR_ANCHOR' && grep -q '\"version\"' '$PUR_ANCHOR'"
+assert "PUR-1.1 AC-PUR-01.2: anchor carries repo_slug" "test -f '$PUR_ANCHOR' && grep -q '\"repo_slug\"' '$PUR_ANCHOR'"
+assert "PUR-1.1 AC-PUR-01.1: anchor carries source_commit" "test -f '$PUR_ANCHOR' && grep -q '\"source_commit\"' '$PUR_ANCHOR'"
+assert "PUR-1.1 AC-PUR-01.1: anchor carries installed_at" "test -f '$PUR_ANCHOR' && grep -q '\"installed_at\"' '$PUR_ANCHOR'"
+
+# AC-PUR-02.1 -- installed `version` from a NEUTRAL cwd (/tmp), no --root, must
+# print the installed version and never error. RED now: errors "VERSION not found".
+pur_ver_neutral="$(cd /tmp && "$PUR_CLI" version 2>&1)"
+assert_eq "PUR-1.1 AC-PUR-02.1: installed version from /tmp is the installed version" "$INSTALLED_VERSION" "$pur_ver_neutral"
+
+# AC-PUR-02.2 -- installed `version` from a FOREIGN repo (own VERSION=9.9.9), no
+# --root, must print the installed version, NEVER 9.9.9. RED now: prints 9.9.9.
+pur_ver_foreign="$(cd "$FAKEREPO" && "$PUR_CLI" version 2>&1)"
+assert_eq "PUR-1.1 AC-PUR-02.2: installed version from foreign repo is the installed version" "$INSTALLED_VERSION" "$pur_ver_foreign"
+assert "PUR-1.1 AC-PUR-02.2: installed version from foreign repo is NEVER the foreign 9.9.9" "test '$pur_ver_foreign' != '9.9.9'"
+
+# AC-PUR-02.2 -- installed `update --check` from the FOREIGN repo must query the
+# INSTALLED slug (DYAI2025/Plumbline), NOT the foreign origin. Offline: a local
+# recording http stub records the requested /repos/<owner>/<repo>/... path; we
+# assert which slug was queried. RED now: queries EVILFORK/NotPlumbline (foreign).
+PUR_STUB_DIR="$TMP_ROOT/pur-slug-stub"
+mkdir -p "$PUR_STUB_DIR"
+PUR_REC="$PUR_STUB_DIR/requested-path.txt"
+PUR_PORT_FILE="$PUR_STUB_DIR/port.txt"
+PUR_STUB_PY="$PUR_STUB_DIR/stub.py"
+# Write the stub as a standalone file (NOT a $()-wrapped heredoc -- bash 3.2 / macOS
+# CI mis-parses those; the shell-portability guard flags them). It records every
+# requested path and returns a valid release JSON so --check completes offline.
+cat > "$PUR_STUB_PY" <<'PYEOF'
+import sys, json, http.server
+recfile, portfile = sys.argv[1], sys.argv[2]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        with open(recfile, "a") as f:
+            f.write(self.path + "\n")
+        body = json.dumps({"tag_name": "v0.0.1", "draft": False, "prerelease": False}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a):
+        pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+with open(portfile, "w") as f:
+    f.write(str(srv.server_address[1]))
+srv.serve_forever()
+PYEOF
+python3 "$PUR_STUB_PY" "$PUR_REC" "$PUR_PORT_FILE" >"$PUR_STUB_DIR/stub.log" 2>&1 &
+PUR_STUB_PID=$!
+# Poll for the port file (bash-3.2-safe loop; no sleep-via-$()).
+pur_wait=0
+while [ ! -s "$PUR_PORT_FILE" ] && [ "$pur_wait" -lt 50 ]; do
+  sleep 0.1
+  pur_wait=$((pur_wait + 1))
+done
+PUR_PORT="$(cat "$PUR_PORT_FILE" 2>/dev/null || true)"
+if [ -n "$PUR_PORT" ]; then
+  ( cd "$FAKEREPO" && PLUMBLINE_GITHUB_API="http://127.0.0.1:$PUR_PORT" "$PUR_CLI" update --check >"$TMP_ROOT/pur-check.log" 2>&1 ) || true
+fi
+kill "$PUR_STUB_PID" 2>/dev/null || true
+wait "$PUR_STUB_PID" 2>/dev/null || true
+assert "PUR-1.1 AC-PUR-02.2: --check from foreign repo queries installed slug DYAI2025/Plumbline" "test -f '$PUR_REC' && grep -q '/repos/DYAI2025/Plumbline/' '$PUR_REC'"
+assert "PUR-1.1 AC-PUR-02.2: --check from foreign repo does NOT query the foreign slug" "! { test -f '$PUR_REC' && grep -q '/repos/EVILFORK/NotPlumbline/' '$PUR_REC'; }"
+
+# --- SPRINT 1 review findings: C2 (symlink cwd-independence), I1 (malformed-
+# --- version anchor must fail loud), I2 (exotic origin must stay valid JSON) ---
+# Three additions for the Sprint-1 code-review findings. The user confirmed a
+# TWO-MODE identity model:
+#   * COPY installs read the install-identity anchor ($CLAUDE_HOME/.plumbline-install.json).
+#   * SYMLINK installs (the default) track the symlinked CHECKOUT: the symlink fixes
+#     the lib's path to the source tree, so identity resolves from the checkout's
+#     VERSION/origin -- cwd-INDEPENDENT, regardless of where the user runs it from.
+# SANDBOX-ONLY: every path below lives under $TMP_ROOT (mktemp); the real ~/.claude
+# is NEVER touched. Offline (0 network). bash-3.2-safe (no $()-wrapped heredocs),
+# ASCII-only, eval-free (JSON validity is checked by handing the file PATH to
+# python3 as argv[1], never by interpolating payload into shell/python code).
+
+# ====================================================================
+# C2 -- SYMLINK-mode cwd-independence (CONFIRMING test; PASSES with current code).
+# The copy-pinned PUR-1.1 block above only exercised --copy mode; this closes the
+# coverage gap for the DEFAULT (symlink) install. Install in symlink mode, then run
+# the INSTALLED `version` with NO --root from a NEUTRAL cwd (/tmp) and from a FOREIGN
+# repo (own VERSION=9.9.9) -> MUST return the CHECKOUT's version (cwd-independent),
+# never the cwd's VERSION, never an error.
+# ====================================================================
+C2_HOME="$TMP_ROOT/c2-symlink-home"
+CLAUDE_HOME="$C2_HOME" "$REPO_DIR/config/claude/install.sh" --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/c2-install.log" 2>&1
+C2_CLI="$C2_HOME/bin/plumbline"
+assert_file "C2 install: symlink-mode plumbline wrapper exists in sandbox" "$C2_CLI"
+# Safety belt: prove this never wrote to the operator's real ~/.claude.
+assert "C2 safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$C2_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+# Confirm it is genuinely the DEFAULT symlink mode (the lib is a symlink, not a copy);
+# if a future install.sh flipped the default to copies, this assertion makes the mode
+# regression LOUD rather than letting C2 silently re-test copy mode.
+assert "C2: default install symlinks the installed library (not a copy)" "test -L '$C2_HOME/lib/plumbline_update.py'"
+
+# A foreign repo with its OWN VERSION=9.9.9 and its OWN git origin -- the installed
+# symlink CLI must ignore ALL of it (identity is the symlinked checkout's, not cwd's).
+C2_FAKEREPO="$TMP_ROOT/c2-fakerepo"
+mkdir -p "$C2_FAKEREPO"
+printf '9.9.9\n' > "$C2_FAKEREPO/VERSION"
+git -C "$C2_FAKEREPO" init -q
+git -C "$C2_FAKEREPO" remote add origin "https://github.com/EVILFORK/NotPlumbline.git"
+
+# C2.a -- installed `version` from a NEUTRAL cwd (/tmp), no --root, MUST be the
+# checkout version and exit cleanly (never "VERSION not found").
+c2_ver_neutral="$(cd /tmp && "$C2_CLI" version 2>&1)"
+assert_eq "C2.a: symlink-mode version from /tmp is the checkout version (cwd-independent)" "$REPO_VERSION" "$c2_ver_neutral"
+
+# C2.b -- installed `version` from a FOREIGN repo (own VERSION=9.9.9), no --root,
+# MUST be the checkout version, NEVER 9.9.9, NEVER an error.
+c2_ver_foreign="$(cd "$C2_FAKEREPO" && "$C2_CLI" version 2>&1)"
+assert_eq "C2.b: symlink-mode version from foreign repo is the checkout version" "$REPO_VERSION" "$c2_ver_foreign"
+assert "C2.b: symlink-mode version from foreign repo is NEVER the foreign 9.9.9" "test '$c2_ver_foreign' != '9.9.9'"
+
+# ====================================================================
+# C2.5 -- AC-PUR-02.5: SYMLINK install tracks the ADVANCED checkout after a git pull
+# (the DISCRIMINATOR the C2 block above lacks). CONFIRMING test; PASSES with current
+# code. The C2 assertions only check `version == $REPO_VERSION`, which at install time
+# equals BOTH the checkout VERSION and any frozen install-time/anchor value -- so a
+# regression to "symlink reads the frozen install-time value" would stay GREEN there
+# ("a test that still passes with the branch deleted does not cover it"). This block
+# closes that gap: install in symlink mode from a THROWAWAY source checkout at version
+# vN (the anchor, if any, captures vN), then ADVANCE that checkout's VERSION to vN+1
+# (simulating a `git pull`/version bump), and assert the installed CLI -- run with NO
+# --root from a foreign cwd -- reports vN+1, explicitly NOT vN (the frozen value) and
+# NOT the cwd's VERSION. This FAILS the instant symlink mode regresses to reading a
+# frozen anchor instead of the live symlinked checkout.
+# SANDBOX-ONLY: the VERSION bump is on a THROWAWAY checkout under $TMP_ROOT (mktemp);
+# the real repo's VERSION and the operator's real ~/.claude are NEVER touched. Offline
+# (0 network). bash-3.2-safe (no $()-wrapped heredocs), ASCII-only, eval-free.
+# ====================================================================
+# vN = the install-time/frozen value; vN+1 = the advanced ("after git pull") value.
+C25_VN="$REPO_VERSION"
+C25_VN1="$(awk -F. -v OFS=. '{print $1, $2+1, 0}' <<<"$REPO_VERSION")"
+
+# A THROWAWAY source checkout (install-capable subset) at vN, with the canonical
+# Plumbline origin. install.sh derives its REPO_DIR from its own location, so a symlink
+# install from here pins the installed lib's symlink to THIS checkout -- whose VERSION we
+# then advance. (Same throwaway-source mechanism the I2 block below relies on.)
+C25_SRC="$TMP_ROOT/c25-src"
+mkdir -p "$C25_SRC/config/claude/lib" "$C25_SRC/config/claude/bin"
+printf '%s\n' "$C25_VN" > "$C25_SRC/VERSION"
+cp "$REPO_DIR/config/claude/install.sh" "$C25_SRC/config/claude/install.sh"
+cp "$REPO_DIR/config/claude/lib/plumbline_update.py" "$C25_SRC/config/claude/lib/plumbline_update.py"
+cp "$REPO_DIR/config/claude/bin/plumbline" "$C25_SRC/config/claude/bin/plumbline" 2>/dev/null || true
+chmod +x "$C25_SRC/config/claude/install.sh" "$C25_SRC/config/claude/bin/plumbline" 2>/dev/null || true
+git -C "$C25_SRC" init -q
+git -C "$C25_SRC" remote add origin "https://github.com/DYAI2025/Plumbline.git"
+
+# Symlink-install (default mode) the throwaway checkout into a sandbox HOME at vN.
+C25_HOME="$TMP_ROOT/c25-symlink-home"
+CLAUDE_HOME="$C25_HOME" "$C25_SRC/config/claude/install.sh" --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/c25-install.log" 2>&1
+C25_CLI="$C25_HOME/bin/plumbline"
+assert_file "C2.5 install: symlink-mode plumbline wrapper exists in sandbox" "$C25_CLI"
+assert "C2.5 safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$C25_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+assert "C2.5 safety: throwaway source is under TMP_ROOT (real repo VERSION untouched)" "case '$C25_SRC' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+# Confirm it really is the DEFAULT symlink mode (lib is a symlink into the throwaway src).
+assert "C2.5: default install symlinks the installed library into the throwaway checkout" "test -L '$C25_HOME/lib/plumbline_update.py'"
+# Sanity: at install time the installed CLI reports vN (anchor/checkout agree here).
+c25_ver_preadvance="$(cd /tmp && "$C25_CLI" version 2>&1)"
+assert_eq "C2.5 precondition: symlink-mode version at install time is vN" "$C25_VN" "$c25_ver_preadvance"
+
+# ADVANCE the throwaway checkout's VERSION to vN+1 -- simulate `git pull`/version bump.
+printf '%s\n' "$C25_VN1" > "$C25_SRC/VERSION"
+
+# THE DISCRIMINATOR: installed `version`, NO --root, from a FOREIGN cwd (own VERSION)
+# must now report vN+1 (the ADVANCED checkout value the live symlink tracks), and
+# explicitly NOT vN (the frozen install-time/anchor value) and NOT the cwd's VERSION.
+C25_FAKEREPO="$TMP_ROOT/c25-fakerepo"
+mkdir -p "$C25_FAKEREPO"
+printf '7.7.7\n' > "$C25_FAKEREPO/VERSION"
+git -C "$C25_FAKEREPO" init -q
+git -C "$C25_FAKEREPO" remote add origin "https://github.com/EVILFORK/NotPlumbline.git"
+c25_ver_advanced="$(cd "$C25_FAKEREPO" && "$C25_CLI" version 2>&1)"
+assert_eq "C2.5 AC-PUR-02.5: symlink-mode version tracks the ADVANCED checkout (vN+1)" "$C25_VN1" "$c25_ver_advanced"
+assert "C2.5 AC-PUR-02.5: symlink-mode version is NOT the frozen install-time value (vN)" "test '$c25_ver_advanced' != '$C25_VN'"
+assert "C2.5 AC-PUR-02.5: symlink-mode version is NOT the foreign cwd's VERSION (7.7.7)" "test '$c25_ver_advanced' != '7.7.7'"
+# And from a NEUTRAL cwd (/tmp) too: still the advanced value, never an error.
+c25_ver_advanced_neutral="$(cd /tmp && "$C25_CLI" version 2>&1)"
+assert_eq "C2.5 AC-PUR-02.5: symlink-mode version from /tmp also tracks the ADVANCED checkout (vN+1)" "$C25_VN1" "$c25_ver_advanced_neutral"
+
+# ====================================================================
+# I1 -- present-but-malformed (no usable version) anchor must FAIL LOUD, not fall
+# through to the cwd's VERSION. RED-FOR-THE-RIGHT-REASON TODAY: read_version()
+# treats a no-`version` anchor as "fall through to root/VERSION", so an installed
+# COPY run from a dir that happens to carry a VERSION silently reports THAT dir's
+# version. Copy-install into a sandbox, corrupt the anchor to a valid-JSON dict
+# WITHOUT a usable version, plant a cwd VERSION=8.8.8, run installed `version` from
+# that cwd (no --root) -> MUST fail loud (non-zero, "re-run install.sh"-style
+# notice), NOT print 8.8.8.
+# ====================================================================
+I1_HOME="$TMP_ROOT/i1-copy-home"
+CLAUDE_HOME="$I1_HOME" "$REPO_DIR/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/i1-install.log" 2>&1
+I1_CLI="$I1_HOME/bin/plumbline"
+assert_file "I1 install: copy-mode plumbline wrapper exists in sandbox" "$I1_CLI"
+assert "I1 safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$I1_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+I1_ANCHOR="$I1_HOME/.plumbline-install.json"
+assert_file "I1 precondition: copy install wrote the identity anchor" "$I1_ANCHOR"
+# Corrupt to a valid-JSON dict WITHOUT a usable `version` field.
+printf '%s\n' '{"repo_slug":"a/b"}' > "$I1_ANCHOR"
+# Plant a cwd whose VERSION the buggy fall-through would wrongly report.
+I1_PLANT="$TMP_ROOT/i1-plant-cwd"
+mkdir -p "$I1_PLANT"
+printf '8.8.8\n' > "$I1_PLANT/VERSION"
+if i1_out="$(cd "$I1_PLANT" && "$I1_CLI" version 2>&1)"; then
+  i1_status=0
+else
+  i1_status=$?
+fi
+# RED now: today the fall-through prints 8.8.8 and exits 0. After the fix the
+# malformed anchor must be a loud failure, never the cwd's version.
+assert_eq "I1: malformed-version anchor fails loud (non-zero exit)" "1" "$i1_status"
+assert "I1: malformed-version anchor NEVER reports the cwd's planted 8.8.8" "test '$i1_out' != '8.8.8'"
+assert_contains "I1: malformed-version anchor advises re-running install.sh" "$i1_out" "install.sh"
+
+# ====================================================================
+# I2 -- a source git origin containing a double-quote must NOT break the anchor
+# JSON. RED-FOR-THE-RIGHT-REASON TODAY: write_install_anchor printf-interpolates
+# repo_slug into the JSON without escaping, so an origin like
+# https://github.com/EVIL"X/repo.git yields  "repo_slug": "EVIL"X/repo"  -> the
+# .plumbline-install.json is INVALID JSON. The fix must keep the file valid JSON
+# (slug escaped, or rejected to the safe charset and replaced by the
+# DYAI2025/Plumbline fallback). All sandboxed: a throwaway SOURCE checkout under
+# $TMP_ROOT supplies install.sh + the lib so install.sh runs, and its git origin
+# carries the exotic double-quote.
+# ====================================================================
+I2_SRC="$TMP_ROOT/i2-src"
+mkdir -p "$I2_SRC/config/claude/lib" "$I2_SRC/config/claude/bin"
+printf '%s\n' "$REPO_VERSION" > "$I2_SRC/VERSION"
+cp "$REPO_DIR/config/claude/install.sh" "$I2_SRC/config/claude/install.sh"
+cp "$REPO_DIR/config/claude/lib/plumbline_update.py" "$I2_SRC/config/claude/lib/plumbline_update.py"
+cp "$REPO_DIR/config/claude/bin/plumbline" "$I2_SRC/config/claude/bin/plumbline" 2>/dev/null || true
+chmod +x "$I2_SRC/config/claude/install.sh" "$I2_SRC/config/claude/bin/plumbline" 2>/dev/null || true
+git -C "$I2_SRC" init -q
+git -C "$I2_SRC" -c user.email=t@t -c user.name=t add -A >/dev/null 2>&1 || true
+git -C "$I2_SRC" -c user.email=t@t -c user.name=t commit -q -m init >/dev/null 2>&1 || true
+# Exotic origin: a literal double-quote in the owner segment.
+git -C "$I2_SRC" remote add origin 'https://github.com/EVIL"X/repo.git'
+I2_HOME="$TMP_ROOT/i2-home"
+CLAUDE_HOME="$I2_HOME" "$I2_SRC/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/i2-install.log" 2>&1
+assert "I2 safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$I2_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+I2_ANCHOR="$I2_HOME/.plumbline-install.json"
+assert_file "I2 precondition: install wrote an anchor from the exotic-origin source" "$I2_ANCHOR"
+# RED now: the unescaped double-quote makes this file invalid JSON. Validate by
+# handing the FILE PATH to python3 as argv[1] (eval-free, no payload interpolation).
+if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$I2_ANCHOR" >/dev/null 2>&1; then
+  i2_json_status=0
+else
+  i2_json_status=$?
+fi
+assert_eq "I2: anchor stays valid parseable JSON despite a double-quote in origin" "0" "$i2_json_status"
+# And the recorded slug must be safe: either the escaped exotic value re-parses to a
+# string, or it was rejected to the DYAI2025/Plumbline fallback. A raw unescaped
+# double-quote inside the repo_slug VALUE is the defect -- forbid it.
+assert "I2: anchor repo_slug is not a raw unescaped double-quote injection" "! grep -q '\"repo_slug\": \"EVIL\"X/repo\"' '$I2_ANCHOR'"
+
 finish "update layer tests"

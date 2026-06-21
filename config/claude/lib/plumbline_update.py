@@ -40,6 +40,17 @@ class PlumblineError(RuntimeError):
     pass
 
 
+# Filename of the install-identity anchor written by install.sh into $CLAUDE_HOME.
+# When the CLI runs as the INSTALLED copy (its lib lives under a Claude home that
+# carries this anchor), the anchor — not the current working directory's checkout
+# — is the authoritative source of "which Plumbline is this and where do its
+# updates come from". This is what makes `plumbline version` / `update --check`
+# cwd-independent (REQ-PUR-02): a user running the installed CLI from /tmp or from
+# an unrelated git repo must get the installed Plumbline's identity, never the
+# cwd's VERSION or git origin.
+INSTALL_ANCHOR_NAME = ".plumbline-install.json"
+
+
 def repo_root(start: Path | None = None) -> Path:
     here = (start or Path(__file__)).resolve()
     for parent in [here, *here.parents]:
@@ -48,7 +59,79 @@ def repo_root(start: Path | None = None) -> Path:
     return Path.cwd().resolve()
 
 
-def read_version(root: Path) -> str:
+def resolve_install_identity() -> dict[str, Any] | None:
+    """Locate and read the install-identity anchor for the INSTALLED copy.
+
+    Walk up from this module's own location looking for `.plumbline-install.json`
+    beside the installed `lib/` (i.e. at the Claude-home root). Returns the parsed
+    anchor mapping when found and well-formed, else None.
+
+    Returns None for the dev checkout (the source tree has no anchor — its lib is
+    symlinked/edited in place and resolves its identity from the source VERSION /
+    git origin via `repo_root`), and None for an installed copy whose anchor is
+    absent (an OLD install made before this anchor existed) — callers fall back to
+    safe defaults and advise re-running install.sh, never to a wrong cwd pick.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        anchor = parent / INSTALL_ANCHOR_NAME
+        if anchor.is_file():
+            try:
+                data = json.loads(anchor.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            if isinstance(data, dict):
+                return data
+            return None
+    return None
+
+
+def _is_installed_copy() -> bool:
+    """True when this module runs from an installed tree (NOT the dev checkout).
+
+    The dev checkout's lib sits under `config/claude/lib` next to `install.sh`;
+    `repo_root` walks up to find that `install.sh`. An installed copy's lib has no
+    such ancestor. We use the absence of a source `install.sh` ancestor as the
+    "installed" signal so the anchor-precedence rules below apply only off-tree.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "config" / "claude" / "install.sh").is_file():
+            return False
+    return True
+
+
+def read_version(root: Path, explicit_root: bool = True) -> str:
+    # Installed-copy precedence (REQ-PUR-02): with NO explicit --root, prefer the
+    # install-identity anchor's captured version over the cwd's VERSION. With an
+    # explicit --root (dev/test use), keep today's behavior and read root/VERSION.
+    if not explicit_root:
+        anchor = resolve_install_identity()
+        if anchor is not None:
+            version = anchor.get("version")
+            if isinstance(version, str) and SEMVER_RE.search(version):
+                return SEMVER_RE.search(version).group(0)  # type: ignore[union-attr]
+            # Anchor present but its version is missing/unusable. On the INSTALLED
+            # copy this must FAIL LOUD exactly like the no-anchor case: silently
+            # reading the cwd's VERSION here is the cwd-dependence bug (the
+            # installed CLI would report whatever VERSION the current directory
+            # happens to carry). Only the dev/--root path may read root/VERSION.
+            if _is_installed_copy():
+                raise PlumblineError(
+                    "install-identity anchor has no usable version for the "
+                    "installed plumbline "
+                    "(re-run install.sh to write the identity anchor)"
+                )
+            # Not an installed copy (dev checkout with a stray anchor): fall
+            # through to root/VERSION as before.
+        elif _is_installed_copy():
+            # Installed, but no anchor (old install): never silently read the
+            # cwd's VERSION as if it were ours — that is the exact cwd-dependence
+            # bug. Fail with a clear, actionable message.
+            raise PlumblineError(
+                "no install-identity anchor found for the installed plumbline "
+                "(re-run install.sh to write the identity anchor)"
+            )
     path = root / "VERSION"
     if not path.is_file():
         raise PlumblineError(f"VERSION not found at {path}")
@@ -134,8 +217,36 @@ def release_item_version(item: Any, label: str) -> tuple[str, str]:
     return version, label
 
 
-def default_repo_slug(root: Path) -> str:
-    """Derive owner/repo from the git origin remote, with env + literal fallback."""
+def default_repo_slug(root: Path, explicit_root: bool = True) -> str:
+    """Derive owner/repo for update fetches.
+
+    Installed-copy precedence (REQ-PUR-02): with NO explicit --root, prefer the
+    install-identity anchor's `repo_slug` so an installed CLI run from a FOREIGN
+    git repo queries the installed Plumbline's upstream (DYAI2025/Plumbline by
+    default), never the foreign repo's origin. With an explicit --root, or when
+    no anchor applies, fall back to the git-origin / $PLUMBLINE_REPO / literal
+    chain below (dev checkout + back-compat).
+    """
+    if not explicit_root:
+        anchor = resolve_install_identity()
+        if anchor is not None:
+            slug = anchor.get("repo_slug")
+            if isinstance(slug, str) and "/" in slug:
+                return slug
+            # Anchor present but its slug is missing/unusable. On the INSTALLED
+            # copy, never trust the foreign cwd's git origin as our upstream:
+            # return the literal default (PLUMBLINE_REPO override honoured) so an
+            # installed CLI run from a foreign repo still targets the installed
+            # Plumbline's upstream. Only the dev path may consult git origin.
+            if _is_installed_copy():
+                return os.environ.get("PLUMBLINE_REPO", DEFAULT_REPO_SLUG)
+            # Not an installed copy (dev checkout with a stray anchor): fall
+            # through to the git-origin / env / literal chain below.
+        elif _is_installed_copy():
+            # Installed, no anchor (old install): never trust the foreign cwd's
+            # origin as our upstream. Use the literal default and (caller-side)
+            # advise re-running install.sh.
+            return os.environ.get("PLUMBLINE_REPO", DEFAULT_REPO_SLUG)
     try:
         proc = subprocess.run(
             ["git", "-C", str(root), "remote", "get-url", "origin"],
@@ -316,7 +427,8 @@ def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, 
 
 
 def update_check(args: argparse.Namespace, root: Path) -> int:
-    local = read_version(root)
+    explicit_root = bool(getattr(args, "root", None))
+    local = read_version(root, explicit_root=explicit_root)
     if args.source:
         source = Path(args.source)
         if source.is_file() and (source.name.endswith(".tar.gz") or source.name.endswith(".tgz")):
@@ -330,7 +442,7 @@ def update_check(args: argparse.Namespace, root: Path) -> int:
         else:
             latest, source_label = latest_from_source(source.resolve())
     else:
-        slug = getattr(args, "repo", None) or default_repo_slug(root)
+        slug = getattr(args, "repo", None) or default_repo_slug(root, explicit_root=explicit_root)
         release = fetch_latest_release(slug)
         latest, _ = release_item_version(release, f"github:{slug}")
         source_label = f"github:{slug}"
@@ -558,10 +670,11 @@ def main(argv: list[str] | None = None) -> int:
     args, extra = parser.parse_known_args(argv)
     if extra and args.command != "install":
         parser.error(f"unrecognized arguments: {' '.join(extra)}")
+    explicit_root = bool(args.root)
     root = Path(args.root).resolve() if args.root else repo_root()
     try:
         if args.command == "version":
-            print(read_version(root)); return 0
+            print(read_version(root, explicit_root=explicit_root)); return 0
         if args.command == "doctor":
             return doctor(args, root)
         if args.command == "honest-status":

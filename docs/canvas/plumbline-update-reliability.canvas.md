@@ -89,7 +89,10 @@ Answer:
 `EXPLICIT`: One natural `plumbline update`, run from anywhere, reliably installs ALL new content
 into every user's `~/.claude` — fast, precise, and verified-or-reverted. Concretely:
 
-- `EXPLICIT` correct installed version + slug from ANY cwd (anchor-preferred identity);
+- `EXPLICIT` correct installed version + slug from ANY cwd, in BOTH install modes, each honestly
+  sourced (copy installs: the `.plumbline-install.json` anchor; symlink installs: the symlinked
+  checkout's current VERSION + git origin) — cwd-independent in both cases (C1 refinement, user/Ben
+  2026-06-21);
 - `EXPLICIT` token-aware, rate-limit-resilient release check that classifies 403 vs 404;
 - `EXPLICIT` an apply that refreshes stale content and adds new content into `$CLAUDE_HOME`
   through the REAL installer, with a snapshot/verify/revert safety floor;
@@ -250,3 +253,13 @@ and may serve as the basis for AgileTeam planning (no agent self-confirmation). 
 were RESOLVED (user, 2026-06-21): OQ-PUR-01 → content-compare + overwrite in BOTH modes; OQ-PUR-02
 → auto-check on-by-default / opt-out. Intake remains authored only (docs, no production code; not
 yet committed).
+
+Refinement C1 (user/Ben, 2026-06-21): the user clarified that installed identity is
+cwd-INDEPENDENT in BOTH install modes, sourced honestly per mode — copy installs from the
+`.plumbline-install.json` anchor (natural update path = `plumbline update`); symlink installs from
+the symlinked checkout's CURRENT VERSION + git origin (natural update path = `git pull`; forcing
+the install-time anchor here would report a stale version after a pull). This refines the earlier
+"anchor-preferred / anchor-authoritative" wording in REQ-PUR-02 and the value proposition. It is
+the user's OWN refinement of an already-`user-confirmed` intake, not a re-open: status stays
+`user-confirmed`; the True-Line invariant "correct INSTALLED identity from any cwd" is unchanged
+and now explicitly covers both modes via their honest source.

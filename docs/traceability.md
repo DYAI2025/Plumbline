@@ -218,13 +218,13 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 - canvas-link: docs/canvas/plumbline-update-reliability.canvas.md (Status: user-confirmed 2026-06-21)
 - prd-link: docs/prd/plumbline-update-reliability.prd.md (Status: user-confirmed 2026-06-21)
 - vision-link: docs/vision/plumbline-update-reliability.vision.md (Status: user-confirmed 2026-06-21)
-- reality-ledger: docs/reality/plumbline-update-reliability.evidence.jsonl (to be authored Phase 3)
+- reality-ledger: docs/reality/plumbline-update-reliability.evidence.jsonl (authored 2026-06-21; Sprint 1 records integration-fake)
 - plan: docs/plans/2026-06-21-plumbline-update-reliability.md
 
 | Trace ID | Requirement (AC) | Evidence (test) | wired-in-prod? | evidence-class | True-Line |
 |---|---|---|---|---|---|
 | TRC-PUR-01 | REQ-PUR-01 install-identity anchor written at install (AC-PUR-01.1/.2) | test_update_layer.sh | yes — install.sh install_bin* writes $CLAUDE_HOME/.plumbline-install.json | integration-fake | aligned |
-| TRC-PUR-02 | REQ-PUR-02 cwd-independent installed identity, anchor-preferred; foreign-repo + old-install fallback (AC-PUR-02.1..4); closes G1 | test_update_layer.sh (installed plumbline from /tmp + /tmp/fakerepo, no --root) | yes — plumbline_update.py resolve_install_identity preferred by read_version/default_repo_slug | integration-fake | aligned |
+| TRC-PUR-02 | REQ-PUR-02 cwd-independent installed identity in BOTH modes, honestly sourced (anchor for copy installs; symlinked checkout's current VERSION/origin for symlink installs); foreign-repo + copy-install fallback + symlink-tracks-checkout-after-pull (AC-PUR-02.1..5); closes G1 (C1 refinement, user/Ben 2026-06-21) | test_update_layer.sh (installed plumbline from /tmp + /tmp/fakerepo, no --root; symlink-mode post-pull version) | yes — plumbline_update.py resolve_install_identity is cwd-independent per mode (copy: anchor; symlink: checkout VERSION+origin) via read_version/default_repo_slug | integration-fake | aligned |
 | TRC-PUR-03 | REQ-PUR-03 token-aware fetch; unauth-fallback; 403-vs-404 distinct; token never printed (AC-PUR-03.1..4); closes G2 | test_update_layer.sh (offline via PLUMBLINE_GITHUB_API seam) | yes — fetch_latest_release sets Authorization header in prod path | integration-fake (+ gated real-boundary-smoke: live --check) | aligned |
 | TRC-PUR-04 | REQ-PUR-04 update applies into $CLAUDE_HOME via REAL install.sh --update, not --dry-run; real ~/.claude never written (AC-PUR-04.1..4); closes G3 apply | test_update_layer.sh (sandbox $CLAUDE_HOME) | yes — update_apply (no --target) runs real installer into $CLAUDE_HOME | integration-fake (+ real-boundary-smoke: sandbox-HOME apply) | aligned |
 | TRC-PUR-05 | REQ-PUR-05 install update-mode content-compares + overwrites changed targets in BOTH modes + adds new + rewrites anchor; no stale skip (AC-PUR-05.1..3); closes G3 refresh | test_update_layer.sh (stale agent+command+lib) | yes — install.sh --update / transfer() content-compares + overwrites changed target (both symlink and --copy) | integration-fake | aligned |

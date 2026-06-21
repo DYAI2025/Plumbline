@@ -69,8 +69,13 @@ The promise that must not be broken, in five invariants the plumbline-watcher ch
 
 1. **One command delivers ALL changed content.** No silent partial update, no stale skip. If a
    file changed upstream and the user runs `plumbline update`, it lands in their install.
-2. **Correct INSTALLED identity from any cwd.** Version and slug come from the install anchor,
-   never from whatever directory the user happens to stand in.
+2. **Correct INSTALLED identity from any cwd (both install modes, honestly sourced).** Version and
+   slug are cwd-INDEPENDENT in BOTH install modes, never from whatever directory the user happens
+   to stand in — sourced per mode: copy installs from the `.plumbline-install.json` anchor; symlink
+   installs from the symlinked checkout's current VERSION + git origin (cwd-independent because the
+   symlink is a fixed anchor to the checkout, not cwd). (C1 refinement, user/Ben 2026-06-21: not
+   "anchor regardless of mode" — forcing the install-time anchor on a symlink install would report
+   a stale version after a `git pull`; symlink-tracks-checkout is intended.)
 3. **Verify-or-revert.** A failed update NEVER leaves a broken install. The apply snapshots
    `$CLAUDE_HOME`, verifies, and restores the prior state on failure.
 4. **SANDBOX-`$CLAUDE_HOME` only in tests.** Every real test/smoke uses
@@ -174,3 +179,11 @@ as the basis for AgileTeam planning:
 ```text
 Ich bestätige, dass Product Canvas und Product Vision meine Absicht korrekt wiedergeben und als Grundlage für AgileTeam Planning verwendet werden dürfen.
 ```
+
+Refinement C1 (user/Ben, 2026-06-21): installed identity is cwd-INDEPENDENT in BOTH install modes,
+sourced honestly per mode — copy installs from the `.plumbline-install.json` anchor (update path =
+`plumbline update`), symlink installs from the symlinked checkout's current VERSION + git origin
+(update path = `git pull`). This refines Core-Value-Promise invariant 2 from "anchor regardless of
+mode" to "honest per-mode source"; the True-Line invariant "correct INSTALLED identity from any
+cwd" is unchanged. The user's own refinement of an already-`user-confirmed` Vision — status stays
+`user-confirmed`, no contradiction recorded.
