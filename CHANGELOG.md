@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.0](https://github.com/DYAI2025/Plumbline/compare/v0.20.0...v0.21.0) (2026-06-21)
+
+
+### Features
+
+* **commands:** /openrouter-live-smoke + /persist-learning (reflect-skills output) ([bda6087](https://github.com/DYAI2025/Plumbline/commit/bda6087b8c61035ab01a62f63f514cb0fb1f3c38))
+* **commands:** add /openrouter-live-smoke + /persist-learning (reflect-skills output) ([32c3187](https://github.com/DYAI2025/Plumbline/commit/32c318785a156994ff2761030a432b6c855870b0))
+
 ## [0.20.0](https://github.com/DYAI2025/Plumbline/compare/v0.19.0...v0.20.0) (2026-06-20)
 
 
