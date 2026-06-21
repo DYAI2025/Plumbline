@@ -154,6 +154,9 @@ bash config/claude/tests/test_release_please.sh || fail=1
 stage "update layer tests"
 bash config/claude/tests/test_update_layer.sh || fail=1
 
+stage "session-start update-check tests (REQ-PUR-08 on-by-default/opt-out/throttle/notify-only)"
+bash config/claude/tests/test_session_update_check.sh || fail=1
+
 stage "gate contract tests (G1/G3/G4)"
 bash config/claude/tests/test_gate_contracts.sh || fail=1
 

@@ -214,7 +214,7 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 
 ## Slice: Plumbline Update Reliability (plumbline-update-reliability)
 
-- Feature-Slug: plumbline-update-reliability (iterative 4-sprint build; Sprint 1 [install identity] + Sprint 2 [token-aware resilient fetch] + Sprint 3 [install-refresh apply + verify-or-revert] built, gated A-E green, committed; Sprint 4 [falsifier-wiring + opt-out auto-check] next)
+- Feature-Slug: plumbline-update-reliability (iterative 4-sprint build COMPLETE; Sprint 1 [install identity] + Sprint 2 [token-aware resilient fetch] + Sprint 3 [install-refresh apply + verify-or-revert] + Sprint 4 [falsifier-wiring + opt-out auto-check] all built, gated A-E green, committed; pending the final human acceptance gate)
 - canvas-link: docs/canvas/plumbline-update-reliability.canvas.md (Status: user-confirmed 2026-06-21)
 - prd-link: docs/prd/plumbline-update-reliability.prd.md (Status: user-confirmed 2026-06-21)
 - vision-link: docs/vision/plumbline-update-reliability.vision.md (Status: user-confirmed 2026-06-21)
@@ -247,8 +247,9 @@ installs, REFUSES a symlink install -> `git pull`, never copy-converting it; CR-
 2026-06-21, consistent with REQ-PUR-02/C1); OQ-PUR-02 → auto-check on-by-default / opt-out
 (notify-only; APPLY stays explicit, NFR-PUR-06 unchanged).
 **Status:** Canvas/PRD/Vision all `user-confirmed` (Ben, 2026-06-21, exact phrase; OQs resolved);
-True-Line `aligned`. Build in progress (autonomous, one final acceptance): Sprint 1 (REQ-PUR-01/02)
-+ Sprint 2 (REQ-PUR-03) + Sprint 3 (REQ-PUR-04/05/06 install-refresh apply + verify-or-revert,
-real-boundary-smoke vs a sandbox HOME) built, Gates A-E green, committed; Sprint 4 (REQ-PUR-07/08
-falsifier-wiring + opt-out auto-check) pending. TRC-PUR-07/08 evidence rows are the planned contract
-(their tests land in Sprint 4).
+True-Line `aligned`. Build COMPLETE (autonomous run, one final acceptance gate): all four sprints
+built, Gates A-E green, committed — Sprint 1 (REQ-PUR-01/02 install identity) + Sprint 2 (REQ-PUR-03
+token-aware resilient + exfil-safe fetch) + Sprint 3 (REQ-PUR-04/05/06 install-refresh apply +
+verify-or-revert, real-boundary-smoke vs a sandbox HOME) + Sprint 4 (REQ-PUR-07/08 CI-wired
+behaviour falsifiers + opt-out notify-only auto-check). All TRC-PUR-01..08 rows filled + aligned;
+reality ledger carries every REQ at its honest class. Pending the final human acceptance gate.
