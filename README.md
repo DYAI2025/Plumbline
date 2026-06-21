@@ -237,7 +237,9 @@ A claim must not be raised above the evidence it actually has. That rule is the 
 | `config/claude/tests/` | Shell/Python regression checks for commands, gates, update layer, council paths, GUI, and docs honesty. |
 | `config/claude/skills/` | 16 vendored skills for portable workflows. |
 | `docs/benchmarks/` | Captured benchmark and live-smoke write-ups with evidence ceilings. |
+| `docs/canvas/` | Product Canvas artifacts created by the mandatory Product Canvas gate. |
 | `docs/reality/` | Reality-ledger evidence JSONL files. |
+| `docs/templates/` | Product Canvas, traceability, contradiction, and governance templates used by the workflow. |
 | `metrics/` | Corpus, runs, measurement tools, and experiment artifacts. |
 | `explorer/` | Source for the visual Agent Explorer. |
 

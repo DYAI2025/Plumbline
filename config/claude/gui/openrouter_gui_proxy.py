@@ -483,6 +483,20 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             length = int(self.headers.get("Content-Length") or 0)
             if length < 0 or length > MAX_BODY_BYTES:
+                # Drain the declared oversized body before returning the generic 500.
+                #
+                # Root cause guarded here: if we reject solely from Content-Length and
+                # send the response while the client is still uploading, some stdlib
+                # clients observe a transport-level BrokenPipe/ConnectionReset instead
+                # of the intended generic 500. Draining keeps the HTTP exchange orderly
+                # for bodies just over the ceiling while still refusing the request and
+                # never logging/echoing the body.
+                remaining = max(length, 0)
+                while remaining > 0:
+                    chunk = self.rfile.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
                 raise ValueError("request body length out of bounds")
             raw = self.rfile.read(length).decode("utf-8", "replace")
             parsed = parse_request_body(raw)
