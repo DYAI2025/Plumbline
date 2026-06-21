@@ -524,7 +524,9 @@ def safe_extract_tarball(tar_path: Path, into: Path) -> Path:
     return into
 
 
-def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, Path | None]:
+def resolve_payload_source(
+    args: argparse.Namespace, root: Path, explicit_root: bool = True
+) -> tuple[Path, Path | None]:
     """Return (payload_dir, tempdir_to_cleanup). tempdir is None for plain dirs."""
     if args.source:
         source = Path(args.source)
@@ -539,7 +541,7 @@ def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, 
                 raise
         raise PlumblineError(f"unsupported --source payload: {source}")
     # No --source: fetch the latest published release tarball over the network.
-    slug = getattr(args, "repo", None) or default_repo_slug(root)
+    slug = getattr(args, "repo", None) or default_repo_slug(root, explicit_root=explicit_root)
     release = fetch_latest_release(slug)
     url = release.get("tarball_url")
     if not url:
@@ -789,7 +791,8 @@ def update_apply(args: argparse.Namespace, root: Path) -> int:
             "`plumbline update` would copy-convert and freeze it, so it is refused; "
             "run `git pull` there instead)"
         )
-    source, tmp = resolve_payload_source(args, root)
+    explicit_root = bool(getattr(args, "root", None))
+    source, tmp = resolve_payload_source(args, root, explicit_root=explicit_root)
     try:
         if home_target is not None:
             return _apply_into_home(args, home_target, source)

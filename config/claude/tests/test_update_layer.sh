@@ -389,6 +389,57 @@ wait "$PUR_STUB_PID" 2>/dev/null || true
 assert "PUR-1.1 AC-PUR-02.2: --check from foreign repo queries installed slug DYAI2025/Plumbline" "test -f '$PUR_REC' && grep -q '/repos/DYAI2025/Plumbline/' '$PUR_REC'"
 assert "PUR-1.1 AC-PUR-02.2: --check from foreign repo does NOT query the foreign slug" "! { test -f '$PUR_REC' && grep -q '/repos/EVILFORK/NotPlumbline/' '$PUR_REC'; }"
 
+
+# Review #83 P1 -- installed COPY-mode natural `plumbline update` from the
+# FOREIGN repo must use the same anchor-aware slug resolution as `update --check`.
+# This intentionally lets the later apply fail (the stub release has no real
+# tarball); the regression being killed is the FIRST network request slug.
+PUR_APPLY_STUB_DIR="$TMP_ROOT/pur-apply-slug-stub"
+mkdir -p "$PUR_APPLY_STUB_DIR"
+PUR_APPLY_REC="$PUR_APPLY_STUB_DIR/requested-path.txt"
+PUR_APPLY_PORT_FILE="$PUR_APPLY_STUB_DIR/port.txt"
+PUR_APPLY_STUB_PY="$PUR_APPLY_STUB_DIR/stub.py"
+cat > "$PUR_APPLY_STUB_PY" <<'PYEOF'
+import sys, json, http.server
+recfile, portfile = sys.argv[1], sys.argv[2]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        with open(recfile, "a") as f:
+            f.write(self.path + "\n")
+        body = json.dumps({
+            "tag_name": "v999.0.0",
+            "draft": False,
+            "prerelease": False,
+            "tarball_url": "http://127.0.0.1:%s/missing.tar.gz" % self.server.server_address[1],
+        }).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a):
+        pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+with open(portfile, "w") as f:
+    f.write(str(srv.server_address[1]))
+srv.serve_forever()
+PYEOF
+python3 "$PUR_APPLY_STUB_PY" "$PUR_APPLY_REC" "$PUR_APPLY_PORT_FILE" >"$PUR_APPLY_STUB_DIR/stub.log" 2>&1 &
+PUR_APPLY_STUB_PID=$!
+pur_apply_wait=0
+while [ ! -s "$PUR_APPLY_PORT_FILE" ] && [ "$pur_apply_wait" -lt 50 ]; do
+  sleep 0.1
+  pur_apply_wait=$((pur_apply_wait + 1))
+done
+PUR_APPLY_PORT="$(cat "$PUR_APPLY_PORT_FILE" 2>/dev/null || true)"
+if [ -n "$PUR_APPLY_PORT" ]; then
+  ( cd "$FAKEREPO" && PLUMBLINE_GITHUB_API="http://127.0.0.1:$PUR_APPLY_PORT" "$PUR_CLI" update >"$TMP_ROOT/pur-apply.log" 2>&1 ) || true
+fi
+kill "$PUR_APPLY_STUB_PID" 2>/dev/null || true
+wait "$PUR_APPLY_STUB_PID" 2>/dev/null || true
+assert "PUR-1.1 review P1: natural update from foreign repo queries installed slug DYAI2025/Plumbline" "test -f '$PUR_APPLY_REC' && grep -q '/repos/DYAI2025/Plumbline/' '$PUR_APPLY_REC'"
+assert "PUR-1.1 review P1: natural update from foreign repo does NOT query the foreign slug" "! { test -f '$PUR_APPLY_REC' && grep -q '/repos/EVILFORK/NotPlumbline/' '$PUR_APPLY_REC'; }"
+
 # --- SPRINT 1 review findings: C2 (symlink cwd-independence), I1 (malformed-
 # --- version anchor must fail loud), I2 (exotic origin must stay valid JSON) ---
 # Three additions for the Sprint-1 code-review findings. The user confirmed a
