@@ -96,6 +96,29 @@ def resolve_install_identity() -> dict[str, Any] | None:
     return None
 
 
+def resolve_install_home() -> Path | None:
+    """Return the Claude-home root this CLI was INVOKED from, or None.
+
+    The install-identity anchor (`.plumbline-install.json`) is written by
+    install.sh at the Claude-home root, beside the installed `bin/` and `lib/`.
+    The installed CLI is invoked as `$CLAUDE_HOME/lib/plumbline_update.py` (the
+    bin wrapper `exec`s that path), so the anchor's directory IS `$CLAUDE_HOME`.
+
+    Critically this walks up the UNRESOLVED invocation path (NOT `.resolve()`):
+    in the DEFAULT symlink install the lib is a symlink INTO the source checkout,
+    so `.resolve()` would dereference to the source tree (where there is no anchor)
+    and miss the home entirely. The invocation path stays in `$CLAUDE_HOME`, which
+    is exactly the home a natural `plumbline update` must target (REQ-PUR-04) —
+    independent of symlink-vs-copy install mode. Returns None for a dev/source
+    invocation (no anchor in the invocation ancestry).
+    """
+    here = Path(__file__)
+    for parent in [here.parent, *here.parents]:
+        if (parent / INSTALL_ANCHOR_NAME).is_file():
+            return parent.resolve()
+    return None
+
+
 def _is_installed_copy() -> bool:
     """True when this module runs from an installed tree (NOT the dev checkout).
 
@@ -521,6 +544,20 @@ def resolve_payload_source(args: argparse.Namespace, root: Path) -> tuple[Path, 
     url = release.get("tarball_url")
     if not url:
         raise PlumblineError("GitHub release metadata missing tarball_url")
+    # SEC-3 (hardening): when the resolved API base is the REAL GitHub API host,
+    # require the payload be fetched over https — refuse a plain-http network
+    # payload (downgrade / MITM surface). http stays allowed ONLY under the
+    # explicit localhost/test gate (PLUMBLINE_GITHUB_API_ALLOW_INSECURE_TOKEN),
+    # exactly as the token-header host gate does, so the offline 127.0.0.1 tests
+    # are unaffected. require_safe_url below still blocks non-http(s) schemes.
+    base_host = urllib.parse.urlparse(github_api_base()).hostname
+    insecure_gate = os.environ.get("PLUMBLINE_GITHUB_API_ALLOW_INSECURE_TOKEN") == "1"
+    if base_host == GITHUB_API_HOST and not insecure_gate:
+        if urllib.parse.urlparse(str(url)).scheme.lower() != "https":
+            raise PlumblineError(
+                "refusing non-https release tarball from the GitHub API: "
+                f"{url}"
+            )
     # Provenance: show exactly what will be downloaded and applied. `plumbline
     # update` runs the downloaded release's installer, so the operator must see
     # the source. There is no signature verification yet (declared limitation):
@@ -607,9 +644,15 @@ def copy_update_payload(source: Path, target: Path) -> None:
 
 
 def restore_snapshot(snapshot: Path, target: Path) -> None:
-    keep = target / ".plumbline"
+    # CR-3: the target-clear delete-set is SYMMETRIC with snapshot_target's
+    # ignore-set ({.git, .plumbline, __pycache__}). snapshot_target SKIPS those
+    # entries when copying the home into the snapshot, so the snapshot never holds
+    # them — deleting them here would WIPE an ignored-but-present user entry (e.g.
+    # a user's $CLAUDE_HOME/__pycache__) with nothing to restore it from (silent
+    # data loss masquerading as a safe rollback). Leave them in place instead.
+    ignored = {".git", ".plumbline", "__pycache__"}
     for item in list(target.iterdir()):
-        if item == keep:
+        if item.name in ignored:
             continue
         if item.is_dir() and not item.is_symlink():
             shutil.rmtree(item)
@@ -623,8 +666,18 @@ def restore_snapshot(snapshot: Path, target: Path) -> None:
             shutil.copy2(item, destination)
 
 
-def run_command(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=str(cwd), shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+def run_command(
+    command: str, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=str(cwd),
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
 
 
 def run_migrations(target: Path, previous: str, new: str) -> None:
@@ -634,14 +687,214 @@ def run_migrations(target: Path, previous: str, new: str) -> None:
         fh.write(f"{_dt.datetime.now(_dt.UTC).isoformat().replace('+00:00', '')}Z {previous} -> {new}: no migrations declared\n")
 
 
+def installed_lib_is_symlink(home: Path) -> bool:
+    """True when this CLI was installed in SYMLINK mode into `home`.
+
+    install.sh symlinks `$CLAUDE_HOME/lib/plumbline_update.py` into the source
+    checkout for a default (symlink) install, and materializes a real file for a
+    --copy install. The installed lib carries the same basename as this module, so
+    the symlink-ness of `home/lib/<this-module>.py` is the authoritative install-mode
+    signal (CR-1). Checked WITHOUT resolving so a symlink reads as a symlink.
+    """
+    installed = home / "lib" / Path(__file__).name
+    return installed.is_symlink()
+
+
+def symlink_checkout_root(home: Path) -> Path | None:
+    """The live source checkout a SYMLINK install tracks, or None.
+
+    Resolve the installed lib symlink to its real target inside the checkout, then
+    walk up to the checkout's repo root (the dir holding config/claude/install.sh).
+    This is the path `git pull` must run in to update a symlink install (CR-1).
+    """
+    installed = home / "lib" / Path(__file__).name
+    if not installed.is_symlink():
+        return None
+    real = Path(os.path.realpath(installed))
+    for parent in [real, *real.parents]:
+        if (parent / "config" / "claude" / "install.sh").is_file():
+            return parent
+    return None
+
+
+def install_home_target(args: argparse.Namespace) -> Path | None:
+    """The $CLAUDE_HOME apply TARGET for a natural `plumbline update`, or None.
+
+    Returns the installed Claude-home root ONLY when this is the real installed
+    copy AND the operator gave no explicit `--target` (the path every user hits:
+    `plumbline update` from anywhere). An explicit `--target <checkout>` keeps the
+    old checkout-patch behavior, and a dev checkout (not installed) returns None
+    so existing dev/test flows are unchanged.
+
+    $CLAUDE_HOME env wins when it agrees with where the anchor was found; otherwise
+    the anchor's own directory is authoritative (it is the home this lib was
+    installed into), never the cwd.
+    """
+    if getattr(args, "target", None):
+        return None
+    # The apply TARGET is keyed on the INVOCATION location carrying the anchor —
+    # NOT on `_is_installed_copy()` (which `.resolve()`s the lib symlink to the
+    # source and would wrongly report a symlink install as "not installed"). When
+    # an anchor sits in the invocation ancestry, this is a real installed CLI and
+    # $CLAUDE_HOME is the home to refresh; otherwise (dev/source run) None keeps
+    # the old checkout/cwd behavior.
+    return resolve_install_home()
+
+
+def _home_anchor_version(home: Path) -> str:
+    """The installed Plumbline version recorded in $CLAUDE_HOME's identity anchor.
+
+    The installed home carries no top-level VERSION file (install.sh mounts only
+    agents/commands/lib/bin + the anchor), so the authoritative installed version
+    lives in `.plumbline-install.json`. Read it directly; fail loud if it is
+    absent or has no usable SemVer (the apply must know the prior version to gate
+    MAJOR/up-to-date and to record the migration).
+    """
+    anchor = home / INSTALL_ANCHOR_NAME
+    if not anchor.is_file():
+        raise PlumblineError(
+            f"no install-identity anchor at {anchor} "
+            "(re-run install.sh to write the identity anchor)"
+        )
+    try:
+        data = json.loads(anchor.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PlumblineError(f"install-identity anchor is unreadable: {exc}") from exc
+    version = data.get("version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or not SEMVER_RE.search(version):
+        raise PlumblineError(
+            "install-identity anchor has no usable version "
+            "(re-run install.sh to write the identity anchor)"
+        )
+    return SEMVER_RE.search(version).group(0)  # type: ignore[union-attr]
+
+
 def update_apply(args: argparse.Namespace, root: Path) -> int:
-    target = Path(args.target).resolve() if args.target else root
+    home_target = install_home_target(args)
+    # CR-1: REFUSE a natural `plumbline update` on a SYMLINK install. The
+    # confirmed two-mode contract is: COPY installs update via `plumbline update`;
+    # SYMLINK installs update via `git pull` in the tracked checkout. Copy-converting
+    # a symlink install in place (the old `install.sh --copy --update` behavior)
+    # would silently destroy the user's live `git pull` workflow and freeze the
+    # install to a copy — so refuse it BEFORE any payload is fetched/applied,
+    # naming `git pull` and the checkout to run it in. An explicit `--target`
+    # (home_target is None) keeps the checkout-patch path; a copy install (lib is a
+    # real file) falls through to the normal home apply.
+    if home_target is not None and installed_lib_is_symlink(home_target):
+        checkout = symlink_checkout_root(home_target)
+        where = str(checkout) if checkout is not None else "the checkout it points at"
+        raise PlumblineError(
+            "symlink install -> update via `git pull` in " + where + " "
+            "(this is a symlink install: it tracks a live checkout; "
+            "`plumbline update` would copy-convert and freeze it, so it is refused; "
+            "run `git pull` there instead)"
+        )
     source, tmp = resolve_payload_source(args, root)
     try:
+        if home_target is not None:
+            return _apply_into_home(args, home_target, source)
+        target = Path(args.target).resolve() if args.target else root
         return _apply_from_source(args, target, source)
     finally:
         if tmp is not None:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _apply_into_home(args: argparse.Namespace, home: Path, source: Path) -> int:
+    """Real apply of a staged payload into the installed $CLAUDE_HOME, with a
+    full snapshot + verify-or-revert safety floor (REQ-PUR-04/05/06).
+
+    Sequence: read the installed (anchor) version; resolve the payload version and
+    gate MAJOR/up-to-date exactly like the checkout path; SNAPSHOT the whole home;
+    run the REAL `install.sh --update` from the STAGED payload against $CLAUDE_HOME
+    (overwriting changed targets, adding new files, re-stamping the anchor); VERIFY
+    from the staged checkout (the operator's --verify-cmd or the fixed repo-pinned
+    command — NEVER the payload's verifyCommand string); on a verify failure REVERT
+    the ENTIRE home to the snapshot (stale-but-prior files back, anchor back, added
+    files gone) and exit non-zero. A failed update never leaves a half-updated home.
+    """
+    previous = _home_anchor_version(home)
+    latest, _ = latest_from_source(source)
+    if compare_versions(previous, latest) >= 0 and not args.force:
+        print(f"status: up-to-date ({previous})")
+        return 0
+    major_delta = parse_semver(latest)[0] != parse_semver(previous)[0]
+    if major_delta and not args.yes_major:
+        raise PlumblineError("MAJOR update requires explicit --yes-major")
+
+    # Validate the payload's contract (fail-closed on a malformed
+    # compatibility.json) BEFORE we touch the home — but never execute its
+    # verifyCommand string.
+    load_compatibility(source)
+
+    installer = source / "config" / "claude" / "install.sh"
+    if not installer.is_file():
+        raise PlumblineError(f"update payload has no installer at {installer}")
+
+    snapshot = snapshot_target(home)
+    print(f"snapshot: {snapshot}")
+    try:
+        # Run the REAL installer (NOT --dry-run) from the staged payload into the
+        # installed home. --copy so content is materialized into $CLAUDE_HOME (a
+        # symlink would point into the throwaway payload that is cleaned up after
+        # this apply). --update so changed targets are overwritten and new files
+        # added. NO --no-skills (CR-2): skills are part of the confirmed refresh set
+        # (REQ-PUR-05 — agents/commands/skills/libs/bin), so an existing skill is
+        # content-compared + refreshed and a new shipped skill is added. KEEP
+        # --no-hook deliberately: the global settings.json Stop-hook registration is
+        # NOT in the confirmed refresh set, and re-registering it on every self-update
+        # is intrusive jq/settings churn — a named scope decision, not an oversight.
+        env = dict(os.environ)
+        env["CLAUDE_HOME"] = str(home)
+        # SEC-2 (hardening): scrub GITHUB_TOKEN/GH_TOKEN from the subprocess env.
+        # The release fetch already happened before this apply; the staged install.sh
+        # / verify subprocess never needs the token, and a compromised payload's
+        # installer must not be able to read the operator's token from its own
+        # environment. Remove both names (present-but-empty included).
+        for _tok in ("GITHUB_TOKEN", "GH_TOKEN"):
+            env.pop(_tok, None)
+        result = subprocess.run(
+            ["bash", str(installer), "--copy", "--update", "--no-hook"],
+            cwd=str(source),
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        print(result.stdout, end="")
+        if result.returncode != 0:
+            raise PlumblineError("install.sh --update failed")
+
+        new = _home_anchor_version(home)
+        run_migrations(home, previous, new)
+
+        # Verify from the STAGED payload checkout (so the verify command runs
+        # against the new code), with the FIXED/operator command — never the
+        # payload-supplied verifyCommand string. SEC-2: reuse the token-scrubbed
+        # env so the verify subprocess (which runs over the staged payload) also
+        # cannot read GITHUB_TOKEN/GH_TOKEN.
+        verify = args.verify_cmd or DEFAULT_VERIFY
+        print(f"verify: {verify}")
+        vres = run_command(verify, source, env=env)
+        print(vres.stdout, end="")
+        if vres.returncode != 0:
+            raise PlumblineError(f"verification failed: {verify}")
+
+        marker = home / ".plumbline" / "update" / "last-success.json"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(
+            json.dumps({"previous": previous, "version": new, "snapshot": str(snapshot)}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"status: changed and verified ({previous} -> {new})")
+        return 0
+    except Exception:
+        restore_snapshot(snapshot, home)
+        print(f"status: reverted to snapshot {snapshot}")
+        # CR-4: name the exact recovery command so a crash MID-revert is still
+        # recoverable by hand (the snapshot survives; re-run rollback against it).
+        print(f"recover: plumbline rollback {snapshot}")
+        raise
 
 
 def _apply_from_source(args: argparse.Namespace, target: Path, source: Path) -> int:
@@ -685,6 +938,9 @@ def _apply_from_source(args: argparse.Namespace, target: Path, source: Path) -> 
     except Exception:
         restore_snapshot(snapshot, target)
         print(f"status: reverted to snapshot {snapshot}")
+        # CR-4: name the exact recovery command so a crash MID-revert is still
+        # recoverable by hand (the snapshot survives; re-run rollback against it).
+        print(f"recover: plumbline rollback {snapshot} --target {target}")
         raise
 
 

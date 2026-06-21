@@ -86,8 +86,11 @@ What concrete human/customer value will this create?
 Status: CONFIRMED
 
 Answer:
-`EXPLICIT`: One natural `plumbline update`, run from anywhere, reliably installs ALL new content
-into every user's `~/.claude` — fast, precise, and verified-or-reverted. Concretely:
+`EXPLICIT`: ONE natural update path per install, run from anywhere, reliably installs ALL new
+content into every user's `~/.claude` — fast, precise, and verified-or-reverted. The natural path
+is per mode (CR-1 / C1 two-mode model): COPY installs update via `plumbline update`; SYMLINK
+installs update via `git pull` (and `plumbline update` REFUSES a symlink install -> `git pull`
+rather than copy-converting it). Concretely:
 
 - `EXPLICIT` correct installed version + slug from ANY cwd, in BOTH install modes, each honestly
   sourced (copy installs: the `.plumbline-install.json` anchor; symlink installs: the symlinked
@@ -95,7 +98,11 @@ into every user's `~/.claude` — fast, precise, and verified-or-reverted. Concr
   2026-06-21);
 - `EXPLICIT` token-aware, rate-limit-resilient release check that classifies 403 vs 404;
 - `EXPLICIT` an apply that refreshes stale content and adds new content into `$CLAUDE_HOME`
-  through the REAL installer, with a snapshot/verify/revert safety floor;
+  through the REAL installer (the `install.sh --update` MECHANISM content-compares + overwrites
+  changed targets and adds new — both symlink and copy targets), with a snapshot/verify/revert
+  safety floor. Two-mode applicability (CR-1, per the C1 two-mode model): `plumbline update`
+  applies this to COPY installs; a SYMLINK install updates via `git pull` (and `plumbline update`
+  REFUSES it with a classified "update via `git pull`" message rather than copy-converting it);
 - `EXPLICIT` falsifying tests so reverting any fix reddens CI (the gap can no longer hide).
 
 ---
@@ -237,7 +244,7 @@ True-Line status: aligned
 
 | ID | Question | Status |
 |---|---|---|
-| OQ-PUR-01 | symlink-mode auto-refresh vs `--copy` force-refresh default: should `install.sh --update` content-compare and overwrite for BOTH modes, or only re-link symlinks and force-refresh copies? | RESOLVED (user, 2026-06-21) — content-compare + overwrite in BOTH modes: `install.sh --update` content-compares and overwrites every CHANGED target regardless of symlink/copy mode (most reliable "all changed content lands for every user"). Affects PUR-3.2 / REQ-PUR-05. |
+| OQ-PUR-01 | symlink-mode auto-refresh vs `--copy` force-refresh default: should the `install.sh --update` MECHANISM content-compare and overwrite for BOTH target modes, or only re-link symlinks and force-refresh copies? | RESOLVED (user, 2026-06-21) — content-compare + overwrite in BOTH target modes: the `install.sh --update` MECHANISM content-compares and overwrites every CHANGED *target* regardless of symlink/copy target mode (most reliable "all changed content lands for every user"). PRECISION (CR-1, 2026-06-21): this is about the `install.sh --update` MECHANISM's target handling, NOT about the `plumbline update` CLI refreshing a symlink install. The CLI is two-mode (REQ-PUR-02 / C1): it applies the mechanism to COPY installs and REFUSES a symlink install (-> `git pull`), never copy-converting it — so OQ-PUR-01 and the two-mode model are consistent. Affects PUR-3.2 / REQ-PUR-05. |
 | OQ-PUR-02 | auto-check opt-in default: should the session-start update-check be off-by-default (env-gated opt-in) as the plan states, or opt-out? Plan says opt-in/off-by-default; confirm this is the desired default. | RESOLVED (user, 2026-06-21) — auto-check ON by default / opt-out: the session-start `update --check` runs by default (throttled ≤1/day, authenticated per Sprint 2, non-blocking) and only NOTIFIES; disabled via an env opt-out. APPLY stays explicit (a CHECK is not an apply). Affects PUR-4.2 / REQ-PUR-08. |
 
 ---
@@ -250,9 +257,11 @@ Confirmation note: The user (Ben, 2026-06-21) gave the exact confirmation phrase
 "Ich bestätige, dass Product Canvas und Product Vision meine Absicht korrekt wiedergeben und als
 Grundlage für AgileTeam Planning verwendet werden dürfen." — so this Canvas is `user-confirmed`
 and may serve as the basis for AgileTeam planning (no agent self-confirmation). Both OPEN QUESTIONs
-were RESOLVED (user, 2026-06-21): OQ-PUR-01 → content-compare + overwrite in BOTH modes; OQ-PUR-02
-→ auto-check on-by-default / opt-out. Intake remains authored only (docs, no production code; not
-yet committed).
+were RESOLVED (user, 2026-06-21): OQ-PUR-01 → the `install.sh --update` MECHANISM content-compares
++ overwrites changed targets in BOTH target modes (symlink and copy targets) — the `plumbline
+update` CLI applies this to COPY installs and REFUSES a symlink install -> `git pull`, never
+copy-converting it (CR-1 precision; see the OQ-PUR-01 row); OQ-PUR-02 → auto-check on-by-default /
+opt-out. Intake remains authored only (docs, no production code; not yet committed).
 
 Refinement C1 (user/Ben, 2026-06-21): the user clarified that installed identity is
 cwd-INDEPENDENT in BOTH install modes, sourced honestly per mode — copy installs from the

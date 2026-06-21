@@ -45,7 +45,7 @@ the real installer against the operator's real `~/.claude`.
 | GOAL-PUR-02 | `version`/`update --check` are cwd-independent for the installed copy in BOTH modes (anchor for copy installs; the symlinked checkout's current VERSION/origin for symlink installs). | EXPLICIT |
 | GOAL-PUR-03 | Release fetch is token-aware, rate-limit-resilient, 403-vs-404-distinct. | EXPLICIT |
 | GOAL-PUR-04 | `plumbline update` applies ALL changed content into `$CLAUDE_HOME` via the real installer. | EXPLICIT |
-| GOAL-PUR-05 | Install update-mode refreshes changed targets (no stale skip). | EXPLICIT |
+| GOAL-PUR-05 | The `install.sh --update` MECHANISM content-compares + refreshes changed targets and adds new (no stale skip), handling both symlink and copy targets; the `plumbline update` CLI applies it to COPY installs and refuses a symlink install (-> `git pull`) — never copy-converting it. | EXPLICIT |
 | GOAL-PUR-06 | Verify-or-revert (snapshot of `$CLAUDE_HOME`) on apply. | EXPLICIT |
 | GOAL-PUR-07 | Falsifying tests for G1–G3 (never mock the gap; red if the fix is reverted). | EXPLICIT |
 | GOAL-PUR-08 | On-by-default / opt-out, non-blocking, notify-only session-start update-check. | EXPLICIT |
@@ -163,21 +163,55 @@ Acceptance criteria (Given/When/Then):
 
 ### REQ-PUR-05 — install update-mode refreshes changed targets (no stale skip)
 
+> **Precision (CR-1, Sprint-3 code review, 2026-06-21):** REQ-PUR-05 describes the install.sh
+> `--update` MECHANISM; it does NOT make `plumbline update` refresh a symlink install. Two distinct
+> layers, both honest to the already-confirmed decisions (no re-confirmation — this only states
+> precisely what OQ-PUR-01 and the C1 two-mode model always meant together):
+> - **The MECHANISM (`install.sh --update`)** content-compares + overwrites every CHANGED *target*
+>   and adds NEW ones, handling BOTH symlink and copy *targets* — this is exactly what "both modes"
+>   in OQ-PUR-01 means (a `transfer()` that no longer skips an existing target), and it is preserved
+>   verbatim.
+> - **The CLI applicability (`plumbline update`, REQ-PUR-02 / C1 two-mode model)** applies that
+>   mechanism to COPY installs only (it invokes the staged `install.sh --copy --update --no-hook`
+>   into `$CLAUDE_HOME`); a SYMLINK install is REFUSED before any payload is fetched, with a
+>   classified "symlink install -> update via `git pull` in `<checkout>`" message. `plumbline update`
+>   NEVER silently copy-converts a symlink install (doing so would destroy the checkout-tracking the
+>   C1 decision exists to preserve). Symlink installs update via `git pull`; copy installs via
+>   `plumbline update`.
+> So "both modes" is a property of the MECHANISM's target handling, not a claim that the CLI refreshes
+> a symlink install. OQ-PUR-01 and the C1 two-mode model are consistent.
+
 `EXPLICIT`: `install.sh` update-mode: `transfer()` content-compares and OVERWRITES every CHANGED
-existing target in BOTH modes (symlink AND `--copy`) instead of skipping — not a two-path
+existing target in BOTH modes (symlink AND `--copy` *targets*) instead of skipping — not a two-path
 symlink-vs-copy variant (resolved OQ-PUR-01, user 2026-06-21: content-compare + overwrite in both
-modes is the most reliable "all changed content lands for every user"). Expose `install.sh
---update` that refreshes agents/commands/skills/libs/bin and rewrites the anchor. Files:
-`install.sh` (`transfer` `:71-98`, arg parsing). Closes G3 (refresh half).
+target modes is the most reliable "all changed content lands for every user"). Expose `install.sh
+--update` that refreshes agents/commands/skills/libs/bin (skills INCLUDED — CR-2 dropped
+`--no-skills` from the update apply) and rewrites the anchor. This is the MECHANISM; the
+`plumbline update` CLI applies it to COPY installs only and REFUSES a symlink install (-> `git
+pull`), per the C1 two-mode model (REQ-PUR-02). The settings.json Stop-hook registration is
+deliberately NOT re-run on a self-update (the apply passes `--no-hook`): the global hook is not in
+the confirmed refresh set, and re-registering it on every update is intrusive settings churn — a
+named scope decision, not an oversight. Files: `install.sh` (`transfer` `:110-135`, arg parsing);
+the CLI two-mode gate lives in `plumbline_update.py` (`_apply_into_home` / symlink-refuse). Closes
+G3 (refresh half).
 
 Acceptance criteria (Given/When/Then):
 - AC-PUR-05.1 — **Given** a sandbox `$CLAUDE_HOME` with a deliberately STALE agent + command +
-  lib at vN, **when** `install.sh --update` runs with a vN+1 source, **then** the stale files are
-  content-compared and REFRESHED to vN+1 (no skip) — in BOTH symlink and `--copy` modes.
+  lib at vN, **when** `install.sh --update` (the MECHANISM) runs with a vN+1 source, **then** the
+  stale files are content-compared and REFRESHED to vN+1 (no skip) — handling BOTH symlink and
+  `--copy` *targets*. (This is the mechanism contract; the `plumbline update` CLI applies it to
+  copy installs only — AC-PUR-05.4.)
 - AC-PUR-05.2 — **Given** the vN+1 source contains NEW files absent from `$CLAUDE_HOME`, **when**
-  `install.sh --update` runs, **then** the new files are added.
+  `install.sh --update` runs, **then** the new files are added — INCLUDING a newly shipped skill
+  (CR-2: skills are part of the confirmed refresh set; no `--no-skills`).
 - AC-PUR-05.3 — **Given** `install.sh --update` completes, **when** it finishes, **then** the
   anchor is rewritten to vN+1.
+- AC-PUR-05.4 — **Given** the `plumbline update` CLI run against a SYMLINK install (no explicit
+  `--target`), **when** it runs, **then** it is REFUSED before any fetch with a classified "update
+  via `git pull` in `<checkout>`" message and NEVER copy-converts the install; **and given** a COPY
+  install, **then** the mechanism above is applied into `$CLAUDE_HOME` via the staged
+  `install.sh --copy --update --no-hook`. (The CLI's applicability is two-mode; the mechanism's
+  target handling is both-modes — REQ-PUR-02 / C1.)
 
 ### REQ-PUR-06 — verify-or-revert on apply (snapshot of `$CLAUDE_HOME`)
 
@@ -275,7 +309,7 @@ Full matrix in `docs/traceability.md` (slice block: plumbline-update-reliability
 | REQ-PUR-02 | AC-PUR-02.1..5 | test_update_layer.sh | integration-fake |
 | REQ-PUR-03 | AC-PUR-03.1..4 | test_update_layer.sh | integration-fake (+ gated real-boundary-smoke for live `--check`) |
 | REQ-PUR-04 | AC-PUR-04.1..4 | test_update_layer.sh | integration-fake (+ real-boundary-smoke: sandbox-HOME apply) |
-| REQ-PUR-05 | AC-PUR-05.1..3 | test_update_layer.sh | integration-fake |
+| REQ-PUR-05 | AC-PUR-05.1..4 | test_update_layer.sh | integration-fake |
 | REQ-PUR-06 | AC-PUR-06.1..3 | test_update_layer.sh | integration-fake (+ real-boundary-smoke: sandbox-HOME revert) |
 | REQ-PUR-07 | AC-PUR-07.1..4 | test_update_layer.sh + run_all.sh | integration-fake |
 | REQ-PUR-08 | AC-PUR-08.1..4 | test_update_layer.sh (+ session-start.sh) | integration-fake |
@@ -284,9 +318,13 @@ Full matrix in `docs/traceability.md` (slice block: plumbline-update-reliability
 
 - OQ-PUR-01 — symlink-mode auto-refresh vs `--copy` force-refresh default (affects REQ-PUR-05 /
   PUR-3.2): content-compare+overwrite for both modes, or re-link symlinks + force-refresh copies?
-  RESOLVED (user, 2026-06-21) — content-compare + overwrite in BOTH modes: `install.sh --update`
-  content-compares and overwrites every CHANGED target regardless of symlink/copy mode (most
-  reliable "all changed content lands for every user").
+  RESOLVED (user, 2026-06-21) — content-compare + overwrite in BOTH modes: the `install.sh --update`
+  MECHANISM content-compares and overwrites every CHANGED *target* regardless of symlink/copy target
+  mode (most reliable "all changed content lands for every user"). Precision (CR-1, 2026-06-21): this
+  resolution is about the install.sh `--update` MECHANISM's target handling, NOT about the
+  `plumbline update` CLI refreshing a symlink install. The CLI is two-mode (REQ-PUR-02 / C1): it
+  applies the mechanism to COPY installs and REFUSES a symlink install (-> `git pull`), never
+  copy-converting it. OQ-PUR-01 and the C1 two-mode model are consistent.
 - OQ-PUR-02 — auto-check opt-in default on/off (affects REQ-PUR-08 / PUR-4.2): plan says
   opt-in/off-by-default; confirm. RESOLVED (user, 2026-06-21) — auto-check ON by default /
   opt-out: the session-start `update --check` runs by default (throttled ≤1/day, authenticated

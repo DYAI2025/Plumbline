@@ -12,6 +12,12 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 MODE="symlink"
 FORCE=0
+# Update mode (PUR-3.2): refresh an existing $CLAUDE_HOME install in place.
+# transfer() then OVERWRITES a changed existing target (content-compare) instead
+# of skipping it, in BOTH symlink and copy modes, and still ADDS new files. This
+# is what lets `plumbline update` actually push new content into a user's home;
+# normal (non-update) install behavior is unchanged.
+UPDATE=0
 INSTALL_AGENTS=1
 INSTALL_COMMANDS=1
 INSTALL_SKILLS=1
@@ -22,7 +28,7 @@ DRY_RUN=0
 
 usage() {
   cat <<USAGE
-Usage: $0 [--copy] [--force] [--dry-run] [--with-flow-agents] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
+Usage: $0 [--copy] [--force] [--update] [--dry-run] [--with-flow-agents] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
 
 Installs the repo for Claude Code by:
   - installing the MCP-free agents into \$CLAUDE_HOME/agents (default; the ~35 claude-flow /
@@ -34,6 +40,10 @@ Installs the repo for Claude Code by:
   - registering the fail-closed PRIL enforcement Stop hook,
   - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its Python libraries in $CLAUDE_HOME/lib/.
 
+--update refreshes an existing \$CLAUDE_HOME install in place: a CHANGED existing
+target is overwritten (content-compared) and new files are added, in both symlink
+and copy modes (normal installs leave existing targets untouched without --force).
+
 Environment:
   CLAUDE_HOME  Override target Claude home (default: $HOME/.claude)
 USAGE
@@ -43,6 +53,7 @@ for arg in "$@"; do
   case "$arg" in
     --copy) MODE="copy" ;;
     --force) FORCE=1 ;;
+    --update) UPDATE=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --no-agents) INSTALL_AGENTS=0 ;;
     --no-commands) INSTALL_COMMANDS=0 ;;
@@ -68,13 +79,52 @@ same_path() {
   [ -e "$a" ] && [ -e "$b" ] && [ "$(cd "$a" 2>/dev/null && pwd -P)" = "$(cd "$b" 2>/dev/null && pwd -P)" ]
 }
 
+# content_current <src> <dst>: true (0) when the existing target already holds
+# the source's content, so an --update refresh can idempotently skip it. Files are
+# compared byte-for-byte; directories are compared recursively. A symlink target
+# is never "current" under copy-update (it must be replaced by real content), and a
+# missing target is never current. Used only by --update; normal installs keep the
+# untouched "skip if exists" behavior.
+content_current() {
+  local src="$1" dst="$2"
+  [ -e "$dst" ] || return 1
+  # A symlink that already resolves to the same source path is current; otherwise
+  # the link must be replaced (e.g. a stale symlink, or a symlink where update now
+  # materializes a copy).
+  if [ -L "$dst" ]; then
+    if [ "$MODE" = "symlink" ] && same_path "$src" "$dst"; then
+      return 0
+    fi
+    return 1
+  fi
+  if [ -d "$src" ] && [ -d "$dst" ]; then
+    diff -rq "$src" "$dst" >/dev/null 2>&1 && return 0
+    return 1
+  fi
+  if [ -f "$src" ] && [ -f "$dst" ]; then
+    cmp -s "$src" "$dst" && return 0
+    return 1
+  fi
+  return 1
+}
+
 transfer() {
   local src="$1" dst="$2"
   if [ ! -e "$src" ]; then
     echo "missing source: $src" >&2
     exit 1
   fi
-  if [ -e "$dst" ] && [ "$FORCE" -ne 1 ]; then
+  # --update (PUR-3.2): overwrite a CHANGED existing target (content-compare) in
+  # BOTH modes; idempotently skip an UNCHANGED one; and fall through to write a
+  # NEW (absent) target. This replaces the plain "skip if exists" so a real user's
+  # home is actually refreshed.
+  if [ "$UPDATE" -eq 1 ]; then
+    if [ -e "$dst" ] && content_current "$src" "$dst"; then
+      log_action "up-to-date: $dst"
+      return
+    fi
+    # else: changed or new -> fall through and (re)write it below.
+  elif [ -e "$dst" ] && [ "$FORCE" -ne 1 ]; then
     log_action "skip (exists): $dst   [use --force to overwrite]"
     return
   fi
@@ -204,9 +254,18 @@ write_install_anchor() {
     esac
   fi
 
-  # source_commit: best-effort current HEAD of the source checkout.
+  # source_commit: best-effort current HEAD of the source checkout (CR-5). Use
+  # `rev-parse --verify HEAD`: on a commitless repo (unborn HEAD) plain
+  # `rev-parse HEAD` prints the LITERAL string `HEAD` to stdout and the `|| true`
+  # swallows its non-zero exit, recording useless placeholder provenance.
+  # `--verify` instead prints nothing for an unborn HEAD, so source_commit stays
+  # empty. Belt: accept only an exact 40-hex sha, else record empty — never `HEAD`.
   local source_commit=""
-  source_commit="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+  source_commit="$(git -C "$REPO_DIR" rev-parse --verify HEAD 2>/dev/null || true)"
+  case "$source_commit" in
+    *[!0-9a-f]* | "") source_commit="" ;;   # any non-hex char (incl. 'HEAD') -> empty
+    *) [ "${#source_commit}" -eq 40 ] || source_commit="" ;;  # only a full 40-hex sha
+  esac
 
   # installed_at: UTC timestamp (best-effort; never fail the install on this).
   local installed_at=""

@@ -12,11 +12,19 @@ Source plan: docs/plans/2026-06-21-plumbline-update-reliability.md
 
 ## Vision Statement (Customer value / North Star)
 
-Every Plumbline user can run ONE natural `plumbline update`, from anywhere, and reliably get
+Every Plumbline user can run ONE natural update path, from anywhere, and reliably get
 ALL new content into their `~/.claude` — fast, precise, verified-or-reverted. The delivered
 value is the *reliable, complete, honest delivery of updates* — not a version string, not a
 green check, not "it ran". An update either lands every changed agent/command/skill/lib/bin
 into the user's install and proves it, or it reverts and says so. Nothing in between.
+
+The natural path is per install mode (CR-1, the C1 two-mode model — see Core Value Promise
+invariant 2): COPY installs (web-bootstrap / `--copy`) update via `plumbline update`; SYMLINK
+installs update via `git pull` on the tracked checkout. `plumbline update` applies the
+`install.sh --update` MECHANISM (content-compare + overwrite changed targets + add new — both
+symlink and copy targets) to COPY installs, and REFUSES a symlink install with a classified
+"update via `git pull`" message rather than silently copy-converting it (which would destroy the
+checkout-tracking the C1 decision preserves).
 
 ## Target User
 
@@ -55,9 +63,12 @@ agreeing it is fine.
 - `plumbline update --check` → queries the INSTALLED slug (`DYAI2025/Plumbline`), authenticated
   when a token exists, resilient to rate limits, with 403-rate-limit reported distinctly from
   404-not-found;
-- `plumbline update` → delivers ALL changed content into `$CLAUDE_HOME` via the REAL installer
-  (refreshes stale agents/commands/skills/libs/bin AND adds new), rewrites the install anchor,
-  and on a verify-failure REVERTS the whole `$CLAUDE_HOME` to its prior state;
+- `plumbline update` (on a COPY install) → delivers ALL changed content into `$CLAUDE_HOME` via
+  the REAL `install.sh --update` MECHANISM (content-compares + overwrites stale
+  agents/commands/skills/libs/bin AND adds new — skills INCLUDED, CR-2), rewrites the install
+  anchor, and on a verify-failure REVERTS the whole `$CLAUDE_HOME` to its prior state; on a SYMLINK
+  install it is REFUSED with a classified "update via `git pull`" message (the C1 two-mode model —
+  the symlink install updates via `git pull` and is never copy-converted);
 - reverting ANY of these fixes reddens a falsifying test in `run_all` (the masked gaps become
   visible, not mocked green);
 - a throttled, non-blocking, notify-only session-start check (on by default, env opt-out; resolved
@@ -67,8 +78,14 @@ agreeing it is fine.
 
 The promise that must not be broken, in five invariants the plumbline-watcher checks against:
 
-1. **One command delivers ALL changed content.** No silent partial update, no stale skip. If a
-   file changed upstream and the user runs `plumbline update`, it lands in their install.
+1. **The natural update path delivers ALL changed content (two-mode, CR-1 / C1).** No silent
+   partial update, no stale skip. The `install.sh --update` MECHANISM content-compares + overwrites
+   every changed target and adds new (both symlink and copy targets). The applicability is per mode:
+   on a COPY install `plumbline update` applies that mechanism into `$CLAUDE_HOME`; on a SYMLINK
+   install the natural path is `git pull`, and `plumbline update` REFUSES the symlink install with a
+   classified "update via `git pull`" message rather than copy-converting it (which would freeze the
+   install and destroy the checkout-tracking). So: if a file changed upstream and the user runs
+   their mode's natural update path, it lands in their install — completely, not partially.
 2. **Correct INSTALLED identity from any cwd (both install modes, honestly sourced).** Version and
    slug are cwd-INDEPENDENT in BOTH install modes, never from whatever directory the user happens
    to stand in — sourced per mode: copy installs from the `.plumbline-install.json` anchor; symlink
@@ -114,10 +131,15 @@ stale content while reporting success contradicts the repo's central claim — p
 - `SS-PUR-02`: `update --check` from a foreign repo queries `DYAI2025/Plumbline`, sends a token
   when one exists (asserted-present, never printed/logged), still works unauthenticated, and
   classifies 403-rate-limit distinctly from 404-not-found. (REQ-PUR-03, closes G2.)
-- `SS-PUR-03`: `plumbline update` into a sandbox `$CLAUDE_HOME` refreshes a deliberately STALE
-  agent + command + lib, adds new files, rewrites the anchor, and on an injected verify-failure
-  REVERTS the whole `$CLAUDE_HOME` to the prior state — and never writes the real `~/.claude`.
-  (REQ-PUR-04/05/06, closes G3.)
+- `SS-PUR-03`: `plumbline update` into a sandbox COPY-install `$CLAUDE_HOME` refreshes a
+  deliberately STALE agent + command + lib (skills INCLUDED, CR-2), adds new files, rewrites the
+  anchor, and on an injected verify-failure REVERTS the whole `$CLAUDE_HOME` to the prior state —
+  and never writes the real `~/.claude`. (REQ-PUR-04/05/06, closes G3.) The `install.sh --update`
+  MECHANISM content-compares + overwrites changed targets for both symlink and copy targets; the
+  CLI applies it to copy installs (the sandbox apply runs `install.sh --copy --update --no-hook`).
+- `SS-PUR-03b`: `plumbline update` run against a SYMLINK install is REFUSED before any fetch with a
+  classified "update via `git pull` in `<checkout>`" message and never copy-converts the install
+  (the C1 two-mode model; CR-1). (REQ-PUR-02/REQ-PUR-05.)
 - `SS-PUR-04`: reverting ANY Sprint-1/2/3 fix reddens a behaviour/counter falsifier wired into
   `run_all.sh` (not outcome-only). (REQ-PUR-07, closes G4.)
 - `SS-PUR-05`: the session-start check notifies on a behind sandbox, is silent when

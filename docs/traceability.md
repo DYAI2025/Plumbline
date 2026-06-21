@@ -214,7 +214,7 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 
 ## Slice: Plumbline Update Reliability (plumbline-update-reliability)
 
-- Feature-Slug: plumbline-update-reliability (iterative 4-sprint build; Sprint 1 [install identity] + Sprint 2 [token-aware resilient fetch] built, gated A-E green, committed; Sprint 3 [install-refresh] next)
+- Feature-Slug: plumbline-update-reliability (iterative 4-sprint build; Sprint 1 [install identity] + Sprint 2 [token-aware resilient fetch] + Sprint 3 [install-refresh apply + verify-or-revert] built, gated A-E green, committed; Sprint 4 [falsifier-wiring + opt-out auto-check] next)
 - canvas-link: docs/canvas/plumbline-update-reliability.canvas.md (Status: user-confirmed 2026-06-21)
 - prd-link: docs/prd/plumbline-update-reliability.prd.md (Status: user-confirmed 2026-06-21)
 - vision-link: docs/vision/plumbline-update-reliability.vision.md (Status: user-confirmed 2026-06-21)
@@ -227,7 +227,7 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 | TRC-PUR-02 | REQ-PUR-02 cwd-independent installed identity in BOTH modes, honestly sourced (anchor for copy installs; symlinked checkout's current VERSION/origin for symlink installs); foreign-repo + copy-install fallback + symlink-tracks-checkout-after-pull (AC-PUR-02.1..5); closes G1 (C1 refinement, user/Ben 2026-06-21) | test_update_layer.sh (installed plumbline from /tmp + /tmp/fakerepo, no --root; symlink-mode post-pull version) | yes — plumbline_update.py resolve_install_identity is cwd-independent per mode (copy: anchor; symlink: checkout VERSION+origin) via read_version/default_repo_slug | integration-fake | aligned |
 | TRC-PUR-03 | REQ-PUR-03 token-aware fetch; unauth-fallback; 403-vs-404 distinct; token never printed (AC-PUR-03.1..4); closes G2 | test_update_layer.sh (offline via PLUMBLINE_GITHUB_API seam) | yes — fetch_latest_release sets Authorization header in prod path | integration-fake (+ gated real-boundary-smoke: live --check) | aligned |
 | TRC-PUR-04 | REQ-PUR-04 update applies into $CLAUDE_HOME via REAL install.sh --update, not --dry-run; real ~/.claude never written (AC-PUR-04.1..4); closes G3 apply | test_update_layer.sh (sandbox $CLAUDE_HOME) | yes — update_apply (no --target) runs real installer into $CLAUDE_HOME | integration-fake (+ real-boundary-smoke: sandbox-HOME apply) | aligned |
-| TRC-PUR-05 | REQ-PUR-05 install update-mode content-compares + overwrites changed targets in BOTH modes + adds new + rewrites anchor; no stale skip (AC-PUR-05.1..3); closes G3 refresh | test_update_layer.sh (stale agent+command+lib) | yes — install.sh --update / transfer() content-compares + overwrites changed target (both symlink and --copy) | integration-fake | aligned |
+| TRC-PUR-05 | REQ-PUR-05 the install.sh --update MECHANISM content-compares + overwrites changed targets + adds new (incl. skills, CR-2) + rewrites anchor, handling both symlink and copy targets; no stale skip. The `plumbline update` CLI applies it to COPY installs and REFUSES a symlink install (-> `git pull`), never copy-converting it (two-mode CLI per REQ-PUR-02/C1; CR-1, 2026-06-21). settings.json Stop-hook NOT re-run on update (`--no-hook`, named scope decision) (AC-PUR-05.1..4); closes G3 refresh | test_update_layer.sh (stale agent+command+lib; symlink-install refuse path) | yes — install.sh --update / transfer() content-compares + overwrites changed targets (both symlink and copy targets); plumbline_update.py `_apply_into_home` gates copy-apply vs symlink-refuse | integration-fake | aligned |
 | TRC-PUR-06 | REQ-PUR-06 verify-or-revert: snapshot $CLAUDE_HOME, revert whole HOME on injected verify-fail; mechanism itself tested (AC-PUR-06.1..3) | test_update_layer.sh (injected verify-failure) | yes — update_apply snapshot/verify/revert wired into apply | integration-fake (+ real-boundary-smoke: sandbox-HOME revert) | aligned |
 | TRC-PUR-07 | REQ-PUR-07 falsifiers for G1-G3 are behaviour/counter (red if fix reverted), wired into run_all.sh (AC-PUR-07.1..4); closes G4 | test_update_layer.sh + run_all.sh | yes — falsifiers run in CI via run_all.sh | integration-fake | aligned |
 | TRC-PUR-08 | REQ-PUR-08 on-by-default / opt-out, non-blocking, throttled, notify-only session-start update-check (AC-PUR-08.1..4) | test_update_layer.sh (+ session-start.sh) | yes — config/claude/hooks/session-start.sh env opt-out check | integration-fake | aligned |
@@ -241,10 +241,14 @@ revert. The SANDBOX-`$CLAUDE_HOME` rule is binding: no test/smoke runs the real 
 the operator's real `~/.claude`. No "every user's real HOME upgraded" claim is made by tests.
 
 **Open Questions:** OQ-PUR-01 (affects REQ-PUR-05) and OQ-PUR-02 (affects REQ-PUR-08) are both
-RESOLVED (user, 2026-06-21): OQ-PUR-01 → content-compare + overwrite in BOTH modes; OQ-PUR-02 →
-auto-check on-by-default / opt-out (notify-only; APPLY stays explicit, NFR-PUR-06 unchanged).
+RESOLVED (user, 2026-06-21): OQ-PUR-01 → content-compare + overwrite in BOTH target modes (this is
+the `install.sh --update` MECHANISM; the `plumbline update` CLI is two-mode — applies it to COPY
+installs, REFUSES a symlink install -> `git pull`, never copy-converting it; CR-1 precision,
+2026-06-21, consistent with REQ-PUR-02/C1); OQ-PUR-02 → auto-check on-by-default / opt-out
+(notify-only; APPLY stays explicit, NFR-PUR-06 unchanged).
 **Status:** Canvas/PRD/Vision all `user-confirmed` (Ben, 2026-06-21, exact phrase; OQs resolved);
 True-Line `aligned`. Build in progress (autonomous, one final acceptance): Sprint 1 (REQ-PUR-01/02)
-+ Sprint 2 (REQ-PUR-03) built, Gates A-E green, committed; Sprint 3 (REQ-PUR-04/05/06 install-refresh)
-+ Sprint 4 (REQ-PUR-07/08) pending. TRC-PUR-04..08 evidence rows are the planned contract (their
-tests land in their sprints).
++ Sprint 2 (REQ-PUR-03) + Sprint 3 (REQ-PUR-04/05/06 install-refresh apply + verify-or-revert,
+real-boundary-smoke vs a sandbox HOME) built, Gates A-E green, committed; Sprint 4 (REQ-PUR-07/08
+falsifier-wiring + opt-out auto-check) pending. TRC-PUR-07/08 evidence rows are the planned contract
+(their tests land in Sprint 4).
