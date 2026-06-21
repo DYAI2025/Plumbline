@@ -2349,4 +2349,98 @@ assert "SPRINT-3 REMED belt: real ~/.claude listing UNCHANGED by the remediation
 assert_eq "SPRINT-3 REMED belt: real ~/.claude dir mtime UNCHANGED by the remediation tests" "$PUR3S_REAL_MTIME_BEFORE" "$REMED_REAL_MTIME_AFTER"
 assert "SPRINT-3 REMED belt: all remediation sandbox roots are under TMP_ROOT" "case '$CR1_BASE' in '$TMP_ROOT'/*) case '$CR2_BASE' in '$TMP_ROOT'/*) case '$CR2H_BASE' in '$TMP_ROOT'/*) case '$CR3_BASE' in '$TMP_ROOT'/*) case '$CR5_BASE' in '$TMP_ROOT'/*) case '$SEC2_BASE' in '$TMP_ROOT'/*) true ;; *) false ;; esac ;; *) false ;; esac ;; *) false ;; esac ;; *) false ;; esac ;; *) false ;; esac ;; *) false ;; esac"
 
+# ====================================================================
+# REQ-PUR-FOLLOWUP-DOCTOR -- `doctor` + `honest-status` resolve identity (version +
+# update slug) from the install-identity ANCHOR, exactly like `version` and
+# `update --check` already do. Code-review follow-up, now in-scope by user request.
+#
+# THE GAP (RED-FOR-THE-RIGHT-REASON TODAY): in plumbline_update.py, doctor() calls
+# read_version(root) + default_repo_slug(root), and honest_status() calls
+# read_version(root) -- ALL with the DEFAULT explicit_root=True. So an INSTALLED
+# doctor/honest-status run from a FOREIGN cwd (no --root) reads the cwd's
+# VERSION/git-origin instead of the install anchor. `version` and `update --check`
+# already thread explicit_root=bool(args.root) and resolve from the anchor; these
+# two do not. Confirmed current behavior off-tree:
+#   * doctor from a foreign repo  -> dies "compatibility.json not found" (exit 1):
+#       it never reaches a correct version/slug line at all.
+#   * doctor from /tmp            -> dies "VERSION not found at /tmp/VERSION".
+#   * honest-status from a foreign repo -> prints "version: 9.9.9" (the cwd's VERSION).
+# After the fix doctor/honest-status MUST report the INSTALLED identity (the anchor's
+# version + slug) regardless of cwd, never the cwd's value, never a VERSION-not-found
+# error. (The doctor file-existence checks install.sh/run_all.sh/compatibility.json
+# stay root-relative and may read "fail" off-tree -- that is expected and NOT what
+# this block contracts; we contract only the reported version + update slug lines.)
+#
+# OFFLINE (NFR): doctor/honest-status read version+slug from the LOCAL anchor file
+# and make NO network call -- there is no http.server stub and no PLUMBLINE_GITHUB_API
+# seam here. So every assertion below stays HARD on EVERY OS (no macOS skip needed:
+# nothing depends on loopback connectivity).
+# SANDBOX-ONLY: every path is under $TMP_ROOT (mktemp); the real ~/.claude is NEVER
+# touched. bash-3.2-safe (no $()-wrapped heredocs -- in fact no heredocs at all in
+# this block), ASCII-only, eval-free (doctor/honest-status output is captured to a
+# log FILE and grepped; no payload is interpolated into shell or python code).
+# ====================================================================
+DOC_INSTALLED_VERSION="$REPO_VERSION"
+
+# COPY-install Plumbline into a sandbox HOME so the installed lib runs from
+# $CLAUDE_HOME/lib and resolves identity from the install anchor (the C2.5/PUR-1.1
+# pattern). The anchor carries the installed version + slug DYAI2025/Plumbline.
+DOC_HOME="$TMP_ROOT/doctor-anchor-home"
+CLAUDE_HOME="$DOC_HOME" "$REPO_DIR/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/doctor-install.log" 2>&1
+DOC_CLI="$DOC_HOME/bin/plumbline"
+assert_file "DOCTOR install: copy-mode plumbline wrapper exists in sandbox" "$DOC_CLI"
+# Safety belt: prove this block never wrote to the operator's real ~/.claude.
+assert "DOCTOR safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$DOC_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+DOC_ANCHOR="$DOC_HOME/.plumbline-install.json"
+assert_file "DOCTOR precondition: copy install wrote the identity anchor" "$DOC_ANCHOR"
+assert "DOCTOR precondition: anchor carries the installed slug DYAI2025/Plumbline" "grep -q 'DYAI2025/Plumbline' '$DOC_ANCHOR'"
+
+# A foreign repo with its OWN VERSION=9.9.9 and its OWN git origin. The installed
+# doctor/honest-status must ignore ALL of it (identity is the install's anchor, not cwd).
+DOC_FAKEREPO="$TMP_ROOT/doctor-fakerepo"
+mkdir -p "$DOC_FAKEREPO"
+printf '9.9.9\n' > "$DOC_FAKEREPO/VERSION"
+git -C "$DOC_FAKEREPO" init -q
+git -C "$DOC_FAKEREPO" remote add origin "https://github.com/EVILFORK/NotPlumbline.git"
+
+# --- 1) doctor version, FOREIGN cwd (own VERSION=9.9.9), no --root --------------
+# doctor exits non-zero off-tree (root-relative file checks fail) -- that is expected
+# and NOT contracted here -- so capture combined output to a log with `|| true` and
+# assert on the PRINTED version line. RED now: doctor dies "compatibility.json not
+# found" before any version line, so DOC_VER_FOREIGN is empty (mismatch) AND the
+# error log carries no "version: <installed>" line.
+( cd "$DOC_FAKEREPO" && "$DOC_CLI" doctor >"$TMP_ROOT/doctor-foreign.log" 2>&1 ) || true
+DOC_VER_FOREIGN="$(grep -E '^version: ' "$TMP_ROOT/doctor-foreign.log" 2>/dev/null | head -1 | sed 's/^version: //')"
+assert_eq "REQ-PUR-FOLLOWUP-DOCTOR 1: doctor version from foreign repo is the INSTALLED version" "$DOC_INSTALLED_VERSION" "$DOC_VER_FOREIGN"
+assert "REQ-PUR-FOLLOWUP-DOCTOR 1: doctor version from foreign repo is NEVER the foreign 9.9.9" "! grep -Eq '^version: 9\.9\.9$' '$TMP_ROOT/doctor-foreign.log'"
+assert "REQ-PUR-FOLLOWUP-DOCTOR 1: doctor from foreign repo never errors VERSION not found" "! grep -q 'VERSION not found' '$TMP_ROOT/doctor-foreign.log'"
+
+# --- 2) doctor update-slug, FOREIGN cwd, no --root ------------------------------
+# doctor prints "update slug: <slug>" (the resolved upstream). From the foreign repo
+# it MUST report the anchor slug DYAI2025/Plumbline, NOT the foreign origin
+# EVILFORK/NotPlumbline. RED now: doctor dies before the slug line (no "update slug:"
+# printed at all), and were it to reach it, default_repo_slug(root) with the default
+# explicit_root=True would consult the foreign git origin.
+DOC_SLUG_FOREIGN="$(grep -E '^update slug: ' "$TMP_ROOT/doctor-foreign.log" 2>/dev/null | head -1 | sed 's/^update slug: //')"
+assert_eq "REQ-PUR-FOLLOWUP-DOCTOR 2: doctor update slug from foreign repo is the anchor slug DYAI2025/Plumbline" "DYAI2025/Plumbline" "$DOC_SLUG_FOREIGN"
+assert "REQ-PUR-FOLLOWUP-DOCTOR 2: doctor update slug from foreign repo is NEVER the foreign EVILFORK/NotPlumbline" "! grep -Eq '^update slug: .*EVILFORK/NotPlumbline' '$TMP_ROOT/doctor-foreign.log'"
+
+# --- 3) doctor version, NEUTRAL cwd (/tmp), no --root ---------------------------
+# RED now: doctor dies "VERSION not found at /tmp/VERSION".
+( cd /tmp && "$DOC_CLI" doctor >"$TMP_ROOT/doctor-neutral.log" 2>&1 ) || true
+DOC_VER_NEUTRAL="$(grep -E '^version: ' "$TMP_ROOT/doctor-neutral.log" 2>/dev/null | head -1 | sed 's/^version: //')"
+assert_eq "REQ-PUR-FOLLOWUP-DOCTOR 3: doctor version from /tmp is the INSTALLED version" "$DOC_INSTALLED_VERSION" "$DOC_VER_NEUTRAL"
+assert "REQ-PUR-FOLLOWUP-DOCTOR 3: doctor from /tmp never errors VERSION not found" "! grep -q 'VERSION not found' '$TMP_ROOT/doctor-neutral.log'"
+
+# --- 4) honest-status version, FOREIGN cwd (own VERSION=9.9.9), no --root -------
+# honest-status prints "version: <V>". From the foreign repo it MUST report the
+# INSTALLED version, NEVER 9.9.9. RED now: honest_status() calls read_version(root)
+# with the default explicit_root=True -> reads the cwd's VERSION -> prints
+# "version: 9.9.9".
+( cd "$DOC_FAKEREPO" && "$DOC_CLI" honest-status >"$TMP_ROOT/honest-foreign.log" 2>&1 ) || true
+DOC_HS_VER_FOREIGN="$(grep -E '^version: ' "$TMP_ROOT/honest-foreign.log" 2>/dev/null | head -1 | sed 's/^version: //')"
+assert_eq "REQ-PUR-FOLLOWUP-DOCTOR 4: honest-status version from foreign repo is the INSTALLED version" "$DOC_INSTALLED_VERSION" "$DOC_HS_VER_FOREIGN"
+assert "REQ-PUR-FOLLOWUP-DOCTOR 4: honest-status version from foreign repo is NEVER the foreign 9.9.9" "! grep -Eq '^version: 9\.9\.9$' '$TMP_ROOT/honest-foreign.log'"
+assert "REQ-PUR-FOLLOWUP-DOCTOR 4: honest-status keeps its Plumbline language from foreign repo" "grep -q 'changed, not yet verified' '$TMP_ROOT/honest-foreign.log'"
+
 finish "update layer tests"

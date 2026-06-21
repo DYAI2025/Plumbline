@@ -961,9 +961,18 @@ def rollback(args: argparse.Namespace, root: Path) -> int:
     return 0
 
 
-def doctor(_args: argparse.Namespace, root: Path) -> int:
-    version = read_version(root)
-    compat = load_compatibility(root)
+def doctor(args: argparse.Namespace, root: Path) -> int:
+    explicit_root = bool(getattr(args, "root", None))
+    version = read_version(root, explicit_root=explicit_root)
+    # The contracted version/update-slug lines (resolved from the install anchor)
+    # must print regardless of cwd; a missing/invalid compatibility.json off-tree
+    # is reported as the `compatibility.json: fail` check below (preserving the
+    # off-tree non-zero exit), not raised as a fatal error that aborts before the
+    # version/slug lines are ever printed.
+    try:
+        compat = load_compatibility(root)
+    except PlumblineError:
+        compat = {}
     checks = [
         ("install.sh", (root / "config" / "claude" / "install.sh").is_file()),
         ("VERSION", (root / "VERSION").is_file()),
@@ -981,7 +990,7 @@ def doctor(_args: argparse.Namespace, root: Path) -> int:
         print(f'  fix: export PATH="{bindir}:$PATH"  (add to your shell rc, then restart the shell)')
     # Update source — surface the resolved slug so a fork user sees where updates come from,
     # and that the upstream override already exists (no new capability, just discoverability).
-    slug = default_repo_slug(root)
+    slug = default_repo_slug(root, explicit_root=explicit_root)
     print(f"update slug: {slug}")
     if slug != DEFAULT_REPO_SLUG:
         print(f"  note: fork detected — for upstream updates: plumbline update --repo {DEFAULT_REPO_SLUG}")
@@ -989,9 +998,10 @@ def doctor(_args: argparse.Namespace, root: Path) -> int:
     return 0 if all(ok for _, ok in checks) else 1
 
 
-def honest_status(_args: argparse.Namespace, root: Path) -> int:
+def honest_status(args: argparse.Namespace, root: Path) -> int:
+    explicit_root = bool(getattr(args, "root", None))
     print("changed, not yet verified")
-    print(f"version: {read_version(root)}")
+    print(f"version: {read_version(root, explicit_root=explicit_root)}")
     print("verification: run bash config/claude/tests/run_all.sh before claiming changed and verified")
     return 0
 
