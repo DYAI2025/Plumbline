@@ -217,6 +217,7 @@ Allowed change scope:
 - `config/claude/install.sh`
 - `config/claude/tests/test_update_layer.sh`
 - `config/claude/tests/test_session_update_check.sh`
+- `config/claude/tests/lib.sh`
 - `config/claude/tests/run_all.sh`
 - `config/claude/hooks/session-start.sh`
 - `docs/canvas/plumbline-update-reliability.canvas.md`

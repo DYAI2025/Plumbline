@@ -111,9 +111,18 @@ PYEOF
 
 # stub_start <tag> -- boot the stub returning <tag> as the latest release, set
 # STUB_PORT / STUB_PID / STUB_REC. bash-3.2-safe port polling; no $()-heredocs.
+#
+# Also sets STUB_MARK to a CONNECTIVITY-ONLY marker (STUB_REACHABLE /
+# STUB_NOT_READY) for the macOS-CI loopback skip: STUB_NOT_READY when no port file
+# appeared OR the bound port is unconnectable (the diagnosed macOS-CI-runner
+# limitation, where the spawned http.server is alive but its loopback socket never
+# accepts). Linux/local reach the stub -> STUB_REACHABLE -> assertions run HARD.
+# The marker is derived from CONNECTIVITY, never from any assertion outcome, so a
+# reachable-but-WRONG response is always a HARD fail.
 STUB_PID=""
 STUB_PORT=""
 STUB_REC=""
+STUB_MARK=""
 stub_start() {
   ssu_tag="$1"
   STUB_REC="$STUB_DIR/rec.txt"
@@ -128,6 +137,11 @@ stub_start() {
     ssu_wait=$((ssu_wait + 1))
   done
   STUB_PORT="$(cat "$ssu_portfile" 2>/dev/null || true)"
+  if [ -n "$STUB_PORT" ]; then
+    STUB_MARK="$(pur_stub_reachable 127.0.0.1 "$STUB_PORT")"
+  else
+    STUB_MARK="STUB_NOT_READY"
+  fi
 }
 
 stub_stop() {
@@ -209,19 +223,33 @@ install_sandbox_home "$F1_HOME" "$REPO_VERSION"
 assert_file "F1 precondition: installed plumbline CLI exists in sandbox HOME" "$F1_HOME/bin/plumbline"
 assert "F1 safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$F1_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
 stub_start "v$NEWER_VERSION"
-assert "F1 precondition: offline release stub is listening" "test -n '$STUB_PORT'"
+F1_MARK="$STUB_MARK"
 F1_OUT="$TMP_ROOT/f1-stdout.json"
 F1_ERR="$TMP_ROOT/f1-stderr.txt"
 run_hook "$F1_HOME" "$F1_OUT" "$F1_ERR"
 stub_stop
+# The hook ALWAYS exits 0 and ALWAYS emits a valid SessionStart JSON on stdout,
+# independent of whether the update fetch reached the stub -- so those contract
+# assertions stay HARD on every OS (they do not need stub connectivity).
 assert_eq "F1: the hook exits 0 (never fatal)" "0" "$RUN_HOOK_STATUS"
-# THE VALUE FALSIFIER: the behind-install notice is actually surfaced.
-assert "F1 REQ-PUR-08 (on-by-default): hook prints an 'update available' notice on stderr when behind" "grep -qi 'update available' '$F1_ERR'"
-assert "F1 REQ-PUR-08 (notify): the notice names the command 'plumbline update' to run" "grep -q 'plumbline update' '$F1_ERR'"
-assert "F1 REQ-PUR-08 (notify): the notice carries the newer latest version" "grep -qF '$NEWER_VERSION' '$F1_ERR'"
 # The stdout SessionStart JSON contract must remain intact (notice on stderr only).
 assert "F1: stdout stays a single valid JSON object (notice did not leak to stdout)" "jq -e . '$F1_OUT'"
 assert "F1: stdout SessionStart JSON carries no 'update available' text" "! grep -qi 'update available' '$F1_OUT'"
+# macOS-CI loopback skip (NARROW / LOUD / Linux stays HARD): the "stub listening"
+# precondition and the update-notice falsifiers all require the hook's `--check`
+# to actually reach the 127.0.0.1 stub. On the macOS runner the stub is
+# unconnectable (F1_MARK=STUB_NOT_READY) -> SKIP tallied; Linux/local reach it
+# (STUB_REACHABLE) -> run HARD. Keyed off connectivity only -- a reachable hook
+# that fails to notify is still a HARD fail.
+if pur_macos_stub_skip_active "$F1_MARK"; then
+  pur_stub_skip_notice "F1 REQ-PUR-08 on-by-default notice block (4 assertions)"
+else
+  assert "F1 precondition: offline release stub is listening" "test -n '$STUB_PORT'"
+  # THE VALUE FALSIFIER: the behind-install notice is actually surfaced.
+  assert "F1 REQ-PUR-08 (on-by-default): hook prints an 'update available' notice on stderr when behind" "grep -qi 'update available' '$F1_ERR'"
+  assert "F1 REQ-PUR-08 (notify): the notice names the command 'plumbline update' to run" "grep -q 'plumbline update' '$F1_ERR'"
+  assert "F1 REQ-PUR-08 (notify): the notice carries the newer latest version" "grep -qF '$NEWER_VERSION' '$F1_ERR'"
+fi
 
 # ============================================================================
 # FALSIFIER 2 (confirming/RED) -- SILENT when CURRENT.
@@ -316,7 +344,15 @@ assert_eq "F4 REQ-PUR-08 (non-blocking): the hook returns promptly (did NOT bloc
 # (b) NEVER auto-applies: the install must be byte-identical apart from the
 # throttle-cache. The installed CLI still reports vN, the anchor still reads vN,
 # and there is NO apply artifact (snapshot / last-success.json).
-f4_cli_ver="$(cd /tmp && "$F4_HOME/bin/plumbline" version 2>/dev/null || true)"
+# Capture the installed CLI version as reported from a neutral cwd (/tmp), empty on
+# any failure. Written as an explicit `if` (NOT `A && B || C` inside `$(...)`) so it
+# is shellcheck-clean on every version -- the `A && B || C` form trips SC2015 on
+# CI's shellcheck even though it parses fine locally. bash-3.2-safe, eval-free.
+if f4_cli_ver="$(cd /tmp && "$F4_HOME/bin/plumbline" version 2>/dev/null)"; then
+  :
+else
+  f4_cli_ver=""
+fi
 assert_eq "F4 REQ-PUR-08 (notify-only): installed CLI version is UNCHANGED after the check (no apply, still vN)" "$REPO_VERSION" "$f4_cli_ver"
 assert "F4 REQ-PUR-08 (notify-only): anchor still reads vN after the check (apply never re-stamped it)" "grep -q '\"$REPO_VERSION\"' '$F4_ANCHOR'"
 assert "F4 REQ-PUR-08 (notify-only): the check did NOT write the apply last-success.json" "test ! -e '$F4_HOME/.plumbline/update/last-success.json'"
@@ -337,6 +373,7 @@ install_sandbox_home "$F5_HOME" "$REPO_VERSION"
 F5_CACHE="$F5_HOME/.plumbline/update/last-check.json"
 assert "F5 precondition: throttle cache is absent before the first check" "test ! -e '$F5_CACHE'"
 stub_start "v$NEWER_VERSION"
+F5_MARK="$STUB_MARK"
 # Single stub instance, single record file: both runs count against ONE counter.
 F5_OUT1="$TMP_ROOT/f5-stdout-1.json"; F5_ERR1="$TMP_ROOT/f5-stderr-1.txt"
 F5_OUT2="$TMP_ROOT/f5-stdout-2.json"; F5_ERR2="$TMP_ROOT/f5-stderr-2.txt"
@@ -345,13 +382,22 @@ F5_HITS_AFTER1="$(stub_hits)"
 run_hook "$F5_HOME" "$F5_OUT2" "$F5_ERR2"
 F5_HITS_AFTER2="$(stub_hits)"
 stub_stop
-# After the first check: exactly one network hit AND the cache was written.
-assert_eq "F5 REQ-PUR-08 (throttle): the FIRST session-start check hits the network exactly once" "1" "$F5_HITS_AFTER1"
-assert_file "F5 REQ-PUR-08 (throttle): the first check WROTE the throttle cache (last-check.json)" "$F5_CACHE"
-# After the second check within the window: STILL exactly one hit (cache reused).
-assert_eq "F5 REQ-PUR-08 (throttle): a SECOND check within the window does NOT re-hit the network (still 1 hit total)" "1" "$F5_HITS_AFTER2"
-# Belt: both runs still exited 0 (the throttle never makes the hook fatal).
+# The second run ALWAYS produces a valid SessionStart JSON regardless of fetch
+# connectivity, so that contract belt stays HARD on every OS.
 assert "F5: the throttled second run still produced a valid SessionStart JSON" "jq -e . '$F5_OUT2'"
+# macOS-CI loopback skip: the throttle counters (network-hit count) and the cache
+# write all require the hook's `--check` to actually reach the 127.0.0.1 stub. On
+# the macOS runner the stub is unconnectable (F5_MARK=STUB_NOT_READY) -> SKIP
+# tallied; Linux/local reach it -> run HARD. Keyed off connectivity only.
+if pur_macos_stub_skip_active "$F5_MARK"; then
+  pur_stub_skip_notice "F5 REQ-PUR-08 throttle counter+cache block (3 assertions)"
+else
+  # After the first check: exactly one network hit AND the cache was written.
+  assert_eq "F5 REQ-PUR-08 (throttle): the FIRST session-start check hits the network exactly once" "1" "$F5_HITS_AFTER1"
+  assert_file "F5 REQ-PUR-08 (throttle): the first check WROTE the throttle cache (last-check.json)" "$F5_CACHE"
+  # After the second check within the window: STILL exactly one hit (cache reused).
+  assert_eq "F5 REQ-PUR-08 (throttle): a SECOND check within the window does NOT re-hit the network (still 1 hit total)" "1" "$F5_HITS_AFTER2"
+fi
 
 # ============================================================================
 # REQ-PUR-07 (CONFIRMING) -- the Sprint-1..3 update falsifiers are WIRED into CI
