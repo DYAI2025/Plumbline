@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.1](https://github.com/DYAI2025/Plumbline/compare/v0.22.0...v0.22.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **update:** doctor + honest-status resolve identity from the install anchor ([232032d](https://github.com/DYAI2025/Plumbline/commit/232032d58feea53520eb95c6fa2226d0f03d75de))
+* **update:** doctor + honest-status resolve identity from the install anchor ([74480ca](https://github.com/DYAI2025/Plumbline/commit/74480ca969100935a1091625a04eaaf374f5a254))
+
 ## [0.22.0](https://github.com/DYAI2025/Plumbline/compare/v0.21.0...v0.22.0) (2026-06-21)
 
 
