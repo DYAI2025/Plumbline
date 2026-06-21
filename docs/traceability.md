@@ -214,11 +214,11 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 
 ## Slice: Plumbline Update Reliability (plumbline-update-reliability)
 
-- Feature-Slug: plumbline-update-reliability (intake authored only; docs, no production code; not yet committed)
+- Feature-Slug: plumbline-update-reliability (iterative 4-sprint build; Sprint 1 [install identity] + Sprint 2 [token-aware resilient fetch] built, gated A-E green, committed; Sprint 3 [install-refresh] next)
 - canvas-link: docs/canvas/plumbline-update-reliability.canvas.md (Status: user-confirmed 2026-06-21)
 - prd-link: docs/prd/plumbline-update-reliability.prd.md (Status: user-confirmed 2026-06-21)
 - vision-link: docs/vision/plumbline-update-reliability.vision.md (Status: user-confirmed 2026-06-21)
-- reality-ledger: docs/reality/plumbline-update-reliability.evidence.jsonl (authored 2026-06-21; Sprint 1 records integration-fake)
+- reality-ledger: docs/reality/plumbline-update-reliability.evidence.jsonl (REQ-PUR-01/02 integration-fake [Sprint 1]; REQ-PUR-03 real-boundary-smoke [Sprint 2, live --check] + integration-fake auth mechanics; doctor follow-up tracked)
 - plan: docs/plans/2026-06-21-plumbline-update-reliability.md
 
 | Trace ID | Requirement (AC) | Evidence (test) | wired-in-prod? | evidence-class | True-Line |
@@ -243,6 +243,8 @@ the operator's real `~/.claude`. No "every user's real HOME upgraded" claim is m
 **Open Questions:** OQ-PUR-01 (affects REQ-PUR-05) and OQ-PUR-02 (affects REQ-PUR-08) are both
 RESOLVED (user, 2026-06-21): OQ-PUR-01 → content-compare + overwrite in BOTH modes; OQ-PUR-02 →
 auto-check on-by-default / opt-out (notify-only; APPLY stays explicit, NFR-PUR-06 unchanged).
-**Status:** intake authored only; the user (Ben, 2026-06-21) resolved the OQs AND gave the exact
-confirmation phrase, so Canvas/PRD/Vision are all `user-confirmed` (2026-06-21) and True-Line is
-`aligned`; no production code; not yet committed.
+**Status:** Canvas/PRD/Vision all `user-confirmed` (Ben, 2026-06-21, exact phrase; OQs resolved);
+True-Line `aligned`. Build in progress (autonomous, one final acceptance): Sprint 1 (REQ-PUR-01/02)
++ Sprint 2 (REQ-PUR-03) built, Gates A-E green, committed; Sprint 3 (REQ-PUR-04/05/06 install-refresh)
++ Sprint 4 (REQ-PUR-07/08) pending. TRC-PUR-04..08 evidence rows are the planned contract (their
+tests land in their sprints).

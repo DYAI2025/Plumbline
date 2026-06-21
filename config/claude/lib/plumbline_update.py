@@ -20,6 +20,16 @@ from typing import Any
 
 SEMVER_RE = re.compile(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?(?!\d)")
 GITHUB_REMOTE_RE = re.compile(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$")
+# A valid GitHub OWNER/REPO slug: two path segments of the GitHub-permitted
+# charset. Anything else (extra slashes, traversal, injection chars) must be
+# refused before it is interpolated into a request path (NOTE-2).
+REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+# The one host the GitHub release Authorization header is ever attached to.
+# Sending it anywhere else (e.g. an attacker-controlled PLUMBLINE_GITHUB_API)
+# would exfiltrate the token, so the header is host-gated to this value
+# (CRITICAL-1). The PLUMBLINE_GITHUB_API_ALLOW_INSECURE_TOKEN gate is the only,
+# explicit, default-OFF exception (used by the offline 127.0.0.1 tests).
+GITHUB_API_HOST = "api.github.com"
 HTTP_TIMEOUT = 30
 USER_AGENT = "plumbline-update"
 DEFAULT_REPO_SLUG = "DYAI2025/Plumbline"
@@ -289,16 +299,117 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 _SAFE_OPENER = urllib.request.build_opener(_SafeRedirectHandler)
 
 
+def _github_token() -> str | None:
+    """Resolve a GitHub token for authenticated release fetches, best-effort.
+
+    Order: $GITHUB_TOKEN -> $GH_TOKEN -> `gh auth token` (only if `gh` is on
+    PATH). A non-empty env value wins. If EITHER token env var is *defined*
+    (present in the environment) — even as an empty string — the caller has taken
+    explicit control of token provisioning, so an empty value is an explicit
+    "unauthenticated" opt-out and the `gh` fallback is NOT consulted (otherwise
+    `gh auth token` would silently re-authenticate a deliberately-cleared run).
+    The `gh` lookup is best-effort over a list-argv subprocess (no shell): any
+    failure (gh missing, not authenticated, error) is swallowed and yields None.
+    The token is used ONLY to build the Authorization header and is NEVER logged,
+    printed, or embedded in any message — including exception text — so it cannot
+    leak on any path.
+    """
+    env_token_defined = False
+    for env_name in ("GITHUB_TOKEN", "GH_TOKEN"):
+        if env_name in os.environ:
+            env_token_defined = True
+            # Strip before the truthiness check: a whitespace-only value (e.g.
+            # GITHUB_TOKEN="   ") must resolve to "no token", never a garbage
+            # `Bearer    ` header with a blank credential (NOTE-1). Matches the
+            # existing `.strip()` on the `gh auth token` path below.
+            value = os.environ[env_name].strip()
+            if value:
+                return value
+    # An explicitly-defined-but-empty token env var means "unauthenticated";
+    # do not let `gh auth token` override that deliberate choice.
+    if env_token_defined:
+        return None
+    if shutil.which("gh") is None:
+        return None
+    try:
+        proc = subprocess.run(
+            ["gh", "auth", "token"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=HTTP_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode == 0:
+        token = proc.stdout.strip()
+        if token:
+            return token
+    return None
+
+
 def fetch_latest_release(slug: str) -> dict[str, Any]:
-    """GET the latest release metadata from the GitHub API (no traceback on failure)."""
-    url = require_safe_url(f"{github_api_base()}/repos/{slug}/releases/latest")
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"},
-    )
+    """GET the latest release metadata from the GitHub API (no traceback on failure).
+
+    Sends an `Authorization: Bearer <token>` header when a token is resolvable
+    AND the resolved base host is the real GitHub API host (REQ-PUR-03 AC-1 /
+    CRITICAL-1 — never to an attacker-controlled PLUMBLINE_GITHUB_API host,
+    except under the explicit default-OFF insecure-token gate the offline tests
+    set); proceeds unauthenticated otherwise (AC-2). HTTP errors are
+    classified DISTINCTLY (AC-3): 403 -> a rate-limit message, 404 -> a
+    release/repo-not-found message, both escaping the generic "could not reach"
+    wrapper that other transport errors keep. The token is never included in any
+    message (AC-4): error text is built only from the HTTP status code, never the
+    raw exception (which urllib does not embed the token in, but we avoid it as a
+    belt) and never the token itself.
+    """
+    # Validate the slug BEFORE it touches the request path: a malformed slug
+    # (extra path segments, traversal, control/injection chars) must be a clear
+    # classified error, never a path-injected request (NOTE-2).
+    if not REPO_SLUG_RE.match(slug):
+        raise PlumblineError(
+            f"invalid GitHub repo slug (expected OWNER/REPO): {slug!r}"
+        )
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"}
+    base = github_api_base()
+    token = _github_token()
+    # CRITICAL-1: the Authorization header is attached ONLY to the real GitHub
+    # API host. PLUMBLINE_GITHUB_API is honored in prod, so a token + an
+    # attacker-controlled host would otherwise exfiltrate the token. The only
+    # non-github allowance is the EXPLICIT, default-OFF insecure-token gate (so
+    # the offline 127.0.0.1 tests can exercise the header path); localhost is NOT
+    # implicitly trusted (an attacker could bind it). Absent both, no header is
+    # sent and the request proceeds unauthenticated (no crash).
+    if token:
+        base_host = urllib.parse.urlparse(base).hostname
+        insecure_gate = os.environ.get("PLUMBLINE_GITHUB_API_ALLOW_INSECURE_TOKEN") == "1"
+        if base_host == GITHUB_API_HOST or insecure_gate:
+            headers["Authorization"] = f"Bearer {token}"
+    url = require_safe_url(f"{base}/repos/{slug}/releases/latest")
+    request = urllib.request.Request(url, headers=headers)
     try:
         with _SAFE_OPENER.open(request, timeout=HTTP_TIMEOUT) as response:
             payload = response.read()
+    except urllib.error.HTTPError as exc:
+        # Classify the distinct, actionable HTTP error paths. These messages must
+        # NOT contain the generic "could not reach GitHub release API" wrapper, so
+        # they are recognizably different from each other and from transport
+        # failures. The error text is built from the status CODE only — never from
+        # the exception object or the token — so no header/token can leak.
+        code = exc.code
+        if code == 403:
+            raise PlumblineError(
+                "GitHub API rate-limited (HTTP 403) - "
+                "set GITHUB_TOKEN to raise the rate limit"
+            ) from None
+        if code == 404:
+            raise PlumblineError(
+                f"GitHub release/repo not found (HTTP 404): {slug} "
+                "has no published release, or the repo slug is wrong"
+            ) from None
+        raise PlumblineError(
+            f"could not reach GitHub release API: HTTP error {code}"
+        ) from None
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise PlumblineError(f"could not reach GitHub release API: {exc}") from exc
     try:
