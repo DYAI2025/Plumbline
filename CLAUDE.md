@@ -99,6 +99,45 @@ is absent.
 - **Human gates stay** — requirements confirmation, the Product Canvas, product
   judgment, and persistent self-improvement always require explicit human sign-off.
 
+## Plumbline stance: truth through awareness (foundational — learned 2026-06-21)
+
+**Wahrheit durch Bewusstsein — bewusstes Sein durch explizite Regeln und bewusste
+Entscheidungen.** (Truth through awareness; conscious being through explicit rules and
+conscious decisions.) This is the deepest stabilizer in the project — a *stance*, prior to
+any gate. The gates above only hold because of it.
+
+The incident that made it explicit: at the end of the OpenRouter arc the agent **silently
+skipped the formal Phase-4 retro** and waved off the last slice's learning as "schon normal
+/ a confirmation of an existing rule." No rule was broken — but an **implicit decision was
+passed over as self-evident**, and in doing so it quietly declared something a rule
+*without consciousness*: unexamined, unchangeable, ungovernable. A blind automatism. The
+value was not lost only because the skip was later **named out loud** — and naming it gave
+the team the chance to make the implicit explicit, and therefore changeable, governable,
+safe.
+
+The binding stance (not a tactic — a way of working):
+
+- **Put space between impulse and action.** Before skipping, shortcutting, defaulting, or
+  treating any discipline step as "normal / not needed / already covered" — pause (even
+  briefly, even just after) and ask consciously: *was that actually something we want to do
+  here, or am I just assuming it's normal — and thereby turning something implicit into an
+  implicit rule?*
+- **Make the implicit explicit.** A skip, a default, a "that's how it's done" is only safe
+  once it is *named as a conscious decision*. The instant it is surfaced, it becomes
+  changeable, governable, safe — the opposite of a silent automatism. Implicit habit
+  silently accreting into rule is exactly what this stance exists to prevent.
+- **Awareness is the act, not perfection.** The rule is **not** "never skip" — lean/skip is
+  often right. The rule is to skip *consciously and visibly*: name it, offer the
+  alternative, and where it would set precedent, confirm it with the human — so the team can
+  examine and govern it, rather than letting an unexamined habit become the rule.
+
+How to apply: when you catch yourself about to bypass a step on the grounds of
+"normal/covered/not worth it," **surface that as an explicit, named decision** instead of
+silently passing it. This is the mechanism by which Plumbline turns implicit habit into
+explicit, governable, truthful practice — one conscious decision at a time. (This stance is
+*why* the no-silent-downgrade, no-silent-cap, and human-gate invariants exist; it
+generalizes them to every default the agent would otherwise take unseen.)
+
 ## `/agileteam` command
 
 `/agileteam <feature>` orchestrates an autonomous TDD team: Product Canvas gate →
