@@ -45,7 +45,11 @@ even if CI is green.** Uncertainty resolves toward *not* merging; escalate to th
 ## Merge (only once the gate holds)
 
 1. **Watch CI to conclusion:** `gh pr checks <PR> --watch` (run it in the background so the
-   session isn't blocked; you'll be notified on completion).
+   session isn't blocked; you'll be notified on completion). **Resolve the run by the pushed
+   HEAD sha, never the first/most-recent run** — after a push `gh run list` often returns the
+   *prior* push's run first; match `headSha == $(git rev-parse HEAD)` (`gh run list --branch
+   <b> --json headSha,databaseId,status`) or rely on `gh pr checks <PR> --watch` (it tracks the
+   PR head), so you confirm the HEAD commit's conclusion, not a stale run's.
 2. **On green AND gate-holds:** integrate, then re-verify on the result:
    ```bash
    git switch main && git pull

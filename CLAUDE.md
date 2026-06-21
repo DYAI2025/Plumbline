@@ -94,6 +94,16 @@ is absent.
 - **Wired-in-prod** — a real implementation with no test through the production
   composition root is *not satisfiable*. (This is the original incident the whole repo
   exists to prevent: "exists in tests, never composed in prod.")
+- **Injectable seam ⇒ wired + gated + falsified + smoked** (the recurring
+  wired-in-prod-one-level-down class — 4× this project). A fake/injected TEST seam standing in
+  for a real boundary is *not* wired-in-prod until all four hold: (1) a paired real entrypoint
+  actually composed through the prod root, env-gated OFF by default (`*_LIVE=1`); (2) a
+  counter-based *falsifying* test that reddens if the wiring is reverted (not just an outcome
+  assertion); (3) the headline real-boundary smoke run BEFORE the acceptance gate; (4) the
+  gate-OFF-by-default proven offline. Offline-green over an injected seam proves nothing about
+  prod. Incidents: dead `_real_transport` (Slice 1), unwired `catalog_ids` resolver (Slice 2),
+  the GUI offline path that rendered only via the inject-seam while the real socket 400'd
+  (Slice 4).
 - **Independence** — whoever writes code does not review it; whoever derives tests does
   not implement them. Review/security/validation must not echo the coder's reasoning.
 - **Human gates stay** — requirements confirmation, the Product Canvas, product
@@ -237,14 +247,14 @@ Each rule is from a real incident in the Slice-1 build, caught by the defense-in
 
 - **A real-boundary smoke must not hand-feed the value of the instrument it measures.** The invocability smoke supplied `--input-estimate 12` by hand, then the benchmark claimed "the heuristic estimated 12" and reported the drift of that typed-in number — the module's own heuristic actually computes 10 (real drift +8). A benchmark that measures an instrument's fidelity (a heuristic, an estimator, a classifier) MUST let the instrument compute its own value; supplying it by hand and attributing it to the instrument is a "looks-measured-but-isn't" claim. Re-run the smoke the honest way; never re-word around it. (Caught by an `ultrathink-craftsmanship` plausibility pass over the *numbers*, not the process — run one before committing benchmark claims.)
 - **Assert exact signed/numeric values, not substrings, for numeric contract fields.** A drift test used `grep -F "15"`, which matched `-15` and masked a sign-inverted computation (`input-prompt` vs the contract's `prompt-input`). For any numeric/signed result field, assert the exact value (`"drift": 15`), never a bare substring — a substring silently passes wrong signs and magnitudes.
-- **An injectable test seam needs a paired, gated real entrypoint — or the real path is dead code.** `_real_transport` was implemented but the CLI hardwired `transport=None`, so the offline suite stayed green while the real call was unreachable and the headline real-boundary smoke was impossible (wired-in-prod, one level down). When you build a real-boundary capability behind a fake/injected seam for testing, also ship a gated opt-in entrypoint (env-gated, e.g. `*_LIVE=1`) that reaches the real path, plus a test asserting the gate is OFF by default. The real path's proof is the smoke; the gate's proof is offline.
+- **Injectable seam was dead in prod (Slice-1 instance of the *Injectable seam ⇒ wired+gated+falsified+smoked* core invariant):** `_real_transport` existed but the CLI hardwired `transport=None` → offline-green, real path unreachable, the headline smoke impossible. Full prescription: see that core invariant (in "Core invariants").
 
 ## Foreign-model council build hygiene (learned — deepseek-review-agent / Slice 2, 2026-06-19)
 
 Each rule is from a real incident in the Slice-2 build, caught by the defense-in-depth gates.
 
 - **Verify model ids against the LIVE catalog (or resolve dynamically) — never hardcode a model from memory.** A hardcoded model-id constant is a time-bomb: this sprint it went stale **twice** — Slice-1's `meta-llama/llama-3.1-8b-instruct:free` had dropped from the OpenRouter catalog, and the "fix" picked `qwen/qwen3-235b-a22b:free` which *also* wasn't in the catalog (a second stale default, caught only by a live `GET /api/v1/models` check). So: before freezing any model id, verify it against the live catalog, or resolve it at runtime against the catalog (preference-ordered, fail-closed on unreachable — never a stale pick). A hardcoded fallback is acceptable only as a documented no-catalog last resort with a periodic-recheck note. (This is the no-hardcoded-version rule applied to model ids.)
-- **Run the real boundary smoke BEFORE the acceptance gate — it catches dead real-paths that injected/offline tests show green.** The dynamic resolver had an injectable `--inject-catalog` seam and 91/91 offline green, but its real live catalog fetch was **never wired** (`catalog_ids` was always `None` in prod → every live preset would have aborted `catalog-unreachable`). Offline tests + two independent reviewers missed it (they trusted a docstring that said "the caller fetches"); the **real full-preset smoke** exposed it on the first dry-run. So: an injectable seam needs its real entrypoint WIRED plus a paired *falsifying* test (counter-based, fails if the wiring is reverted — not just an outcome assertion), and the headline real-boundary smoke must be run before acceptance, not after. (Reinforces the openrouter-inference "injectable seam needs a paired gated real entrypoint" rule — this was a second instance one level up.)
+- **Smoke-before-acceptance caught a dead real-path (Slice-2 instance of the same core invariant):** the `--inject-catalog` resolver was 91/91 offline-green but its live catalog fetch was never wired (`catalog_ids` always `None`); two reviewers trusted a docstring — the real full-preset smoke exposed it on the first dry-run. Full prescription: see the *Injectable seam ⇒ wired+gated+falsified+smoked* core invariant.
 - **No `eval`-based test assertions over payload content — it is an injection and fragility vector.** The leak-check loop ran `assert "! printf '%s' \"$payload\" | grep …"` through `eval`; a backtick / `$()` in a legitimate payload (a character system prompt) executed command substitution from the content (a scratch probe ran `touch /tmp/_pwned_canary`) and otherwise broke parsing — which had forced production code to *mangle its own disclosed output* to pass. Fix: assert via a parameter-passed `grep` helper (`assert_not_contains` using `printf '%s' "$2" | grep -qF -- "$3"`), never `eval` payload content. A test that forces production to mangle content to pass is the defect, not the content.
 
 ## Measurement-slice + portability hygiene (learned — council-diversity-measurement / Slice 3a, 2026-06-19)
