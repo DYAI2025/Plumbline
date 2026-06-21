@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.22.0](https://github.com/DYAI2025/Plumbline/compare/v0.21.0...v0.22.0) (2026-06-21)
+
+
+### Features
+
+* **update:** plumbline-update-reliability — one natural update that installs all new content (S1-S4) ([22b7ee5](https://github.com/DYAI2025/Plumbline/commit/22b7ee59c11cf803a39778b4172e46e4676d349a))
+* **update:** Sprint 1 — fixed install identity (anchor + cwd-independent two-mode resolution) ([1401957](https://github.com/DYAI2025/Plumbline/commit/14019570819d17cb208823a8b2926de48fd74e5d))
+* **update:** Sprint 2 — token-aware resilient release fetch + Gate-B token-exfil fix ([b7c3666](https://github.com/DYAI2025/Plumbline/commit/b7c36667e887581cb90898f35391b206ca95814b))
+* **update:** Sprint 3 — install-refresh apply into $CLAUDE_HOME + verify-or-revert ([60a7bda](https://github.com/DYAI2025/Plumbline/commit/60a7bda481c1ade8ad13a544cdcce8acfc347b53))
+* **update:** Sprint 4 — opt-out session-start update-check + CI-wired falsifiers ([bd03303](https://github.com/DYAI2025/Plumbline/commit/bd03303069d2d49a5458ad3698b3328ed1cea078))
+
+
+### Bug Fixes
+
+* stabilize CI checks ([6ff9683](https://github.com/DYAI2025/Plumbline/commit/6ff96836e001a17986865c62efd84e61d7de05f7))
+* stabilize CI checks ([8479048](https://github.com/DYAI2025/Plumbline/commit/8479048ccb9b27ca1aa0c8085b128e4a58c2f4b2))
+* **update:** use install anchor for natural fetches ([957d139](https://github.com/DYAI2025/Plumbline/commit/957d13911c801cae6b476de02207ca4e3337f86b))
+
 ## [0.21.0](https://github.com/DYAI2025/Plumbline/compare/v0.20.0...v0.21.0) (2026-06-21)
 
 
