@@ -211,3 +211,38 @@ RED(confidence) — only the user reclassifies at the acceptance gate.
 | TRC-MR-011 | REQ-MR-011 (security N1/N2/N3: @path confined, OSError surfaced, no fabricated flag, no key leak) | test + security-review | n/a | integration-fake | pass |
 
 **Reality Ledger (MR-3b, honest ceiling):** the offline harness is `integration-fake`; the n=2 pilot **RAN LIVE** (2026-06-20, user-approved budget MAX-CALLS=10, Arm A `anthropic/claude-haiku-4.5` vs Arm B preset-A free) → `real-boundary-smoke` for the RUN MECHANISM only (4 real calls, both arms crossed the boundary, leak=0). **Outcome = `underpowered`** (survivors 0/2; both tasks paired-excluded on `COUNCIL_RATE_LIMITED`) — a run-mechanism smoke + cost/flakiness estimate, **NOT a value verdict** (`docs/benchmarks/2026-06-20-council-measurement-pilot.md`). Key finding: free-tier Arm-B is 100% rate-limited → the powered full run needs PAID Arm-B + corpus expansion + A/B/C. NO measurement number / value claim. The value verdict needs the powered full run (corpus expansion + A/B/C). Defense-in-depth caught + fixed, pre-merge: 4 measurement-integrity BLOCKERs at spec-sanity (arm asymmetry, REQ-MR-005/009 contradiction, unmeasurable aggregate cost, n=2 refutability), 2 HIGH at code-review (MDE rubric unimplemented; MAX-CALLS not enforced), and a getattr test-gaming smell (test relaxed + de-obfuscated). The live Arm-A path was proven reachable BY EXECUTION (not the Slice-2 dead-seam failure).
+
+## Slice: Plumbline Update Reliability (plumbline-update-reliability)
+
+- Feature-Slug: plumbline-update-reliability (intake authored only; docs, no production code; not yet committed)
+- canvas-link: docs/canvas/plumbline-update-reliability.canvas.md (Status: user-confirmed 2026-06-21)
+- prd-link: docs/prd/plumbline-update-reliability.prd.md (Status: user-confirmed 2026-06-21)
+- vision-link: docs/vision/plumbline-update-reliability.vision.md (Status: user-confirmed 2026-06-21)
+- reality-ledger: docs/reality/plumbline-update-reliability.evidence.jsonl (to be authored Phase 3)
+- plan: docs/plans/2026-06-21-plumbline-update-reliability.md
+
+| Trace ID | Requirement (AC) | Evidence (test) | wired-in-prod? | evidence-class | True-Line |
+|---|---|---|---|---|---|
+| TRC-PUR-01 | REQ-PUR-01 install-identity anchor written at install (AC-PUR-01.1/.2) | test_update_layer.sh | yes — install.sh install_bin* writes $CLAUDE_HOME/.plumbline-install.json | integration-fake | aligned |
+| TRC-PUR-02 | REQ-PUR-02 cwd-independent installed identity, anchor-preferred; foreign-repo + old-install fallback (AC-PUR-02.1..4); closes G1 | test_update_layer.sh (installed plumbline from /tmp + /tmp/fakerepo, no --root) | yes — plumbline_update.py resolve_install_identity preferred by read_version/default_repo_slug | integration-fake | aligned |
+| TRC-PUR-03 | REQ-PUR-03 token-aware fetch; unauth-fallback; 403-vs-404 distinct; token never printed (AC-PUR-03.1..4); closes G2 | test_update_layer.sh (offline via PLUMBLINE_GITHUB_API seam) | yes — fetch_latest_release sets Authorization header in prod path | integration-fake (+ gated real-boundary-smoke: live --check) | aligned |
+| TRC-PUR-04 | REQ-PUR-04 update applies into $CLAUDE_HOME via REAL install.sh --update, not --dry-run; real ~/.claude never written (AC-PUR-04.1..4); closes G3 apply | test_update_layer.sh (sandbox $CLAUDE_HOME) | yes — update_apply (no --target) runs real installer into $CLAUDE_HOME | integration-fake (+ real-boundary-smoke: sandbox-HOME apply) | aligned |
+| TRC-PUR-05 | REQ-PUR-05 install update-mode content-compares + overwrites changed targets in BOTH modes + adds new + rewrites anchor; no stale skip (AC-PUR-05.1..3); closes G3 refresh | test_update_layer.sh (stale agent+command+lib) | yes — install.sh --update / transfer() content-compares + overwrites changed target (both symlink and --copy) | integration-fake | aligned |
+| TRC-PUR-06 | REQ-PUR-06 verify-or-revert: snapshot $CLAUDE_HOME, revert whole HOME on injected verify-fail; mechanism itself tested (AC-PUR-06.1..3) | test_update_layer.sh (injected verify-failure) | yes — update_apply snapshot/verify/revert wired into apply | integration-fake (+ real-boundary-smoke: sandbox-HOME revert) | aligned |
+| TRC-PUR-07 | REQ-PUR-07 falsifiers for G1-G3 are behaviour/counter (red if fix reverted), wired into run_all.sh (AC-PUR-07.1..4); closes G4 | test_update_layer.sh + run_all.sh | yes — falsifiers run in CI via run_all.sh | integration-fake | aligned |
+| TRC-PUR-08 | REQ-PUR-08 on-by-default / opt-out, non-blocking, throttled, notify-only session-start update-check (AC-PUR-08.1..4) | test_update_layer.sh (+ session-start.sh) | yes — config/claude/hooks/session-start.sh env opt-out check | integration-fake | aligned |
+
+**Reality Ledger (PUR, honest ceiling):** offline mechanics = `integration-fake` (cwd-independent
+identity, token-on-header + unauth-fallback + 403/404 classification via the injectable
+`PLUMBLINE_GITHUB_API` seam, headline apply/refresh/revert into a sandbox `$CLAUDE_HOME`,
+falsifiers). `real-boundary-smoke` (gated, NOT in CI) for the opt-in live `update --check` against
+`DYAI2025/Plumbline` and the real sandbox-`$CLAUDE_HOME` apply vN->vN+1 + forced-verify-fail
+revert. The SANDBOX-`$CLAUDE_HOME` rule is binding: no test/smoke runs the real installer against
+the operator's real `~/.claude`. No "every user's real HOME upgraded" claim is made by tests.
+
+**Open Questions:** OQ-PUR-01 (affects REQ-PUR-05) and OQ-PUR-02 (affects REQ-PUR-08) are both
+RESOLVED (user, 2026-06-21): OQ-PUR-01 → content-compare + overwrite in BOTH modes; OQ-PUR-02 →
+auto-check on-by-default / opt-out (notify-only; APPLY stays explicit, NFR-PUR-06 unchanged).
+**Status:** intake authored only; the user (Ben, 2026-06-21) resolved the OQs AND gave the exact
+confirmation phrase, so Canvas/PRD/Vision are all `user-confirmed` (2026-06-21) and True-Line is
+`aligned`; no production code; not yet committed.
