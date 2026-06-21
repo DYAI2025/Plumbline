@@ -176,6 +176,9 @@ bash config/claude/tests/test_release_please.sh || mark_fail
 stage "update layer tests"
 bash config/claude/tests/test_update_layer.sh || mark_fail
 
+stage "session-start update-check tests (REQ-PUR-08 on-by-default/opt-out/throttle/notify-only)"
+bash config/claude/tests/test_session_update_check.sh || fail=1
+
 stage "gate contract tests (G1/G3/G4)"
 bash config/claude/tests/test_gate_contracts.sh || mark_fail
 

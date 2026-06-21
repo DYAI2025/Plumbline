@@ -11,7 +11,7 @@ gaps the current tests mask.
 ## Non-goals
 - Not changing the release-please release-cutting flow (`.github/workflows/release-please.yml`).
 - Not adding curated release ZIP assets (GitHub's `tarball_url` is sufficient) unless a sprint needs it.
-- Not auto-APPLYING updates without consent — auto-CHECK + notify is opt-in; apply stays explicit.
+- Not auto-APPLYING updates without consent — auto-CHECK + notify is on-by-default / opt-out (env to disable; resolved OQ-PUR-02) and notify-only; apply stays explicit (a CHECK is not an apply).
 - Not touching the unrelated PRIL `bin/plumbline-*` wrappers.
 
 ## Preconditions / baseline (investigation 2026-06-21, code-grounded)
@@ -45,7 +45,7 @@ gaps the current tests mask.
 - REQ-PUR-05 install update-mode REFRESHES changed targets (no stale skip).
 - REQ-PUR-06 verify-or-revert on apply (snapshot of `$CLAUDE_HOME`).
 - REQ-PUR-07 falsifying tests for G1–G3 (never mock the gap; reddens if the fix is reverted).
-- REQ-PUR-08 (opt-in) non-intrusive session-start update-check notify.
+- REQ-PUR-08 (on-by-default / opt-out; resolved OQ-PUR-02) non-intrusive session-start update-check notify.
 
 ## Hard safety rule (binding for every task)
 Every real test/smoke uses a SANDBOX home — `export CLAUDE_HOME="$(mktemp -d)"` — NEVER the operator's
@@ -123,21 +123,23 @@ REVERTS the whole `$CLAUDE_HOME` to the prior state — never touching the real 
   already auto-refresh (this fix matters most for `--copy`/web installs). Rollback: revert
   `plumbline_update.py` + `install.sh`; anchor + snapshot are additive.
 
-## Sprint 4 — Cover the masked gaps + opt-in auto-check
+## Sprint 4 — Cover the masked gaps + on-by-default/opt-out auto-check
 **Verifiable sprint goal:** reverting ANY Sprint-1/2/3 fix reddens a falsifying test in `run_all`; and an
-opt-in session-start check notifies only when behind, never blocks. (REQ-PUR-07/08; closes G4.)
+on-by-default (env opt-out; resolved OQ-PUR-02) notify-only session-start check notifies only when behind,
+never blocks. (REQ-PUR-07/08; closes G4.)
 
 - **PUR-4.1 (tester)** — confirm the Sprint-1/2/3 falsifiers are wired into `run_all.sh` and are
   behaviour/counter falsifiers (red if the fix is reverted), not outcome-only; add the missing
   "re-run refreshes a changed file" assertion if not already covered by PUR-3.1. Files:
   `test_update_layer.sh`, `run_all.sh`.
-- **PUR-4.2 (coder, opt-in)** — `config/claude/hooks/session-start.sh` (or a new hook): a non-blocking,
+- **PUR-4.2 (coder, on-by-default/opt-out)** — `config/claude/hooks/session-start.sh` (or a new hook): a non-blocking,
   throttled (≤1/day, cached) `plumbline update --check`; on "behind" print `update available: vN→vM, run
-  \`plumbline update\``; silent when current; env-gated/off-by-default; never blocks the session. Files:
+  \`plumbline update\``; silent when current; on by default with an env opt-out (resolved OQ-PUR-02); notify-only;
+  never blocks the session. Files:
   `config/claude/hooks/session-start.sh`.
 - **Acceptance evidence:** reverting each fix reddens its falsifier; the auto-check notifies on a behind
   sandbox, is silent when current, and adds no blocking latency.
-- **Risk/rollback:** auto-check noise/rate-limit → throttle + Sprint-2 auth; opt-in. Rollback: revert hook.
+- **Risk/rollback:** auto-check noise/rate-limit → throttle + Sprint-2 auth; env opt-out. Rollback: revert hook.
 
 ---
 

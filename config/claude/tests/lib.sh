@@ -35,6 +35,73 @@ gui_srv_skip_notice() { # gui_srv_skip_notice <assertion-label>
   _skip "GUI_SRV_SKIP: $1 skipped: macOS CI runner cannot accept loopback http.server (server alive, unconnectable); same logic proven by the in-process render/config seams here + the real socket on Linux CI"
 }
 
+# ----------------------------------------------------------------------------
+# PUR stub-reachability helpers (the SAME diagnosed macOS-CI-runner limitation
+# the GUI socket tests already handle, applied to the update-layer / session
+# update-check tests). Those tests drive `plumbline update --check` against a
+# 127.0.0.1 `PLUMBLINE_GITHUB_API` http.server stub; on the macOS CI runner the
+# spawned stub is ALIVE (port bound, port-file written) but its loopback socket
+# is never CONNECTABLE, so the CLI's fetch never reaches the stub -> empty record
+# / 'unclassified' / exit 127. That is a runner network limitation, NOT a product
+# defect: the SAME logic is verified HARD on Linux CI (and locally, where the
+# stub IS reachable). Linux/local stay a HARD verifier; only the unconnectable
+# macOS case is skipped, with a LOUD tallied notice.
+#
+# pur_stub_reachable <host> <port> -- prints exactly ONE marker on stdout:
+#   "STUB_REACHABLE"  -- a TCP connect to <host>:<port> succeeded.
+#   "STUB_NOT_READY"  -- the connect failed within the budget (port bound by the
+#                        spawned server -- the caller only probes once a port file
+#                        exists -- but the loopback socket is not connectable).
+# The marker keys off CONNECTIVITY ONLY; it never inspects any assertion outcome,
+# so a reachable-but-WRONG response is never skipped (it always runs HARD). The
+# probe uses python3 (already a hard dep of these tests) -- eval-free,
+# bash-3.2-safe (no $()-wrapped heredocs in the caller), ASCII-only.
+pur_stub_reachable() { # pur_stub_reachable <host> <port>
+  PUR_PROBE_HOST="$1" PUR_PROBE_PORT="$2" python3 - <<'PY'
+import os, socket
+host = os.environ["PUR_PROBE_HOST"]
+try:
+    port = int(os.environ["PUR_PROBE_PORT"])
+except (TypeError, ValueError):
+    print("STUB_NOT_READY")
+    raise SystemExit(0)
+# A short budget of connect attempts: the caller already waited for the port file,
+# so the server is bound; this confirms the loopback socket actually accepts.
+import time
+deadline = time.time() + 5.0
+while time.time() < deadline:
+    try:
+        s = socket.create_connection((host, port), timeout=0.5)
+        s.close()
+        print("STUB_REACHABLE")
+        raise SystemExit(0)
+    except OSError:
+        time.sleep(0.1)
+print("STUB_NOT_READY")
+PY
+}
+
+# pur_macos_stub_skip_active <marker>
+# Returns 0 (skip IS active) ONLY when BOTH hold:
+#   (1) the OS is macOS (`uname` = Darwin), AND
+#   (2) <marker> is exactly "STUB_NOT_READY" -- the spawned stub was bound but its
+#       loopback socket was never connectable (the diagnosed macOS-CI limitation).
+# Returns 1 (skip NOT active) on EVERY non-Darwin OS (Linux stays HARD), AND
+# whenever the stub WAS reachable ("STUB_REACHABLE") -- so a wrong response is
+# ALWAYS a HARD fail on every OS. This NEVER skips a real assertion failure; it
+# skips ONLY the connectivity-blocked macOS case. eval-free, bash-3.2-safe, ASCII.
+pur_macos_stub_skip_active() { # pur_macos_stub_skip_active <marker>
+  [ "$(uname)" = "Darwin" ] || return 1
+  [ "$1" = "STUB_NOT_READY" ] || return 1
+  return 0
+}
+
+# pur_stub_skip_notice <assertion-label>
+# Emit the unmistakable, CI-grep-able skip notice for one macOS-skipped stub assertion.
+pur_stub_skip_notice() { # pur_stub_skip_notice <assertion-label>
+  _skip "PUR_STUB_SKIP: $1 skipped: macOS CI runner cannot connect to the loopback PLUMBLINE_GITHUB_API stub (server bound, socket unconnectable); same logic verified HARD on Linux CI + locally"
+}
+
 assert() { # assert <description> <condition-exit-status-via-eval-string>
   TESTS_RUN=$((TESTS_RUN + 1))
   if eval "$2" >/dev/null 2>&1; then _pass "$1"; else _fail "$1"; fi
@@ -151,7 +218,10 @@ repo_version() { # repo_version <repo-root>
 
 finish() { # print summary and exit non-zero if anything failed
   if [ "$TESTS_SKIPPED" -gt 0 ]; then
-    printf '\n%s: %d run, %d failed, %d skipped (GUI_SRV_SKIP: macOS-loopback)\n' \
+    # Skips come from the macOS-CI loopback limitation only (GUI_SRV_SKIP for the
+    # spawned http.server socket tests; PUR_STUB_SKIP for the update-layer /
+    # session update-check loopback stub tests). Linux/local never skip.
+    printf '\n%s: %d run, %d failed, %d skipped (macOS-loopback: GUI_SRV_SKIP / PUR_STUB_SKIP)\n' \
       "${1:-tests}" "$TESTS_RUN" "$TESTS_FAILED" "$TESTS_SKIPPED"
   else
     printf '\n%s: %d run, %d failed\n' "${1:-tests}" "$TESTS_RUN" "$TESTS_FAILED"
