@@ -2443,4 +2443,310 @@ assert_eq "REQ-PUR-FOLLOWUP-DOCTOR 4: honest-status version from foreign repo is
 assert "REQ-PUR-FOLLOWUP-DOCTOR 4: honest-status version from foreign repo is NEVER the foreign 9.9.9" "! grep -Eq '^version: 9\.9\.9$' '$TMP_ROOT/honest-foreign.log'"
 assert "REQ-PUR-FOLLOWUP-DOCTOR 4: honest-status keeps its Plumbline language from foreign repo" "grep -q 'changed, not yet verified' '$TMP_ROOT/honest-foreign.log'"
 
+# ====================================================================
+# REQ-PUR-FOLLOWUP-SAMEPATH -- install.sh same_path() is FILE-BLIND, so a STALE
+# symlink target is wrongly judged "current" and NEVER refreshed by --update.
+#
+# THE BUG (config/claude/install.sh same_path(), ~:77-80):
+#   same_path() { ... [ "$(cd "$a" 2>/dev/null && pwd -P)" = "$(cd "$b" ... && pwd -P)" ]; }
+# `cd "$x" && pwd -P` only works for DIRECTORIES; for two FILE paths BOTH cd's fail,
+# so BOTH $(...) are EMPTY and `"" = ""` -> same_path returns TRUE for ANY two
+# existing files. Consequence in content_current() (~:94-98): in SYMLINK mode an
+# existing symlink `dst` is judged "current" via same_path "$src" "$dst" REGARDLESS
+# of where it actually points, so install.sh --update SKIPS re-linking a STALE/wrong-
+# target symlink -- exactly contradicting the comment at ~:91-93 ("current only if
+# the symlink resolves to src").
+#
+# Gegenthese this kills: the install.sh --update mechanism is GREEN (PUR-3.1 (c')
+# proves it overwrites/skips/adds REAL-FILE targets), yet a SYMLINK target left
+# pointing at an OLD source is silently never refreshed -- the user keeps running a
+# stale agent/command/lib while --update reports "up-to-date". PUR-3.1 (c')
+# deliberately plants REAL-FILE targets to reach content_current's FILE branch and
+# explicitly does NOT exercise the SYMLINK branch ("treats an EXISTING SYMLINK target
+# as a live link"), so the STALE-symlink sub-branch is the uncovered gap this closes.
+#
+# THE CORRECT BEHAVIOR (what the coder will implement): same_path must be FILE-AWARE
+# (canonicalize a file via its dir + basename, dereferencing a final symlink to its
+# real target) so (a) two DIFFERENT files compare UNEQUAL and (b) a symlink `dst` is
+# "same path" as `src` ONLY when it actually resolves to `src`. The dir-vs-dir
+# install-into-self guard (install_agent_repo ~:165) must stay correct.
+#
+# RED-FOR-THE-RIGHT-REASON TODAY: a symlink-mode install from an OLD source A, then
+# install.sh --update (symlink mode) from a NEW source B whose corresponding file
+# DIFFERS, leaves the installed symlink STILL resolving to A (same_path's always-true
+# makes content_current report "up-to-date" -> transfer SKIPS -> dst stays -> A). The
+# installer even LOGS "up-to-date: <dst>", observable proof of the wrong skip.
+# After the file-aware fix: same_path "$B" "$dst-currently->A" is FALSE -> not
+# current -> transfer re-links -> dst resolves to B (refreshed).
+#
+# DRIVEN THROUGH THE REAL install.sh (NOT a hand-built harness): a throwaway source
+# A/B under $TMP_ROOT each supplies the REAL install.sh + lib + bin + a controlled
+# agent; the installed symlink in a sandbox $CLAUDE_HOME is the production artifact.
+# REACHABILITY: this bug is LOW + only reachable via a DIRECT install.sh --update in
+# symlink mode (NOT via `plumbline update`, which CR-1 requires to REFUSE a symlink
+# install) -- so the falsifier exercises the installer MECHANISM directly, exactly the
+# layer PUR-3.1 (c') uses for the file-target half of the SAME mechanism.
+#
+# SANDBOX-ONLY (NFR-PUR-01): every path lives under $TMP_ROOT (mktemp); CLAUDE_HOME is
+# a sandbox dir; the GLOBAL real-~/.claude-unchanged belt (~:1839-1849) already
+# brackets this block, and a per-block belt is added here. OFFLINE (0 network: no
+# --source / no http stub at all). bash-3.2-safe (NO $()-wrapped heredocs), ASCII-only,
+# eval-free. OFFLINE means HARD on ALL OS -- no macOS skip applies (no loopback stub).
+# ====================================================================
+SP_BASE="$TMP_ROOT/samepath-symlink"
+SP_SRC_A="$SP_BASE/src-A-old"     # OLD source: the symlink will initially point here
+SP_SRC_B="$SP_BASE/src-B-new"     # NEW source: --update runs FROM here (different file)
+SP_HOME="$SP_BASE/home"
+mkdir -p "$SP_BASE"
+
+# sp_build_source <src-dir> <agent-marker> -- a MINIMAL install-capable source tree
+# (REAL install.sh + lib + bin) carrying ONE controlled agent whose body holds the
+# marker. The agent's `name:` frontmatter is what makes install.sh mount it under
+# $CLAUDE_HOME/agents/<repo-rel>. No git origin needed here (we use --no-bin so no
+# anchor is written; the agent-only install is all this falsifier needs). No
+# $()-wrapped heredocs.
+sp_build_source() {
+  sp_src="$1"; sp_mark="$2"
+  mkdir -p "$sp_src/config/claude/lib" "$sp_src/config/claude/bin" "$sp_src/agents"
+  printf '%s\n' "$REPO_VERSION" > "$sp_src/VERSION"
+  cp "$REPO_DIR/config/claude/install.sh" "$sp_src/config/claude/install.sh"
+  cp "$REPO_DIR/config/claude/lib/plumbline_update.py" "$sp_src/config/claude/lib/plumbline_update.py" 2>/dev/null || true
+  cp "$REPO_DIR/config/claude/bin/plumbline" "$sp_src/config/claude/bin/plumbline" 2>/dev/null || true
+  chmod +x "$sp_src/config/claude/install.sh" "$sp_src/config/claude/bin/plumbline" 2>/dev/null || true
+  printf '%s\n%s\n%s\n\n%s\n' '---' 'name: samepath-probe-agent' '---' "MARKER $sp_mark" \
+    > "$sp_src/agents/samepath-probe-agent.md"
+}
+
+# The relative install path install.sh writes for our controlled agent (agents keep
+# their repo-relative path under $CLAUDE_HOME/agents).
+SP_AGENT_REL="agents/agents/samepath-probe-agent.md"
+
+sp_build_source "$SP_SRC_A" "OLD-FROM-A"
+sp_build_source "$SP_SRC_B" "NEW-FROM-B"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH safety: both throwaway sources are under TMP_ROOT" "case '$SP_SRC_A' in '$TMP_ROOT'/*) case '$SP_SRC_B' in '$TMP_ROOT'/*) true ;; *) false ;; esac ;; *) false ;; esac"
+
+# 1) SYMLINK-install (default mode) from the OLD source A into the sandbox HOME ->
+# the installed agent is a SYMLINK into source A. --no-bin/--no-hook/--no-skills/
+# --no-commands keep the install minimal (just the controlled agent).
+CLAUDE_HOME="$SP_HOME" "$SP_SRC_A/config/claude/install.sh" --no-commands --no-skills --no-hook --no-bin --force \
+  >"$SP_BASE/install-A.log" 2>&1
+SP_AGENT_INST="$SP_HOME/$SP_AGENT_REL"
+# CANONICALIZATION PARITY (path-portability, same class as CR-4): the resolved-symlink
+# target below is built via `cd "$dir" && pwd -P` (POSIX symlink-deref), which on macOS
+# canonicalizes mktemp's /var -> /private/var (mktemp's /var is a symlink to /private/var);
+# Linux has no such /var symlink. Build the EXPECTED source A/B agent paths the SAME way
+# (dir canonicalized via `cd ... && pwd -P`, plus the basename) so BOTH sides of every
+# resolved-target comparison are in the identical canonical form on every OS. These source
+# dirs are real (sp_build_source created them), so the cd always succeeds; the comparison
+# stays HARD + exact (still proves the symlink resolves to B not A), just canonicalized
+# consistently -- no skip, no substring-weakening.
+SP_SRC_A_AGENT="$( cd "$SP_SRC_A/agents" && pwd -P )/samepath-probe-agent.md"
+SP_SRC_B_AGENT="$( cd "$SP_SRC_B/agents" && pwd -P )/samepath-probe-agent.md"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$SP_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+# Precondition: it really IS a symlink (the branch under test is content_current's
+# symlink branch) AND it resolves to source A's file (the STALE target).
+assert "REQ-PUR-FOLLOWUP-SAMEPATH precondition: installed agent is a SYMLINK (reaches content_current's symlink branch)" "test -L '$SP_AGENT_INST'"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH precondition: installed symlink resolves to OLD source A" "test \"\$( cd \"\$(dirname '$SP_AGENT_INST')\" && cd \"\$(dirname \"\$(readlink '$SP_AGENT_INST')\")\" && pwd -P )/\$(basename \"\$(readlink '$SP_AGENT_INST')\")\" = '$SP_SRC_A_AGENT'"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH precondition: installed agent carries the STALE OLD-FROM-A content" "grep -q 'MARKER OLD-FROM-A' '$SP_AGENT_INST'"
+# And A's and B's agent files genuinely DIFFER (so a real refresh is observable).
+assert "REQ-PUR-FOLLOWUP-SAMEPATH precondition: source A and B agent files DIFFER (refresh is observable)" "! cmp -s '$SP_SRC_A_AGENT' '$SP_SRC_B_AGENT'"
+
+# 2) THE MECHANISM under test: install.sh --update (DEFAULT symlink mode) run FROM
+# the NEW source B against the SAME symlink-mode $CLAUDE_HOME. Correct behavior:
+# same_path "$B-agent" "$installed-symlink->A" is FALSE (the link does NOT resolve to
+# B) -> content_current returns 1 -> transfer RE-LINKS dst to B. Buggy behavior
+# TODAY: same_path is always-true for the two file paths -> content_current returns 0
+# -> transfer logs "up-to-date" and SKIPS -> the symlink STILL points at stale A.
+CLAUDE_HOME="$SP_HOME" "$SP_SRC_B/config/claude/install.sh" --update --no-commands --no-skills --no-hook --no-bin --force \
+  >"$SP_BASE/update-B.log" 2>&1
+
+# THE RED FALSIFIER (REQ-PUR-FOLLOWUP-SAMEPATH): after --update from B the installed
+# symlink MUST resolve to B's file (the link was corrected/refreshed), NOT still to
+# the stale A. Asserted on the symlink's REAL resolved target (canonicalize via dir +
+# basename, dereferencing the final link) -- the observable filesystem effect, not a
+# log string. RED today: it still resolves to A.
+SP_RESOLVED="$( cd "$(dirname "$SP_AGENT_INST")" 2>/dev/null && cd "$(dirname "$(readlink "$SP_AGENT_INST")")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$(readlink "$SP_AGENT_INST")")" )"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH: after --update the symlink RESOLVES to NEW source B (stale link refreshed)" "$SP_SRC_B_AGENT" "$SP_RESOLVED"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH: after --update the symlink does NOT still resolve to the stale OLD source A" "test '$SP_RESOLVED' != '$SP_SRC_A_AGENT'"
+# And the OBSERVABLE content the user gets is now the NEW content, not the stale one.
+assert "REQ-PUR-FOLLOWUP-SAMEPATH: the installed agent now serves the NEW-FROM-B content (refreshed)" "grep -q 'MARKER NEW-FROM-B' '$SP_AGENT_INST'"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH: the installed agent no longer serves the STALE OLD-FROM-A content" "! grep -q 'MARKER OLD-FROM-A' '$SP_AGENT_INST'"
+# DIRECT BUG SIGNATURE: today the always-true same_path makes content_current report
+# the stale symlink as current, so install.sh LOGS the wrong-skip "up-to-date" for it.
+# After the fix the stale symlink is found NOT current, so it is re-linked, not logged
+# as up-to-date. (This is the observable manifestation of "two different files wrongly
+# judged same" -- the refresh-skip the bug produces.) RED today: the line is present.
+assert "REQ-PUR-FOLLOWUP-SAMEPATH: install.sh does NOT wrongly log the stale symlink as 'up-to-date' (no false same-path skip)" "! grep -q 'up-to-date: $SP_AGENT_INST' '$SP_BASE/update-B.log'"
+
+# --- GREEN no-op leg: a symlink ALREADY pointing at src is correctly "current" and a
+# re-link is a harmless no-op (a symlink -> src is genuinely up-to-date). This stays
+# GREEN both TODAY and after the fix, proving the file-aware same_path keeps the
+# correct "symlink resolves to src -> skip" behavior (not a blanket re-link). It is
+# the path-specific GREEN counterpart to the RED stale case above: install from B,
+# then --update from the SAME B -> the symlink already resolves to B -> skip.
+SP_HOME2="$SP_BASE/home-same"
+CLAUDE_HOME="$SP_HOME2" "$SP_SRC_B/config/claude/install.sh" --no-commands --no-skills --no-hook --no-bin --force \
+  >"$SP_BASE/install-same.log" 2>&1
+SP_AGENT_INST2="$SP_HOME2/$SP_AGENT_REL"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (no-op leg) precondition: installed agent is a symlink resolving to source B" "test -L '$SP_AGENT_INST2' && grep -q 'MARKER NEW-FROM-B' '$SP_AGENT_INST2'"
+CLAUDE_HOME="$SP_HOME2" "$SP_SRC_B/config/claude/install.sh" --update --no-commands --no-skills --no-hook --no-bin --force \
+  >"$SP_BASE/update-same.log" 2>&1
+# After --update from the SAME source the symlink still resolves to B and still serves
+# B's content (a correct, harmless skip/no-op re-link). GREEN today AND after the fix.
+SP_RESOLVED2="$( cd "$(dirname "$SP_AGENT_INST2")" 2>/dev/null && cd "$(dirname "$(readlink "$SP_AGENT_INST2")")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$(readlink "$SP_AGENT_INST2")")" )"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (no-op leg): a symlink already pointing at src stays resolving to src after --update" "$SP_SRC_B_AGENT" "$SP_RESOLVED2"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (no-op leg): the symlink-at-src case still serves the correct content (harmless no-op)" "test -L '$SP_AGENT_INST2' && grep -q 'MARKER NEW-FROM-B' '$SP_AGENT_INST2'"
+
+# Per-block sandbox belt.
+assert "REQ-PUR-FOLLOWUP-SAMEPATH safety: this block's sandbox root is under TMP_ROOT (offline, real ~/.claude untouched)" "case '$SP_BASE' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+
+# ====================================================================
+# REQ-PUR-FOLLOWUP-SAMEPATH (review remediation) -- canonical_path() CONTRACT
+# falsifier: the function's docstring (install.sh ~:77-78) promises "print nothing
+# (empty) and return non-zero if it does not exist", but the CODE does NOT honor
+# that fail-closed contract in two unresolvable cases. The code-review flagged this
+# docstring-vs-code mismatch (Important -- contract accuracy). This block tests
+# canonical_path() (and same_path()) DIRECTLY the way the reviewer did, by sourcing
+# JUST those two function definitions in isolation, and asserts the fail-closed
+# contract the docstring promises.
+#
+# THE TWO CONTRACT VIOLATIONS (RED-FOR-THE-RIGHT-REASON TODAY):
+#   (1) DANGLING symlink (final target MISSING but the TARGET's dirname EXISTS):
+#       the `while [ -L ]` deref loop exits (a non-existent path is not a symlink),
+#       then the code canonicalizes dirname+basename and returns a NON-empty
+#       would-be path with rc=0 -- violating the "empty + non-zero if it does not
+#       exist" promise.  NB: a dangling link whose TARGET dirname does NOT exist
+#       (e.g. -> /no/such/target) already returns empty+rc1 today by accident (the
+#       target-dir `cd` fails), so it does NOT reach the buggy branch -- it is the
+#       target-dirname-EXISTS shape (a missing file inside an existing dir) that
+#       actually exercises the violating code path. We use that shape so the
+#       falsifier is RED for the RIGHT reason, not green-by-accident.
+#   (2) LOOP / over-long chain (>40 hops): the deref loop hits its hop bound while
+#       `$p` is STILL a symlink, so the code drops out and returns a NON-empty
+#       mid-chain path with rc=0 (partial success) -- again violating the contract.
+#
+# THE FIX (review option b, fail-closed -- what the coder will apply): after the
+# deref loop, `[ -L "$p" ] && return 1` (loop/over-long -> fail) and
+# `{ [ -e "$p" ] || [ -L "$p" ]; } || return 1` before canonicalizing (dangling ->
+# fail). Verified offline against this exact patch: both RED cases flip to empty+rc1
+# and same_path's dangling side flips to FALSE, while every GREEN leg below stays
+# correct. Callers' observable behavior is unchanged (in transfer(), src always
+# exists), so this only HARDENS the contract, never breaks a real caller.
+#
+# Gegenthese this kills: same_path()/content_current() look fine on the happy path,
+# yet for a dangling/looping side canonical_path() hands back a CONFIDENT non-empty
+# path with rc=0, so same_path can declare two unresolvable paths "the same" -- a
+# silently-wrong "current"/skip decision in the install mechanism. The contract the
+# docstring sells is the safety net; this block proves the net is real.
+#
+# EXTRACTION APPROACH: install.sh runs top-level install logic on source (it is not
+# guarded by an `if __main__`-style sourcing check), so it cannot be plainly
+# sourced. Instead EXTRACT JUST the two self-contained function definitions
+# (canonical_path + same_path) into a temp file with sed and source THAT. same_path
+# references only canonical_path (no $MODE / no globals), so the pair is standalone.
+# We assert the extraction actually captured both functions before relying on them
+# (so a future refactor that renames/moves them makes this LOUD, not silently green).
+#
+# DRIVEN THROUGH THE REAL PRODUCTION FUNCTIONS (not a hand-built reimplementation):
+# the sourced bodies are byte-for-byte the install.sh definitions; the symlinks/
+# files are REAL on-disk artifacts under $TMP_ROOT, so the filesystem boundary the
+# contract is about is genuinely exercised.
+#
+# SANDBOX-ONLY (NFR-PUR-01): every path lives under $TMP_ROOT (mktemp); the real
+# ~/.claude is NEVER touched (no install runs in this block at all). OFFLINE (0
+# network). bash-3.2-safe (NO $()-wrapped heredocs -- sed output is redirected to a
+# file, then sourced), ASCII-only, eval-free. OFFLINE means HARD on ALL OS (no
+# loopback stub -> no macOS skip applies). The loop case is bounded by a watchdog so
+# a regression to an UNBOUNDED loop is caught as a failure, never a hang.
+# ====================================================================
+CP_BASE="$TMP_ROOT/canonical-path-contract"
+mkdir -p "$CP_BASE"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract) safety: this block's sandbox root is under TMP_ROOT (offline, real ~/.claude untouched)" "case '$CP_BASE' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
+
+# Extract JUST canonical_path() + same_path() from the REAL install.sh and source them.
+CP_FNS="$CP_BASE/fns.sh"
+sed -n '/^canonical_path()/,/^}/p' "$REPO_DIR/config/claude/install.sh"  > "$CP_FNS"
+sed -n '/^same_path()/,/^}/p'      "$REPO_DIR/config/claude/install.sh" >> "$CP_FNS"
+# Prove the extraction actually captured BOTH functions (guards against a silent
+# green if a refactor renames/relocates them -- a contract test of nothing is worse
+# than no test). bash-3.2-safe: a plain grep, no $()-wrapped heredoc.
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract): extraction captured canonical_path() definition" "grep -q '^canonical_path()' '$CP_FNS'"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract): extraction captured same_path() definition" "grep -q '^same_path()' '$CP_FNS'"
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract): extracted functions parse (bash -n)" "bash -n '$CP_FNS'"
+# Source the extracted, self-contained production functions into THIS shell.
+# shellcheck source=/dev/null
+. "$CP_FNS"
+
+# --- GREEN legs (must STAY correct -- do NOT over-tighten so real paths break) ---
+# A real FILE, a real DIR, and a symlink-to-EXISTING each canonicalize to a
+# non-empty path with rc=0; same_path of a link to its real target is TRUE.
+CP_REALDIR="$CP_BASE/realdir"
+CP_REALFILE="$CP_BASE/realfile"
+mkdir -p "$CP_REALDIR"
+printf 'real file content\n' > "$CP_REALFILE"
+ln -s realfile "$CP_BASE/link2real"
+cp_real_file_out="$(canonical_path "$CP_REALFILE")"; cp_real_file_rc=$?
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract) GREEN: a real FILE canonicalizes non-empty, rc=0" "test '$cp_real_file_rc' = '0' && test -n '$cp_real_file_out'"
+cp_real_dir_out="$(canonical_path "$CP_REALDIR")"; cp_real_dir_rc=$?
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract) GREEN: a real DIR canonicalizes non-empty, rc=0" "test '$cp_real_dir_rc' = '0' && test -n '$cp_real_dir_out'"
+cp_link_out="$(canonical_path "$CP_BASE/link2real")"; cp_link_rc=$?
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract) GREEN: a symlink-to-EXISTING canonicalizes non-empty, rc=0" "test '$cp_link_rc' = '0' && test -n '$cp_link_out'"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract) GREEN: symlink-to-existing resolves to its real target" "$cp_real_file_out" "$cp_link_out"
+if same_path "$CP_BASE/link2real" "$CP_REALFILE"; then cp_sp_real_rc=0; else cp_sp_real_rc=$?; fi
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract) GREEN: same_path(symlink, its real target) is TRUE" "0" "$cp_sp_real_rc"
+
+# --- RED falsifier (1): DANGLING symlink -- target MISSING, target's dirname EXISTS.
+# This is the shape that actually reaches the buggy branch (a missing file inside an
+# EXISTING dir). Contract: EMPTY output AND non-zero rc. RED today: returns the
+# would-be path with rc=0. We cover BOTH an absolute and a relative dangling target.
+CP_EXISTING="$CP_BASE/existing-dir"
+mkdir -p "$CP_EXISTING"
+ln -s "$CP_EXISTING/missing-file" "$CP_BASE/dangling-abs"      # absolute missing target, dir exists
+ln -s missing-sibling "$CP_BASE/dangling-rel"                  # relative missing target in link's own (existing) dir
+cp_dang_abs_out="$(canonical_path "$CP_BASE/dangling-abs")"; cp_dang_abs_rc=$?
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract): dangling symlink (abs target, dir exists) prints EMPTY (contract: nothing if it does not exist)" "" "$cp_dang_abs_out"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract): dangling symlink (abs target, dir exists) returns NON-ZERO rc" "1" "$cp_dang_abs_rc"
+cp_dang_rel_out="$(canonical_path "$CP_BASE/dangling-rel")"; cp_dang_rel_rc=$?
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract): dangling symlink (rel target, dir exists) prints EMPTY" "" "$cp_dang_rel_out"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract): dangling symlink (rel target, dir exists) returns NON-ZERO rc" "1" "$cp_dang_rel_rc"
+
+# --- RED falsifier (2): symlink LOOP (a -> b -> a). Contract: EMPTY + non-zero rc,
+# and it MUST TERMINATE (the 40-hop bound). A watchdog kills a regression to an
+# UNBOUNDED loop so it is caught as a FAILURE, never a hang. RED today: returns a
+# non-empty mid-chain path with rc=0.
+ln -s loop-b "$CP_BASE/loop-a"
+ln -s loop-a "$CP_BASE/loop-b"
+CP_LOOP_OUT="$CP_BASE/loop-result.txt"
+# Run canonical_path on the loop in a backgrounded subshell; a watchdog hard-kills it
+# if it has not finished within a generous budget, so an unbounded-loop regression
+# becomes a (RED) timeout marker rather than a hung suite. No $()-wrapped heredoc.
+( canonical_path "$CP_BASE/loop-a" > "$CP_LOOP_OUT.stdout" 2>/dev/null; printf '%s\n' "$?" > "$CP_LOOP_OUT.rc" ) &
+CP_LOOP_PID=$!
+( sleep 15; kill -9 "$CP_LOOP_PID" 2>/dev/null ) &
+CP_WD_PID=$!
+wait "$CP_LOOP_PID" 2>/dev/null; cp_loop_wait=$?
+kill "$CP_WD_PID" 2>/dev/null || true
+wait "$CP_WD_PID" 2>/dev/null || true
+# TERMINATION: the canonical_path subshell must have exited on its own (wait status
+# is NOT 137/SIGKILL). 137 => the watchdog had to kill an unbounded loop => RED.
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract): symlink-loop canonicalization TERMINATES (not killed by the watchdog)" "test '$cp_loop_wait' != '137'"
+cp_loop_out="$(cat "$CP_LOOP_OUT.stdout" 2>/dev/null || true)"
+cp_loop_rc="$(cat "$CP_LOOP_OUT.rc" 2>/dev/null || true)"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract): symlink loop prints EMPTY (contract: nothing if unresolvable)" "" "$cp_loop_out"
+assert_eq "REQ-PUR-FOLLOWUP-SAMEPATH (contract): symlink loop returns NON-ZERO rc" "1" "$cp_loop_rc"
+
+# --- RED falsifier (3): same_path() with a DANGLING side must be FALSE (the
+# fail-closed contract propagates). The honest exposure is a SELF-compare of a
+# dangling link: today canonical_path resolves BOTH sides to the SAME would-be path
+# with rc=0, so same_path declares two UNRESOLVABLE sides "the same" (TRUE) -- the
+# exact silently-wrong "current"/skip decision the bug enables. After the fix the
+# dangling side returns rc=1, so same_path short-circuits to FALSE.
+#   NB: we deliberately do NOT use same_path(real, dangling) here -- that would be
+#   FALSE today only by ACCIDENT (the two would-be path STRINGS happen to differ),
+#   i.e. green-by-coincidence, not because the contract fails closed; it would stay
+#   green WITH the bug present and so would falsify nothing. The self-compare reaches
+#   the violating branch on BOTH sides, making it RED-for-the-right-reason today.
+if same_path "$CP_BASE/dangling-abs" "$CP_BASE/dangling-abs"; then cp_sp_dang_rc=0; else cp_sp_dang_rc=$?; fi
+assert "REQ-PUR-FOLLOWUP-SAMEPATH (contract): same_path(dangling, same dangling) is FALSE (fail-closed propagates, not 'same' by would-be path)" "test '$cp_sp_dang_rc' != '0'"
+
 finish "update layer tests"
