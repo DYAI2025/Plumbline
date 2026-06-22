@@ -2531,8 +2531,17 @@ assert "REQ-PUR-FOLLOWUP-SAMEPATH safety: both throwaway sources are under TMP_R
 CLAUDE_HOME="$SP_HOME" "$SP_SRC_A/config/claude/install.sh" --no-commands --no-skills --no-hook --no-bin --force \
   >"$SP_BASE/install-A.log" 2>&1
 SP_AGENT_INST="$SP_HOME/$SP_AGENT_REL"
-SP_SRC_A_AGENT="$SP_SRC_A/agents/samepath-probe-agent.md"
-SP_SRC_B_AGENT="$SP_SRC_B/agents/samepath-probe-agent.md"
+# CANONICALIZATION PARITY (path-portability, same class as CR-4): the resolved-symlink
+# target below is built via `cd "$dir" && pwd -P` (POSIX symlink-deref), which on macOS
+# canonicalizes mktemp's /var -> /private/var (mktemp's /var is a symlink to /private/var);
+# Linux has no such /var symlink. Build the EXPECTED source A/B agent paths the SAME way
+# (dir canonicalized via `cd ... && pwd -P`, plus the basename) so BOTH sides of every
+# resolved-target comparison are in the identical canonical form on every OS. These source
+# dirs are real (sp_build_source created them), so the cd always succeeds; the comparison
+# stays HARD + exact (still proves the symlink resolves to B not A), just canonicalized
+# consistently -- no skip, no substring-weakening.
+SP_SRC_A_AGENT="$( cd "$SP_SRC_A/agents" && pwd -P )/samepath-probe-agent.md"
+SP_SRC_B_AGENT="$( cd "$SP_SRC_B/agents" && pwd -P )/samepath-probe-agent.md"
 assert "REQ-PUR-FOLLOWUP-SAMEPATH safety: sandbox HOME is under TMP_ROOT (not real ~/.claude)" "case '$SP_HOME' in '$TMP_ROOT'/*) true ;; *) false ;; esac"
 # Precondition: it really IS a symlink (the branch under test is content_current's
 # symlink branch) AND it resolves to source A's file (the STALE target).
