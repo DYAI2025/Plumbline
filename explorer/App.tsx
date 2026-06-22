@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { AGENTS, type Agent } from "./agents-data";
 
 // Inline SVG icons (avoids depending on a pinned lucide-react version).
@@ -81,6 +81,167 @@ const CircleSlash = mk(
 );
 
 const REPO_URL = "https://github.com/DYAI2025/Plumbline";
+const SITE_URL = "https://plumbline-website-production.up.railway.app";
+
+// Hero assets live only under docs/assets/ but the bundle is written to both the
+// repo root and docs/index.html — reference by absolute Pages URL so both resolve
+// online (the video/poster are an enhancement; the band degrades gracefully).
+const HERO_VIDEO_URL =
+  "https://dyai2025.github.io/Plumbline/assets/plumbline-hero.mp4";
+const HERO_POSTER_URL =
+  "https://dyai2025.github.io/Plumbline/assets/plumbline-hero-poster.jpg";
+
+const ExternalLink = mk(
+  <>
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </>,
+);
+const Play = mk(<polygon points="6 3 20 12 6 21 6 3" />);
+const ChevronDown = mk(<path d="m6 9 6 6 6-6" />);
+
+// Compact, on-brand cinematic header. Matches the explorer's dark terminal
+// palette (#0b0c0e bg, emerald accent, mono headings, sharp corners). The
+// video is a pure enhancement: respects prefers-reduced-motion (no autoplay,
+// poster + click-to-play) and hides itself on load error, leaving a dark
+// branded backdrop with the load-bearing wordmark / tagline / links intact.
+function VideoHero() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [videoOk, setVideoOk] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => setReducedMotion(mq.matches);
+    apply();
+    // addEventListener is the modern API; older Safari only has addListener.
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
+  const autoPlay = videoOk && !reducedMotion;
+  // With reduced motion we render the poster and offer an explicit click-to-play.
+  const showPlayButton = videoOk && reducedMotion && !playing;
+
+  const handlePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.play().then(
+      () => setPlaying(true),
+      () => {
+        /* play() can reject (e.g. blocked) — keep the poster, no broken state */
+      },
+    );
+  };
+
+  return (
+    <section
+      aria-label="Plumbline introduction"
+      className="relative shrink-0 overflow-hidden border-b border-zinc-800 bg-[#0b0c0e]"
+    >
+      {/* Dark branded backdrop — always present, so the band looks intentional
+          even if the video and poster both fail to load. */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#0b0c0e] via-[#0c0f10] to-[#0e1413]" />
+      {videoOk && (
+        <video
+          ref={videoRef}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
+            collapsed ? "opacity-0" : "opacity-40"
+          }`}
+          src={HERO_VIDEO_URL}
+          poster={HERO_POSTER_URL}
+          autoPlay={autoPlay}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-label="Plumbline pipeline: Plan, Code, Test, Pause, Deploy — Plumbline catches the gap before shipping"
+          onError={() => setVideoOk(false)}
+        />
+      )}
+      {/* Legibility scrim over the video. */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0b0c0e] via-[#0b0c0ecc] to-[#0b0c0e80]" />
+
+      <div
+        className={`relative flex items-center gap-4 px-5 transition-all duration-300 ${
+          collapsed ? "py-2.5" : "py-6 sm:py-8"
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-emerald-800/70 bg-zinc-900 text-emerald-400">
+              <Terminal size={15} />
+            </div>
+            <span className="font-mono text-lg font-semibold tracking-tight text-zinc-50">
+              Plumbline
+            </span>
+          </div>
+
+          {!collapsed && (
+            <>
+              <p className="mt-3 max-w-xl font-mono text-sm leading-relaxed text-emerald-300/90">
+                Green tests are evidence, not proof of value.
+              </p>
+              <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-zinc-400">
+                A defense-in-depth Claude Code agent framework. Its one obsession:
+                proving work is actually done — does it hang true?
+              </p>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <a
+                  href={SITE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 border border-emerald-800/70 bg-emerald-500/10 px-2.5 py-1.5 font-mono text-[11px] text-emerald-300 transition-colors hover:border-emerald-600 hover:bg-emerald-500/20"
+                >
+                  <ExternalLink size={12} /> project site
+                </a>
+                <a
+                  href={REPO_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1.5 border border-zinc-700 px-2.5 py-1.5 font-mono text-[11px] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+                >
+                  <Github size={12} /> DYAI2025/Plumbline
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+
+        {showPlayButton && !collapsed && (
+          <button
+            onClick={handlePlay}
+            aria-label="Play intro video"
+            className="relative hidden shrink-0 items-center justify-center self-center border border-emerald-800/70 bg-zinc-900/70 p-4 text-emerald-400 transition-colors hover:border-emerald-600 hover:text-emerald-300 sm:flex"
+          >
+            <Play size={20} />
+          </button>
+        )}
+
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand intro" : "Collapse intro"}
+          aria-expanded={!collapsed}
+          className="absolute right-3 top-2.5 flex items-center gap-1 border border-zinc-800 bg-[#0e0f12]/80 px-1.5 py-1 font-mono text-[10px] text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+        >
+          <ChevronDown
+            size={12}
+            className={`transition-transform duration-300 ${collapsed ? "" : "rotate-180"}`}
+          />
+          {collapsed ? "intro" : "hide"}
+        </button>
+      </div>
+    </section>
+  );
+}
 
 // Category -> accent hue (border / dot). Deliberately varied, not a single ramp.
 const CAT_COLOR: Record<string, string> = {
@@ -154,6 +315,9 @@ function App() {
 
   return (
     <div className="flex h-full flex-col bg-[#0b0c0e] text-zinc-300">
+      {/* Cinematic video hero band (compact, collapsible) */}
+      <VideoHero />
+
       {/* Top bar */}
       <header className="flex items-center justify-between border-b border-zinc-800 bg-[#0e0f12] px-5 py-3">
         <div className="flex items-center gap-3">
