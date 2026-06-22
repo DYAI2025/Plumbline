@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.2](https://github.com/DYAI2025/Plumbline/compare/v0.22.1...v0.22.2) (2026-06-22)
+
+
+### Bug Fixes
+
+* **update:** same_path file-aware + canonical_path fail-closed ([557fdc5](https://github.com/DYAI2025/Plumbline/commit/557fdc52f7e9cd36ee94501d58c761b93694a000))
+* **update:** same_path file-aware + canonical_path fail-closed ([b6be075](https://github.com/DYAI2025/Plumbline/commit/b6be075e77443180c6c030e4688a18b854e2b2a2))
+
 ## [0.22.1](https://github.com/DYAI2025/Plumbline/compare/v0.22.0...v0.22.1) (2026-06-21)
 
 
