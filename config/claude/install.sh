@@ -74,9 +74,73 @@ log_action() {
   fi
 }
 
+# canonical_path <path>: print the fully-resolved real absolute path of a file OR
+# directory, or print nothing (empty) and return non-zero when the path does not
+# resolve to an existing target. FAIL-CLOSED (REQ-PUR-FOLLOWUP-SAMEPATH): this
+# "empty + non-zero" post-condition holds for EVERY unresolvable input, namely:
+#   * a path that does not exist at all,
+#   * a DANGLING symlink whose final target is missing (even when the target's
+#     parent directory exists), and
+#   * a symlink LOOP or a chain longer than the ~40-hop bound.
+# Only a real existing file, directory, or symlink that resolves to an existing
+# target prints a non-empty path with return code 0; nothing else ever does.
+#
+# A DIRECTORY resolves with `cd … && pwd -P` (physical, symlinks collapsed) — same
+# as the old code. A FILE (or symlink) cannot be `cd`'d into, so we canonicalize via
+# its DIRNAME (`cd "$(dirname …)" && pwd -P`) plus the basename, and dereference a
+# FINAL symlink component to its real target — resolving a relative link target
+# against the link's own directory and iterating until the result is no longer a
+# symlink (so chained links collapse). This is the bash-3.2-safe / macOS-portable
+# stand-in for `readlink -f` (BSD readlink lacks -f); it uses plain `readlink` and
+# does the dereference manually.
+canonical_path() {
+  local p="$1"
+  [ -e "$p" ] || [ -L "$p" ] || return 1
+  # Directory: physical absolute path (collapses symlinked path components).
+  if [ -d "$p" ] && [ ! -L "$p" ]; then
+    ( cd "$p" 2>/dev/null && pwd -P ) || return 1
+    return 0
+  fi
+  # File or symlink: dereference a final symlink chain, bounded to avoid loops.
+  local dir base target hops=0
+  while [ -L "$p" ] && [ "$hops" -lt 40 ]; do
+    target="$(readlink "$p")" || return 1
+    case "$target" in
+      /*) p="$target" ;;                       # absolute link target
+      *)  p="$(dirname "$p")/$target" ;;       # relative -> resolve against link dir
+    esac
+    hops=$((hops + 1))
+  done
+  # Fail-closed (REQ-PUR-FOLLOWUP-SAMEPATH): the deref loop above can exit in two
+  # unresolvable states that the docstring forbids resolving to a confident path.
+  #   * Still a symlink after the hop bound => a symlink LOOP or an over-long chain;
+  #     never canonicalize a mid-chain path -- fail (empty, non-zero).
+  [ -L "$p" ] && return 1
+  #   * The resolved final target does not exist (a DANGLING link whose target's
+  #     parent dir happens to exist) -- fail rather than print a would-be path.
+  { [ -e "$p" ] || [ -L "$p" ]; } || return 1
+  # If the resolved path is now a directory, canonicalize it as one.
+  if [ -d "$p" ]; then
+    ( cd "$p" 2>/dev/null && pwd -P ) || return 1
+    return 0
+  fi
+  dir="$(dirname "$p")"
+  base="$(basename "$p")"
+  local real_dir
+  real_dir="$( cd "$dir" 2>/dev/null && pwd -P )" || return 1
+  [ -n "$real_dir" ] || return 1
+  printf '%s/%s\n' "$real_dir" "$base"
+}
+
+# same_path <a> <b>: true (0) when a and b resolve to the SAME real path. File-aware
+# via canonical_path, so two DIFFERENT files compare UNEQUAL and a symlink is "same
+# path" as its target ONLY when it actually resolves there. False if either side is
+# missing/unresolvable (empty canonical_path).
 same_path() {
-  local a="$1" b="$2"
-  [ -e "$a" ] && [ -e "$b" ] && [ "$(cd "$a" 2>/dev/null && pwd -P)" = "$(cd "$b" 2>/dev/null && pwd -P)" ]
+  local a b
+  a="$(canonical_path "$1")" || return 1
+  b="$(canonical_path "$2")" || return 1
+  [ -n "$a" ] && [ -n "$b" ] && [ "$a" = "$b" ]
 }
 
 # content_current <src> <dst>: true (0) when the existing target already holds
