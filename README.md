@@ -10,6 +10,10 @@
 
 Plumbline is built for software work where the expensive failure is not “the test failed.” The expensive failure is: **the test passed, the artifact looked complete, but the real user problem was still not solved.**
 
+[![Plumbline — Plan → Code → Test → ⏸ pause → Deploy: catches the gap before shipping](docs/assets/plumbline-hero-poster.jpg)](docs/assets/plumbline-hero.mp4)
+
+***▶ 10-second overview*** — *click to play. “Tests passed. Value unclear.” → Plumbline catches the gap before shipping.*
+
 **[Live Agent Explorer](https://dyai2025.github.io/Plumbline/)** · inspect the 86 subagents in a browser, no install required.
 
 <br/>
