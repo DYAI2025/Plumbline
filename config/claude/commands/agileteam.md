@@ -340,7 +340,7 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   `gh pr list --state merged`) and whether a newer deployment exists. A
   `wired-in-prod? = no` row with the code already merged+deployed is a STALE ledger,
   not a RED product state — reconcile the matrix first, then resume. (Measured failure
-  2026-07-08: PR merged+deployed with no ledger event; resume mis-classified the base
+  2026-07-08: PR merged+deployed with no ledger event; resume misclassified the base
   feature as undeployed.)
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
