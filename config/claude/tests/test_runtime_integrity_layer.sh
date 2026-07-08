@@ -190,10 +190,18 @@ assert_nonzero "C4: non-ignored out-of-scope file still blocks" \
 assert_output_contains "C4: violation names the real file, not the dropping" "rogue.py" \
   "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-rogue.txt"
 # A TRACKED file matching a gitignore pattern is a real edit — never exempted.
+# The changed-list contains ONLY the tracked+ignore-matching file, so this
+# assertion bites purely on the tracked/untracked split: if tracked files were
+# ever wrongly exempted, this exits 0 and FAILS (a list that also carried an
+# independently-blocking file would pass regardless — non-biting).
+printf '.claude-flow/daemon.pid\n' > "$C4_REPO/changed-tracked-only.txt"
 git -C "$C4_REPO" add -f .claude-flow/daemon.pid -- >/dev/null 2>&1
 assert_nonzero "C4: tracked-but-ignore-matching file is NOT exempted" \
-  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-rogue.txt"
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-tracked-only.txt"
 git -C "$C4_REPO" rm -q --cached .claude-flow/daemon.pid >/dev/null 2>&1
+# Roundtrip: back to untracked, the SAME single-file list is exempt again.
+assert_exit "C4: same file back to untracked is exempt again (split, not path, decides)" 0 \
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-tracked-only.txt"
 # --strict-gitignored restores the old fail-closed behavior for droppings.
 assert_nonzero "C4: --strict-gitignored re-blocks the dropping" \
   "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-dropping.txt" --strict-gitignored
