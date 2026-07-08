@@ -163,6 +163,42 @@ assert_output_contains "broad [a-z]* scope error names too-broad pattern" "too b
 assert_exit "literal-anchored glob-class scope still passes" 0 \
   "$SCOPE_BIN" --repo "$FIXTURES/scope-broad-literalclass" --feature demo --changed-files "$FIXTURES/scope-broad-literalclass/changed-files.txt"
 
+# C4 (2026-07-08 retro): paths that are BOTH gitignored AND untracked are
+# session-tooling droppings (e.g. `.claude-flow/` daemon state), not feature
+# edits — they are exempted with a visible NOTE instead of false-positiving the
+# gate. Tracked files are never exempted; `--strict-gitignored` restores the old
+# behavior. Needs a REAL git repo (check-ignore), so this fixture is built
+# dynamically instead of living under fixtures/.
+C4_REPO="$(mktemp -d)"
+git -C "$C4_REPO" init -q -b main
+mkdir -p "$C4_REPO/docs/canvas" "$C4_REPO/src/demo" "$C4_REPO/.claude-flow"
+cp "$FIXTURES/scope-pass/docs/canvas/demo.canvas.md" "$C4_REPO/docs/canvas/demo.canvas.md"
+printf '.claude-flow/\n' > "$C4_REPO/.gitignore"
+printf 'runtime\n' > "$C4_REPO/.claude-flow/daemon.pid"
+printf 'ok\n' > "$C4_REPO/src/demo/app.py"
+printf '.claude-flow/daemon.pid\nsrc/demo/app.py\n' > "$C4_REPO/changed-dropping.txt"
+assert_exit "C4: gitignored+untracked dropping is exempted (pass)" 0 \
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-dropping.txt"
+C4_NOTE_OUT="$("$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-dropping.txt" 2>&1)"
+assert_contains "C4: exemption is visible (NOTE names the dropping)" "$C4_NOTE_OUT" ".claude-flow/daemon.pid"
+assert_contains "C4: exemption is labeled as tool artifacts, not silent" "$C4_NOTE_OUT" "NOTE: ignoring gitignored+untracked tool artifacts"
+# A real out-of-scope file (untracked but NOT gitignored) must still block.
+printf 'nope\n' > "$C4_REPO/rogue.py"
+printf '.claude-flow/daemon.pid\nrogue.py\n' > "$C4_REPO/changed-rogue.txt"
+assert_nonzero "C4: non-ignored out-of-scope file still blocks" \
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-rogue.txt"
+assert_output_contains "C4: violation names the real file, not the dropping" "rogue.py" \
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-rogue.txt"
+# A TRACKED file matching a gitignore pattern is a real edit — never exempted.
+git -C "$C4_REPO" add -f .claude-flow/daemon.pid -- >/dev/null 2>&1
+assert_nonzero "C4: tracked-but-ignore-matching file is NOT exempted" \
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-rogue.txt"
+git -C "$C4_REPO" rm -q --cached .claude-flow/daemon.pid >/dev/null 2>&1
+# --strict-gitignored restores the old fail-closed behavior for droppings.
+assert_nonzero "C4: --strict-gitignored re-blocks the dropping" \
+  "$SCOPE_BIN" --repo "$C4_REPO" --feature demo --changed-files "$C4_REPO/changed-dropping.txt" --strict-gitignored
+rm -rf "$C4_REPO"
+
 # G2-REQ-002: redaction rejects unsafe persistence and can produce a safe redacted stream.
 assert_exit "redaction safe JSONL check exits 0" 0 \
   "$REDACT_BIN" --mode check < "$FIXTURES/redaction/safe.jsonl"

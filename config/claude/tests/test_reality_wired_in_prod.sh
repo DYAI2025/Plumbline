@@ -45,7 +45,7 @@ assert_file "A0: reality-check binary present" "$REALITY"
 # A1 (positive control / gap exposure): plain mode currently PASSES a not-wired
 # record. This assertion PASSES today and documents the hole.
 set +e
-out1="$("$REALITY" --repo "$repo" --feature "$FEAT" --min-evidence integration 2>&1)"; rc1=$?
+"$REALITY" --repo "$repo" --feature "$FEAT" --min-evidence integration >/dev/null 2>&1; rc1=$?
 set -e
 assert_eq "A1 gap: plain reality-check currently PASSES the not-wired record (exit 0)" "0" "$rc1"
 
@@ -54,7 +54,7 @@ assert_eq "A1 gap: plain reality-check currently PASSES the not-wired record (ex
 # name is a placeholder for the fix; the load-bearing assertions are the
 # STOP-WIRED-PROD behaviour and naming the culprit REQ, not the exact CLI).
 set +e
-out2="$("$REALITY" --repo "$repo" --feature "$FEAT" --min-evidence integration --require-wired 2>&1)"; rc2=$?
+out2="$("$REALITY" --repo "$repo" --feature "$FEAT" --min-evidence integration --require-wired 2>&1)"
 set -e
 assert_contains "A2 RED: wired-enforcing rejection carries stop-code STOP-WIRED-PROD" "$out2" "STOP-WIRED-PROD"
 assert_contains "A2 RED: rejection names the not-wired requirement (REQ-X1)" "$out2" "REQ-X1"

@@ -55,6 +55,7 @@ run_hook() { # run_hook <project> <stdin-json>
 }
 # A genuine deny: decision=="deny" OR a deliberate non-zero from an EXISTING hook
 # (1 or 2). 255 = "hook absent" sentinel, 127 = bash missing-file: NOT a deny.
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via assert's eval'd condition string
 is_deny() { # is_deny "<decision>|<rc>"
   local d="${1%%|*}" rc="${1##*|}"
   [ "$d" = "deny" ] && return 0
@@ -62,6 +63,7 @@ is_deny() { # is_deny "<decision>|<rc>"
   return 1
 }
 # Capture the hook's stdout text for stop-code assertions (empty when absent).
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via command substitution inside assert args
 hook_out() { # hook_out <project> <stdin-json>
   local project="$1" payload="$2"
   [ ! -f "$HOOK" ] && { printf ''; return; }
