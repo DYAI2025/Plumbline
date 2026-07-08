@@ -349,3 +349,23 @@ Weitere Anker-Skills: `defense-in-depth`, `test-driven-development`,
    `config/claude/skills/`). Prüft Claim-*Herkunft*, nicht Funktionskorrektheit.
 3. **„EINE Runde, kein Re-Run"** ist bewusst gewählt (Kosten + Anti-Perfektionismus).
 4. **100 % gibt es nicht** — maximiert Zahl unabhängiger Hürden, nicht Beweisbarkeit.
+
+---
+
+## Amendments 2026-07-08 (retro-approved via /reflect learning-loop gate, user-confirmed)
+
+Operative text lives in `config/claude/commands/agileteam.md`; summary:
+
+- **C3 — Ledger-mandatory delivery gates:** `merge`, `deploy`, and
+  `production-verification` are recorded run-ledger gates. On resume, cross-check the
+  traceability matrix's `wired-in-prod?` column against git/remote ground truth
+  (`git cherry`, merged PRs, latest deployment) before trusting it — a stale ledger is
+  reconciled, not treated as a RED product state. (Measured: PR merged+deployed with no
+  ledger event → resume mis-classified the feature as undeployed.)
+- **C4 — Scope guard vs. tool droppings:** `plumbline-scope-check` now exempts paths that
+  are BOTH gitignored AND untracked (session-tooling artifacts, e.g. `.claude-flow/`),
+  logging the exemption visibly; `--strict-gitignored` restores the old behavior. Tracked
+  files are never exempted. Implemented in `config/claude/lib/plumbline_scope.py`.
+- **C5 — Mid-flight scope additions:** never rely on queued messages to in-flight agents;
+  wait for the result, re-dispatch with an idempotency guard, and on mid-task agent death
+  inspect the tree for partial work before re-dispatching.

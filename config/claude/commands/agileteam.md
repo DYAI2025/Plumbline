@@ -330,6 +330,18 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   was recorded after the final gate cleared. Record each gate's CLEARED/PENDING/PAUSED
   transition to the ledger (via `context-keeper`) as the run proceeds, so the next
   invocation can resume.
+  **Ledger-mandatory delivery gates (2026-07-08 retro, C3):** `merge` (PR merged to the
+  default branch), `deploy` (deployment observed SUCCESS), and `production-verification`
+  (live smoke against the real URL with real injected secrets) are each recorded as
+  ledger gates.
+  **Ground-truth cross-check on resume:** before trusting the traceability matrix's
+  `wired-in-prod?` column, verify it against git/remote reality — `git fetch`, check
+  whether the branch's commits are contained in `origin/<default>` (`git cherry`,
+  `gh pr list --state merged`) and whether a newer deployment exists. A
+  `wired-in-prod? = no` row with the code already merged+deployed is a STALE ledger,
+  not a RED product state — reconcile the matrix first, then resume. (Measured failure
+  2026-07-08: PR merged+deployed with no ledger event; resume mis-classified the base
+  feature as undeployed.)
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
 - Identify the **target repo**. If the change is non-trivial and you are on a default
@@ -402,6 +414,15 @@ risk is invisible: Sonnet is a perfectly reasonable coder yet still misses this 
 **Independence invariant:** whoever writes code does not review it; whoever derives
 tests does not implement them. Reviewers/validators get **diff + spec**, never the
 coder's reasoning chain. Announce every dispatch ("Dispatching `coder` for Task N…").
+
+**Mid-flight scope additions to a running agent (2026-07-08 retro, C5):** do NOT rely on
+a queued message reaching an in-flight agent — if it finishes before its next tool round,
+the addition is silently lost (measured). Wait for the agent's result, then send the
+addition as a fresh dispatch/resume whose prompt starts with an idempotency guard
+("if you already did X, report the commit SHA and stop; otherwise execute X"). If a
+resumed agent dies mid-task (API error), inspect the working tree for its partial work
+(tests may exist without the fix) and finish deterministically rather than re-dispatching
+blind.
 
 ### Team composition (minimum + dynamic)
 

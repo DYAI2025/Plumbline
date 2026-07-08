@@ -10,3 +10,8 @@ docs/context/.start-gate
 
 # Real secrets: only .env.example is committed (REQ-B-003 / NGOAL-B-001).
 .env
+
+# Local update-mechanism snapshots + session tooling (per-user runtime, never source)
+.plumbline/
+.claude/homunculus/
+.devin/
