@@ -1,4 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$SCRIPT_DIR/../metrics/rule_ledger.py" "$@"
+TARGET="$SCRIPT_DIR/"
+
+# Interpreter selection.
+#
+# The wrapper used to `exec python3` unconditionally. Some environments install
+# a policy shim on `python3` that REFUSES direct invocation and demands
+# `uv run python3`. Under such a shim every Plumbline CLI failed with exit 1 and
+# an error on stderr — which the enforcement hook then reported as a failing
+# GATE rather than a broken tool. A gate that cannot tell "rule violated" from
+# "tool unusable" is worse than no gate. Measured 2026-07-28.
+#
+# Order: explicit $PLUMBLINE_PYTHON, then uv when available, then python3.
+if [ -n "${PLUMBLINE_PYTHON:-}" ]; then
+  exec $PLUMBLINE_PYTHON "$TARGET" "$@"
+elif command -v uv >/dev/null 2>&1; then
+  exec uv run python3 "$TARGET" "$@"
+else
+  exec python3 "$TARGET" "$@"
+fi

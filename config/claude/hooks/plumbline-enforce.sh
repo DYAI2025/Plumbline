@@ -65,7 +65,51 @@ emit_block() {
 
 : "${CLAUDE_PROJECT_DIR:=$PWD}"
 repo="$CLAUDE_PROJECT_DIR"
-bin="$repo/config/claude/bin"
+
+# --- CLI resolution -----------------------------------------------------------
+# The earlier version hardcoded "$repo/config/claude/bin". That path only exists
+# when the working repo IS this repo; in a GOVERNED repo (the normal case — an
+# /agileteam run inside some other project) it never exists, so the hook could
+# never prove a gate anywhere it actually matters. It blocked fail-closed, which
+# was correct, but it made enforcement permanently unprovable rather than
+# occasionally unavailable. Measured 2026-07-28 in a governed repo.
+#
+# Resolution order, first hit wins, per CLI (not per directory — under PATH the
+# three CLIs are not required to share a parent):
+#   1. $PLUMBLINE_BIN_DIR        explicit operator override
+#   2. $repo/config/claude/bin   repo-local install
+#   3. PATH (command -v)         normal install on the operator's PATH
+#   4. $HOME/.claude/bin         global install
+#   5. nothing found             -> BLOCK (never fail open)
+#
+# No silent deactivation: if any ONE of the three is unresolvable the hook still
+# blocks. Resolution is reported on stderr so the path in use is auditable rather
+# than guessed.
+plumbline_resolve() {
+  local name="$1" cand
+  if [ -n "${PLUMBLINE_BIN_DIR:-}" ] && [ -x "$PLUMBLINE_BIN_DIR/$name" ]; then
+    printf '%s' "$PLUMBLINE_BIN_DIR/$name"
+    return 0
+  fi
+  if [ -x "$repo/config/claude/bin/$name" ]; then
+    printf '%s' "$repo/config/claude/bin/$name"
+    return 0
+  fi
+  cand="$(command -v "$name" 2>/dev/null)" || cand=""
+  if [ -n "$cand" ] && [ -x "$cand" ]; then
+    printf '%s' "$cand"
+    return 0
+  fi
+  if [ -n "${HOME:-}" ] && [ -x "$HOME/.claude/bin/$name" ]; then
+    printf '%s' "$HOME/.claude/bin/$name"
+    return 0
+  fi
+  return 1
+}
+
+cli_scope="$(plumbline_resolve plumbline-scope-check)" || cli_scope=""
+cli_context="$(plumbline_resolve plumbline-context-check)" || cli_context=""
+cli_reality="$(plumbline_resolve plumbline-reality-check)" || cli_reality=""
 
 # --- C1 activation: ground-truth marker the orchestrator writes ---------------
 # No marker -> not an active feature run -> no-op. This is what keeps normal
@@ -99,12 +143,15 @@ esac
 
 # The PRIL CLIs must be present to enforce. If they are absent we cannot prove
 # the gate either way; rather than fail OPEN we block with an explicit reason.
-if [ ! -x "$bin/plumbline-scope-check" ] || \
-   [ ! -x "$bin/plumbline-context-check" ] || \
-   [ ! -x "$bin/plumbline-reality-check" ]; then
-  emit_block "PRIL enforcement failed: enforcement CLIs missing under config/claude/bin; cannot prove gates. Fix the install or escalate to the user; do not finish with an unprovable gate."
+if [ -z "$cli_scope" ] || [ -z "$cli_context" ] || [ -z "$cli_reality" ]; then
+  emit_block "PRIL enforcement failed: enforcement CLIs not resolvable (searched \$PLUMBLINE_BIN_DIR, <repo>/config/claude/bin, PATH, \$HOME/.claude/bin); cannot prove gates. Fix the install or escalate to the user; do not finish with an unprovable gate."
   exit 0
 fi
+
+# Audit trail: which binaries actually ran. Goes to stderr, never stdout — the
+# stdout contract is exactly one JSON object, and only on a block.
+printf 'plumbline-enforce: scope=%s context=%s reality=%s\n' \
+  "$cli_scope" "$cli_context" "$cli_reality" >&2
 
 # --- I1: route all sub-command stderr to a temp dir, never the repo CWD -------
 # M-2: a failed mktemp must never leave errd empty — an empty errd would write
@@ -136,11 +183,11 @@ base="$(git -C "$repo" merge-base HEAD main 2>/dev/null)" || base=""
 } | sort -u > "$errd/changed"
 
 # Scope guard: changed files must stay inside the feature's allowed scope.
-"$bin/plumbline-scope-check" --repo "$repo" --feature "$feat" \
+"$cli_scope" --repo "$repo" --feature "$feat" \
   --changed-files "$errd/changed" >/dev/null 2>"$errd/scope" || fails="$fails scope"
 
 # Context gate: confirmed product context must exist for the feature.
-"$bin/plumbline-context-check" --repo "$repo" --feature "$feat" \
+"$cli_context" --repo "$repo" --feature "$feat" \
   >/dev/null 2>"$errd/ctx" || fails="$fails context"
 
 # --- I2: reality gate mirrors the feature's boundary class --------------------
@@ -151,7 +198,7 @@ base="$(git -C "$repo" merge-base HEAD main 2>/dev/null)" || base=""
 # "presence-only" via --min-evidence (plumbline_reality.FORBIDDEN_TOKENS rejects
 # the "fake-only" token), so the correct behavior is to skip, not invent a floor.
 if [ -f "$repo/docs/context/.feature-boundary" ]; then
-  "$bin/plumbline-reality-check" --repo "$repo" --feature "$feat" \
+  "$cli_reality" --repo "$repo" --feature "$feat" \
     --min-evidence integration >/dev/null 2>"$errd/real" || fails="$fails reality"
 fi
 
