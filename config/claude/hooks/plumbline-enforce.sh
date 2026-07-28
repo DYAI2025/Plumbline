@@ -173,8 +173,58 @@ fails=""
 # "write malware, never git add" evasion: an untracked, non-ignored out-of-scope
 # file is still part of the C2 surface and is held to the scope guard. Ignored
 # files (exclude-standard) are intentionally excluded.
-base="$(git -C "$repo" merge-base HEAD main 2>/dev/null)" || base=""
-[ -n "$base" ] || base="HEAD"
+# --- Scope base resolution (no HEAD fallback) ---------------------------------
+# This used to be `git merge-base HEAD main` with a fallback to HEAD. Two faults,
+# and the second one is the dangerous one:
+#
+#   * `main` was hardcoded. In a repository whose default branch is `master` the
+#     merge-base call simply fails.
+#   * On failure `base` fell back to HEAD, so the surface became
+#     `git diff HEAD...HEAD` — empty. Committed feature work was then not
+#     scope-checked AT ALL, and the gate reported green. The header of this file
+#     calls exactly that situation vacuous and fail-open; the fallback produced
+#     it on every master-default repository.
+#
+# Resolution order, first hit wins:
+#   1. explicit base — $PLUMBLINE_SCOPE_BASE, else the repo-pinned
+#      docs/context/.scope-base (same value, persisted per repo; a Stop hook
+#      inherits no per-branch environment, so an env-only interface would be
+#      undeliverable in practice). A STACKED feature branch MUST use this: it has
+#      to be measured against its stack base, not against the default branch.
+#   2. detected default branch via refs/remotes/origin/HEAD
+#   3. origin/main, if it exists
+#   4. origin/master, if it exists
+#   5. nothing resolvable -> BLOCK. There is deliberately no HEAD fallback:
+#      an unprovable surface must never read as a passing gate.
+base_ref=""
+if [ -n "${PLUMBLINE_SCOPE_BASE:-}" ]; then
+  base_ref="$PLUMBLINE_SCOPE_BASE"
+elif [ -f "$repo/docs/context/.scope-base" ]; then
+  base_ref="$(tr -d ' \t\r\n' < "$repo/docs/context/.scope-base" 2>/dev/null)"
+fi
+if [ -z "$base_ref" ]; then
+  if origin_head="$(git -C "$repo" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"; then
+    base_ref="${origin_head#refs/remotes/}"
+  elif git -C "$repo" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    base_ref="origin/main"
+  elif git -C "$repo" rev-parse --verify --quiet origin/master >/dev/null 2>&1; then
+    base_ref="origin/master"
+  fi
+fi
+if [ -z "$base_ref" ]; then
+  emit_block "PRIL enforcement failed: scope base not resolvable (tried \$PLUMBLINE_SCOPE_BASE, docs/context/.scope-base, refs/remotes/origin/HEAD, origin/main, origin/master). Committed work cannot be scope-checked against an unknown base; pin the base explicitly or escalate to the user."
+  exit 0
+fi
+
+# The ref must exist AND share history with HEAD, otherwise the three-dot diff
+# below would be meaningless. Both failures block rather than degrade.
+base="$(git -C "$repo" merge-base HEAD "$base_ref" 2>/dev/null)" || base=""
+if [ -z "$base" ]; then
+  emit_block "PRIL enforcement failed: scope base '$base_ref' has no merge-base with HEAD (unknown ref or unrelated history); the committed scope surface cannot be computed. Fix the base or escalate to the user."
+  exit 0
+fi
+printf 'plumbline-enforce: scope-base=%s (%s)\n' "$base_ref" "$base" >&2
+
 {
   git -C "$repo" diff --name-only "$base"...HEAD 2>/dev/null
   git -C "$repo" diff --name-only 2>/dev/null
