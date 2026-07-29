@@ -361,7 +361,7 @@ setup_text="$(cat "$REPO_DIR/SETUP.md")"
 assert_contains "PLUM-7 docs: explicit CLI directory is documented" \
   "$setup_text" 'PLUMBLINE_BIN_DIR'
 assert_contains "PLUM-7 docs: per-user CLI fallback is documented" \
-  "$setup_text" '$HOME/.claude/bin'
+  "$setup_text" "\$HOME/.claude/bin"
 assert_contains "PLUM-9 docs: stack baseline override is documented" \
   "$setup_text" 'PLUMBLINE_STACK_BASE'
 
