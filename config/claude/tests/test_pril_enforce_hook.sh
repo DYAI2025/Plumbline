@@ -659,7 +659,7 @@ uv_project_mutation="$uv_config_repo/project-mutation"
 mkdir -p "$uv_config_repo"
 printf 'cache-dir = ".project-cache"\n' >"$uv_config_repo/uv.toml"
 (
-  cd "$uv_config_repo"
+  cd "$uv_config_repo" || exit 1
   env -u PLUMBLINE_PYTHON \
     PATH="$uv_bin:$PATH" \
     PLUM8_UV_LOG="$uv_log" \
