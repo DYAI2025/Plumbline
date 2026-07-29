@@ -240,9 +240,13 @@ append_gate_failure() {
       error_code="PRIL_TOOL_BROKEN"
       error_class="tool_broken"
       ;;
-    *)
+    2|3|4)
       error_code="PRIL_POLICY_VIOLATION"
       error_class="policy_violation"
+      ;;
+    *)
+      error_code="PRIL_TOOL_BROKEN"
+      error_class="tool_broken"
       ;;
   esac
 
