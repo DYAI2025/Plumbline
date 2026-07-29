@@ -618,7 +618,7 @@ assert_not_contains "PLUM-8 policy-like launcher failure: never policy violation
 # With no explicit override, uv wins before python3 and receives the exact
 # `run python3` prefix. The stub delegates to the real interpreter so this is a
 # real wrapper-to-Python composition check rather than a source-text assertion.
-real_python="$(command -v python3)"
+real_python="$(python3 -c 'import os, sys; print(os.path.realpath(sys.executable))')"
 uv_bin="$WORK/uv-bin"
 mkdir -p "$uv_bin"
 cat >"$uv_bin/uv" <<'EOF'
@@ -649,10 +649,11 @@ assert_contains "PLUM-8 uv fallback: interpreter is audited" \
 # branch rather than accidentally observing the developer machine's uv.
 python_bin="$WORK/python-bin"
 mkdir -p "$python_bin"
-for tool in bash dirname mktemp python3 rm rmdir; do
+for tool in bash dirname mktemp rm rmdir; do
   tool_path="$(command -v "$tool")"
   ln -s "$tool_path" "$python_bin/$tool"
 done
+ln -s "$real_python" "$python_bin/python3"
 python_err="$WORK/plum8-python.err"
 env -u PLUMBLINE_PYTHON \
   PATH="$python_bin" \
