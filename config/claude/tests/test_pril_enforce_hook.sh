@@ -35,36 +35,47 @@ WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# Run the hook against a given project dir with a given stdin payload.
+# Run the hook against a given project dir with a given stdin payload. Remaining
+# arguments are optional NAME=value environment entries for the hook process.
 # Captures stdout, stderr, and exit code separately. Uses CLAUDE_PROJECT_DIR
 # (the hook's project anchor) and a clean PATH-independent invocation.
-# Sets globals: HOOK_OUT HOOK_ERR HOOK_RC
-run_hook() {
+# Sets globals: HOOK_OUT HOOK_ERR HOOK_RC.
+run_hook_with_env() {
   local project="$1" stdin_payload="$2"
+  shift 2
   local outf errf
   outf="$(mktemp -p "$WORK")"
   errf="$(mktemp -p "$WORK")"
-  CLAUDE_PROJECT_DIR="$project" bash "$HOOK" >"$outf" 2>"$errf" <<<"$stdin_payload"
+  env "$@" CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
+    >"$outf" 2>"$errf" <<<"$stdin_payload"
   HOOK_RC=$?
   HOOK_OUT="$(cat "$outf")"
+  HOOK_ERR="$(cat "$errf")"
   rm -f "$outf" "$errf"
+}
+
+run_hook() {
+  run_hook_with_env "$1" "$2"
 }
 
 # Build a self-contained git repo that vendors the PRIL CLIs + libs so the hook
 # can shell out to them with --repo pointed at this repo. Echoes the repo path.
-# Arg1: feature slug. Sets up a confirmed canvas + full context + traceability.
+# Arg1: feature slug. Arg2: baseline branch (default: main). Arg3: set to
+# "no-vendor" for a real foreign product repository with no Plumbline payload.
+# Sets up a confirmed canvas + full context + traceability.
 make_feature_repo() {
-  local feat="$1" repo
+  local feat="$1" baseline_branch="${2:-main}" vendor="${3:-vendor}" repo
   repo="$(mktemp -d -p "$WORK")"
 
-  # Vendor the real PRIL CLIs + lib so the hook's "$repo/config/claude/bin/..."
-  # resolves inside this throwaway repo (the hook anchors bin on the project dir).
-  mkdir -p "$repo/config/claude/bin" "$repo/config/claude/lib"
-  cp "$BIN_SRC"/plumbline-context-check "$BIN_SRC"/plumbline-reality-check \
-     "$BIN_SRC"/plumbline-scope-check "$repo/config/claude/bin/"
-  cp "$LIB_SRC"/plumbline_context.py "$LIB_SRC"/plumbline_reality.py \
-     "$LIB_SRC"/plumbline_scope.py "$repo/config/claude/lib/"
-  chmod +x "$repo/config/claude/bin/"*
+  if [ "$vendor" != "no-vendor" ]; then
+    # Legacy/repo-local layout remains supported, but is no longer required.
+    mkdir -p "$repo/config/claude/bin" "$repo/config/claude/lib"
+    cp "$BIN_SRC"/plumbline-context-check "$BIN_SRC"/plumbline-reality-check \
+       "$BIN_SRC"/plumbline-scope-check "$repo/config/claude/bin/"
+    cp "$LIB_SRC"/plumbline_context.py "$LIB_SRC"/plumbline_reality.py \
+       "$LIB_SRC"/plumbline_scope.py "$repo/config/claude/lib/"
+    chmod +x "$repo/config/claude/bin/"*
+  fi
 
   # Confirmed product-context artifacts (context-check passes) + an Allowed
   # change scope section limiting changes to src/feature/** and docs/.
@@ -84,11 +95,11 @@ EOF
   printf 'Status: user-confirmed\nVision body.\n' >"$repo/docs/vision/$feat.vision.md"
   printf 'Status: user-confirmed\nTraceability.\n' >"$repo/docs/traceability.md"
 
-  # Initialize a real git repo with a main branch (merge-base needs main).
+  # Initialize a real git repo with the requested baseline branch.
   git -C "$repo" init -q
   git -C "$repo" config user.email pril-test@example.com
   git -C "$repo" config user.name "PRIL Test"
-  git -C "$repo" checkout -q -b main
+  git -C "$repo" checkout -q -b "$baseline_branch"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m "baseline confirmed context"
   git -C "$repo" checkout -q -b "feat/$feat"
@@ -343,5 +354,200 @@ printf 'junk\n' > "$ignore_repo/src/billing/ignored.py"   # untracked AND ignore
 run_hook "$ignore_repo" '{}'
 assert_eq "ignored untracked file: exit 0 (no-op, not in C2 surface)" "0" "$HOOK_RC"
 assert_eq "ignored untracked file: empty stdout (not blocked)" "" "$HOOK_OUT"
+
+# --- 12. PLUM-7: CLIs resolve outside the governed product repository. --------
+# The operator-facing order and stack override must remain documented.
+setup_text="$(cat "$REPO_DIR/SETUP.md")"
+assert_contains "PLUM-7 docs: explicit CLI directory is documented" \
+  "$setup_text" 'PLUMBLINE_BIN_DIR'
+assert_contains "PLUM-7 docs: per-user CLI fallback is documented" \
+  "$setup_text" "\$HOME/.claude/bin"
+assert_contains "PLUM-9 docs: stack baseline override is documented" \
+  "$setup_text" 'PLUMBLINE_STACK_BASE'
+
+# This is the real deployment topology: the product repo has no vendored
+# config/claude/bin payload, while the Plumbline installation is elsewhere.
+foreign_repo="$(make_feature_repo foreignfeat master no-vendor)"
+printf 'foreignfeat' >"$foreign_repo/docs/context/.active-feature"
+printf 'def external():\n    return 1\n' >"$foreign_repo/src/feature/external.py"
+git -C "$foreign_repo" add src/feature/external.py
+git -C "$foreign_repo" commit -q -m "foreign product change"
+run_hook_with_env "$foreign_repo" '{}' "PLUMBLINE_BIN_DIR=$BIN_SRC"
+assert_eq "PLUM-7 foreign repo: exit 0" "0" "$HOOK_RC"
+assert_eq "PLUM-7 foreign repo: real external CLIs pass" "" "$HOOK_OUT"
+assert_contains "PLUM-7 audit: scope CLI path is visible" "$HOOK_ERR" \
+  "plumbline-scope-check"
+assert_contains "PLUM-7 audit: explicit install source is visible" "$HOOK_ERR" \
+  "source=PLUMBLINE_BIN_DIR"
+
+# Every CLI is resolved independently in the documented order. Deliberately
+# distribute the three executables across explicit-dir, repo-local, and PATH;
+# resolving one shared bin directory would fail this case.
+split_repo="$(make_feature_repo splitfeat main no-vendor)"
+printf 'splitfeat' >"$split_repo/docs/context/.active-feature"
+split_explicit="$WORK/split-explicit"
+split_path="$WORK/split-path"
+mkdir -p "$split_explicit" "$split_path" "$split_repo/config/claude/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$split_explicit/plumbline-scope-check"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$split_repo/config/claude/bin/plumbline-context-check"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$split_path/plumbline-reality-check"
+chmod +x "$split_explicit/plumbline-scope-check" \
+  "$split_repo/config/claude/bin/plumbline-context-check" \
+  "$split_path/plumbline-reality-check"
+run_hook_with_env "$split_repo" '{}' \
+  "PLUMBLINE_BIN_DIR=$split_explicit" "PATH=$split_path:$PATH"
+assert_eq "PLUM-7 per-CLI resolution: distributed executables pass" "" "$HOOK_OUT"
+assert_contains "PLUM-7 order: scope uses explicit dir" "$HOOK_ERR" \
+  "plumbline-scope-check source=PLUMBLINE_BIN_DIR"
+assert_contains "PLUM-7 order: context uses repo-local" "$HOOK_ERR" \
+  "plumbline-context-check source=project-local"
+assert_contains "PLUM-7 order: reality uses PATH" "$HOOK_ERR" \
+  "plumbline-reality-check source=PATH"
+
+# Final fallback: the conventional per-user install. The directory contains a
+# space so quoting/canonicalization is exercised on both Linux and macOS CI.
+home_repo="$(make_feature_repo homefeat main no-vendor)"
+printf 'homefeat' >"$home_repo/docs/context/.active-feature"
+fake_home="$WORK/home with space"
+mkdir -p "$fake_home/.claude/bin"
+for cli in plumbline-scope-check plumbline-context-check plumbline-reality-check; do
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$fake_home/.claude/bin/$cli"
+  chmod +x "$fake_home/.claude/bin/$cli"
+done
+run_hook_with_env "$home_repo" '{}' "HOME=$fake_home"
+assert_eq "PLUM-7 HOME fallback: quoted portable path passes" "" "$HOOK_OUT"
+assert_contains "PLUM-7 HOME fallback: source is audited" "$HOOK_ERR" \
+  "source=HOME/.claude/bin"
+assert_contains "PLUM-7 HOME fallback: path with spaces survives" "$HOOK_ERR" \
+  "$fake_home/.claude/bin/plumbline-scope-check"
+
+# A partially installed runtime must block with a stable classification and the
+# exact missing executable, never degrade to a no-op.
+missing_repo="$(make_feature_repo missingcli main no-vendor)"
+printf 'missingcli' >"$missing_repo/docs/context/.active-feature"
+missing_bin="$WORK/missing-bin"
+missing_home="$WORK/missing-home"
+mkdir -p "$missing_bin" "$missing_home"
+for cli in plumbline-scope-check plumbline-context-check; do
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$missing_bin/$cli"
+  chmod +x "$missing_bin/$cli"
+done
+run_hook_with_env "$missing_repo" '{}' \
+  "PLUMBLINE_BIN_DIR=$missing_bin" "HOME=$missing_home"
+assert_eq "PLUM-7 missing CLI: hook still exits 0" "0" "$HOOK_RC"
+assert_contains "PLUM-7 missing CLI: blocks with stable class" "$HOOK_OUT" \
+  "PRIL_CLI_UNAVAILABLE"
+assert_contains "PLUM-7 missing CLI: names exact executable" "$HOOK_OUT" \
+  "plumbline-reality-check"
+
+# --- 13. PLUM-9: resolve a real, auditable Git baseline; never HEAD fallback. --
+# Local master is a supported default fallback (foreign_repo above also proves
+# the full real-CLI path on master).
+run_hook_with_env "$foreign_repo" '{}' "PLUMBLINE_BIN_DIR=$BIN_SRC"
+assert_eq "PLUM-9 local master: in-scope committed work passes" "" "$HOOK_OUT"
+assert_contains "PLUM-9 local master: base source audited" "$HOOK_ERR" \
+  "source=local-master"
+
+# Remote default may be neither main nor master.
+remote_default_repo="$(make_feature_repo remotefeat trunk)"
+printf 'remotefeat' >"$remote_default_repo/docs/context/.active-feature"
+trunk_sha="$(git -C "$remote_default_repo" rev-parse trunk)"
+git -C "$remote_default_repo" update-ref refs/remotes/origin/trunk "$trunk_sha"
+git -C "$remote_default_repo" symbolic-ref refs/remotes/origin/HEAD \
+  refs/remotes/origin/trunk
+git -C "$remote_default_repo" branch -D trunk >/dev/null
+printf 'def remote_default():\n    return 1\n' \
+  >"$remote_default_repo/src/feature/remote.py"
+git -C "$remote_default_repo" add src/feature/remote.py
+git -C "$remote_default_repo" commit -q -m "remote-default feature"
+run_hook "$remote_default_repo" '{}'
+assert_eq "PLUM-9 remote default: custom default branch passes" "" "$HOOK_OUT"
+assert_contains "PLUM-9 remote default: source audited" "$HOOK_ERR" \
+  "source=remote-default"
+assert_contains "PLUM-9 remote default: ref audited" "$HOOK_ERR" \
+  "ref=origin/trunk"
+
+# Explicit origin/main and origin/master fallbacks are both covered without a
+# network call. Remove the local baseline so only the remote-tracking ref exists.
+for default_name in main master; do
+  origin_repo="$(make_feature_repo "origin-$default_name" "$default_name")"
+  printf 'origin-%s' "$default_name" \
+    >"$origin_repo/docs/context/.active-feature"
+  default_sha="$(git -C "$origin_repo" rev-parse "$default_name")"
+  git -C "$origin_repo" update-ref \
+    "refs/remotes/origin/$default_name" "$default_sha"
+  git -C "$origin_repo" branch -D "$default_name" >/dev/null
+  printf 'def remote_ref():\n    return 1\n' \
+    >"$origin_repo/src/feature/remote-ref.py"
+  git -C "$origin_repo" add src/feature/remote-ref.py
+  git -C "$origin_repo" commit -q -m "origin fallback feature"
+  run_hook "$origin_repo" '{}'
+  assert_eq "PLUM-9 origin/$default_name: committed work passes" "" "$HOOK_OUT"
+  assert_contains "PLUM-9 origin/$default_name: source audited" "$HOOK_ERR" \
+    "source=origin-$default_name"
+done
+
+# Stacked branch: an explicit parent pin excludes the parent's deliberately
+# out-of-scope edit and checks only the child increment. Without the pin the
+# conservative default-branch surface includes the whole stack and blocks.
+stack_repo="$(make_feature_repo stackfeat)"
+git -C "$stack_repo" branch -m stack/parent
+mkdir -p "$stack_repo/src/shared"
+printf 'parent\n' >"$stack_repo/src/shared/parent.py"
+git -C "$stack_repo" add src/shared/parent.py
+git -C "$stack_repo" commit -q -m "stack parent"
+git -C "$stack_repo" checkout -q -b feat/stackfeat
+printf 'child\n' >"$stack_repo/src/feature/child.py"
+git -C "$stack_repo" add src/feature/child.py
+git -C "$stack_repo" commit -q -m "stack child"
+printf 'stackfeat' >"$stack_repo/docs/context/.active-feature"
+run_hook_with_env "$stack_repo" '{}' "PLUMBLINE_STACK_BASE=stack/parent"
+assert_eq "PLUM-9 stacked with pin: child increment passes" "" "$HOOK_OUT"
+assert_contains "PLUM-9 stacked with pin: source audited" "$HOOK_ERR" \
+  "source=PLUMBLINE_STACK_BASE"
+run_hook "$stack_repo" '{}'
+assert_contains "PLUM-9 stacked without pin: whole stack blocks safely" \
+  "$HOOK_OUT" "scope"
+
+# An out-of-scope child edit remains visible even with a valid stack pin.
+printf 'own violation\n' >"$stack_repo/src/shared/child.py"
+git -C "$stack_repo" add src/shared/child.py
+run_hook_with_env "$stack_repo" '{}' "PLUMBLINE_STACK_BASE=stack/parent"
+assert_contains "PLUM-9 stack pin: own uncommitted scope violation blocks" \
+  "$HOOK_OUT" "scope"
+
+# A committed foreign file is part of the surface as well.
+committed_bad_repo="$(make_feature_repo committedbad)"
+printf 'committedbad' >"$committed_bad_repo/docs/context/.active-feature"
+mkdir -p "$committed_bad_repo/src/billing"
+printf 'committed violation\n' >"$committed_bad_repo/src/billing/committed.py"
+git -C "$committed_bad_repo" add src/billing/committed.py
+git -C "$committed_bad_repo" commit -q -m "committed scope violation"
+run_hook "$committed_bad_repo" '{}'
+assert_contains "PLUM-9 committed foreign file blocks" "$HOOK_OUT" "scope"
+
+# No known base: classify and block. The old implementation silently replaced
+# this with HEAD and evaluated the vacuous HEAD...HEAD range.
+unknown_base_repo="$(make_feature_repo unknownbase trunk)"
+printf 'unknownbase' >"$unknown_base_repo/docs/context/.active-feature"
+run_hook "$unknown_base_repo" '{}'
+assert_contains "PLUM-9 unknown base: blocks with stable class" "$HOOK_OUT" \
+  "PRIL_GIT_BASE_UNRESOLVED"
+
+# An explicit but unknown pin is authoritative: do not silently fall back.
+run_hook_with_env "$committed_bad_repo" '{}' \
+  "PLUMBLINE_STACK_BASE=does-not-exist"
+assert_contains "PLUM-9 unknown explicit pin: blocks with stable class" \
+  "$HOOK_OUT" "PRIL_GIT_BASE_UNRESOLVED"
+
+# A ref can resolve to a valid commit and still have no common ancestor.
+unrelated_tree="$(git -C "$committed_bad_repo" mktree </dev/null)"
+unrelated_commit="$(printf 'unrelated\n' | \
+  git -C "$committed_bad_repo" commit-tree "$unrelated_tree")"
+git -C "$committed_bad_repo" update-ref refs/heads/unrelated "$unrelated_commit"
+run_hook_with_env "$committed_bad_repo" '{}' \
+  "PLUMBLINE_STACK_BASE=unrelated"
+assert_contains "PLUM-9 unrelated explicit pin: blocks with stable class" \
+  "$HOOK_OUT" "PRIL_GIT_BASE_UNRELATED"
 
 finish "test_pril_enforce_hook"

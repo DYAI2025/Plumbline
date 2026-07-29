@@ -65,7 +65,6 @@ emit_block() {
 
 : "${CLAUDE_PROJECT_DIR:=$PWD}"
 repo="$CLAUDE_PROJECT_DIR"
-bin="$repo/config/claude/bin"
 
 # --- C1 activation: ground-truth marker the orchestrator writes ---------------
 # No marker -> not an active feature run -> no-op. This is what keeps normal
@@ -97,12 +96,107 @@ esac
 # it there is nothing to enforce against -> no-op.
 [ -f "$repo/docs/canvas/$feat.canvas.md" ] || exit 0
 
-# The PRIL CLIs must be present to enforce. If they are absent we cannot prove
-# the gate either way; rather than fail OPEN we block with an explicit reason.
-if [ ! -x "$bin/plumbline-scope-check" ] || \
-   [ ! -x "$bin/plumbline-context-check" ] || \
-   [ ! -x "$bin/plumbline-reality-check" ]; then
-  emit_block "PRIL enforcement failed: enforcement CLIs missing under config/claude/bin; cannot prove gates. Fix the install or escalate to the user; do not finish with an unprovable gate."
+# --- PLUM-7: resolve every required CLI independently -------------------------
+# Installation identity and the governed product repository are different
+# things. Resolve each executable in this documented order:
+#   1. PLUMBLINE_BIN_DIR (explicit installation/pilot override)
+#   2. project-local config/claude/bin (legacy/vendored layout)
+#   3. PATH
+#   4. CLAUDE_HOME/bin, then HOME/.claude/bin (normal user install)
+#
+# Do not use `readlink -f`: macOS does not provide the GNU option. Canonicalize
+# the containing directory with pwd -P and append the basename instead.
+canonical_executable() {
+  local candidate="$1" dir base physical_dir
+  [ -f "$candidate" ] && [ -x "$candidate" ] || return 1
+  dir="$(dirname "$candidate")" || return 1
+  base="$(basename "$candidate")" || return 1
+  physical_dir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
+  [ -n "$physical_dir" ] || return 1
+  printf '%s/%s\n' "$physical_dir" "$base"
+}
+
+resolved_cli_path=""
+resolved_cli_source=""
+resolve_cli() {
+  local name="$1" candidate="" found="" user_bin=""
+  resolved_cli_path=""
+  resolved_cli_source=""
+
+  if [ -n "${PLUMBLINE_BIN_DIR:-}" ]; then
+    candidate="$PLUMBLINE_BIN_DIR/$name"
+    found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
+    if [ -n "$found" ]; then
+      resolved_cli_path="$found"
+      resolved_cli_source="PLUMBLINE_BIN_DIR"
+    fi
+  fi
+
+  if [ -z "$resolved_cli_path" ]; then
+    candidate="$repo/config/claude/bin/$name"
+    found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
+    if [ -n "$found" ]; then
+      resolved_cli_path="$found"
+      resolved_cli_source="project-local"
+    fi
+  fi
+
+  if [ -z "$resolved_cli_path" ]; then
+    candidate="$(command -v "$name" 2>/dev/null)" || candidate=""
+    found=""
+    if [ -n "$candidate" ]; then
+      found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
+    fi
+    if [ -n "$found" ]; then
+      resolved_cli_path="$found"
+      resolved_cli_source="PATH"
+    fi
+  fi
+
+  if [ -z "$resolved_cli_path" ] && [ -n "${CLAUDE_HOME:-}" ]; then
+    user_bin="$CLAUDE_HOME/bin"
+    found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    if [ -n "$found" ]; then
+      resolved_cli_path="$found"
+      resolved_cli_source="CLAUDE_HOME/bin"
+    fi
+  fi
+
+  if [ -z "$resolved_cli_path" ] && [ -n "${HOME:-}" ]; then
+    user_bin="$HOME/.claude/bin"
+    found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    if [ -n "$found" ]; then
+      resolved_cli_path="$found"
+      resolved_cli_source="HOME/.claude/bin"
+    fi
+  fi
+
+  [ -n "$resolved_cli_path" ] || return 1
+  printf 'PRIL CLI resolved: %s source=%s path=%s\n' \
+    "$name" "$resolved_cli_source" "$resolved_cli_path" >&2
+  return 0
+}
+
+missing_clis=""
+scope_bin=""
+context_bin=""
+reality_bin=""
+for required_cli in \
+  plumbline-scope-check plumbline-context-check plumbline-reality-check
+do
+  if resolve_cli "$required_cli"; then
+    case "$required_cli" in
+      plumbline-scope-check) scope_bin="$resolved_cli_path" ;;
+      plumbline-context-check) context_bin="$resolved_cli_path" ;;
+      plumbline-reality-check) reality_bin="$resolved_cli_path" ;;
+    esac
+  else
+    missing_clis="$missing_clis $required_cli"
+  fi
+done
+
+if [ -n "$missing_clis" ]; then
+  emit_block "PRIL_CLI_UNAVAILABLE: missing executable(s):$missing_clis. Search order: PLUMBLINE_BIN_DIR, project-local config/claude/bin, PATH, CLAUDE_HOME/bin, HOME/.claude/bin. Cannot prove gates; fix the install or escalate to the user."
   exit 0
 fi
 
@@ -119,28 +213,145 @@ trap 'rm -rf "$errd"' EXIT
 fails=""
 
 # --- C2 scope surface: the WHOLE feature surface, not bare `git diff` ----------
-# merge-base(HEAD,main)..HEAD (committed feature work) UNION working-tree UNION
+# resolved merge-base..HEAD (committed feature work) UNION working-tree UNION
 # staged UNION untracked-non-ignored, sorted-unique. Bare `git diff --name-only`
 # is vacuous on a committed tree (would fail open); this reads the real ground
-# truth. The `ls-files --others --exclude-standard` union closes the
-# "write malware, never git add" evasion: an untracked, non-ignored out-of-scope
-# file is still part of the C2 surface and is held to the scope guard. Ignored
-# files (exclude-standard) are intentionally excluded.
-base="$(git -C "$repo" merge-base HEAD main 2>/dev/null)" || base=""
-[ -n "$base" ] || base="HEAD"
-{
-  git -C "$repo" diff --name-only "$base"...HEAD 2>/dev/null
-  git -C "$repo" diff --name-only 2>/dev/null
-  git -C "$repo" diff --name-only --cached 2>/dev/null
-  git -C "$repo" ls-files --others --exclude-standard 2>/dev/null
-} | sort -u > "$errd/changed"
+# truth. A missing/unrelated base is NOT replaced by HEAD: HEAD...HEAD is a
+# false-green empty surface.
+#
+# Explicit stack pins are authoritative. `PLUMBLINE_STACK_BASE` is canonical;
+# `PLUMBLINE_BASE_REF` is accepted as a compatibility alias. Auto-resolution:
+# remote default -> origin/main -> origin/master -> local main -> local master.
+base_ref=""
+base_commit=""
+base_merge=""
+base_source=""
+base_error_code=""
+base_error_ref=""
+
+try_git_base() {
+  local candidate="$1" source="$2" commit="" common=""
+  case "$candidate" in
+    ""|-*) return 1 ;;
+  esac
+  commit="$(git -C "$repo" rev-parse --verify "${candidate}^{commit}" \
+    2>/dev/null)" || return 1
+  [ -n "$commit" ] || return 1
+  common="$(git -C "$repo" merge-base HEAD "$commit" 2>/dev/null)" || return 2
+  [ -n "$common" ] || return 2
+  base_ref="$candidate"
+  base_commit="$commit"
+  base_merge="$common"
+  base_source="$source"
+  return 0
+}
+
+resolve_git_base() {
+  local explicit="" remote_default="" candidate="" source="" rc=0
+
+  if [ -n "${PLUMBLINE_STACK_BASE:-}" ] && \
+     [ -n "${PLUMBLINE_BASE_REF:-}" ] && \
+     [ "$PLUMBLINE_STACK_BASE" != "$PLUMBLINE_BASE_REF" ]; then
+    base_error_code="PRIL_GIT_BASE_CONFLICT"
+    base_error_ref="$PLUMBLINE_STACK_BASE != $PLUMBLINE_BASE_REF"
+    return 1
+  fi
+
+  if [ -n "${PLUMBLINE_STACK_BASE:-}" ]; then
+    explicit="$PLUMBLINE_STACK_BASE"
+    source="PLUMBLINE_STACK_BASE"
+  elif [ -n "${PLUMBLINE_BASE_REF:-}" ]; then
+    explicit="$PLUMBLINE_BASE_REF"
+    source="PLUMBLINE_BASE_REF"
+  fi
+
+  if [ -n "$explicit" ]; then
+    try_git_base "$explicit" "$source"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      return 0
+    elif [ "$rc" -eq 2 ]; then
+      base_error_code="PRIL_GIT_BASE_UNRELATED"
+    else
+      base_error_code="PRIL_GIT_BASE_UNRESOLVED"
+    fi
+    base_error_ref="$explicit"
+    return 1
+  fi
+
+  remote_default="$(git -C "$repo" symbolic-ref --quiet --short \
+    refs/remotes/origin/HEAD 2>/dev/null)" || remote_default=""
+  if [ -n "$remote_default" ]; then
+    try_git_base "$remote_default" "remote-default"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      return 0
+    elif [ "$rc" -eq 2 ]; then
+      base_error_code="PRIL_GIT_BASE_UNRELATED"
+      base_error_ref="$remote_default"
+      return 1
+    fi
+  fi
+
+  for candidate in origin/main origin/master main master
+  do
+    case "$candidate" in
+      origin/main) source="origin-main" ;;
+      origin/master) source="origin-master" ;;
+      main) source="local-main" ;;
+      master) source="local-master" ;;
+    esac
+    try_git_base "$candidate" "$source"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      return 0
+    elif [ "$rc" -eq 2 ]; then
+      base_error_code="PRIL_GIT_BASE_UNRELATED"
+      base_error_ref="$candidate"
+      return 1
+    fi
+  done
+
+  base_error_code="PRIL_GIT_BASE_UNRESOLVED"
+  base_error_ref="remote default, origin/main, origin/master, main, master"
+  return 1
+}
+
+if ! resolve_git_base; then
+  emit_block "$base_error_code: cannot establish a related Git baseline ($base_error_ref). Set PLUMBLINE_STACK_BASE to the intended parent for a stacked branch; refusing a false-green HEAD...HEAD fallback."
+  exit 0
+fi
+
+printf 'PRIL Git base resolved: ref=%s source=%s commit=%s merge-base=%s\n' \
+  "$base_ref" "$base_source" "$base_commit" "$base_merge" >&2
+
+# Collect each surface independently and check every Git command. A failed diff
+# command must not disappear behind the final `sort` process in a pipeline.
+if ! git -C "$repo" diff --name-only "$base_merge"...HEAD \
+  >"$errd/committed" 2>"$errd/git-committed" ||
+   ! git -C "$repo" diff --name-only \
+  >"$errd/working" 2>"$errd/git-working" ||
+   ! git -C "$repo" diff --name-only --cached \
+  >"$errd/staged" 2>"$errd/git-staged" ||
+   ! git -C "$repo" ls-files --others --exclude-standard \
+  >"$errd/untracked" 2>"$errd/git-untracked"
+then
+  emit_block "PRIL_GIT_DIFF_UNAVAILABLE: Git could not enumerate the complete committed, working, staged, and untracked change surface. Refusing an incomplete scope proof."
+  exit 0
+fi
+if ! sort -u "$errd/committed" "$errd/working" "$errd/staged" \
+  "$errd/untracked" >"$errd/changed"
+then
+  emit_block "PRIL_GIT_DIFF_UNAVAILABLE: could not assemble the complete Git change surface. Refusing an incomplete scope proof."
+  exit 0
+fi
 
 # Scope guard: changed files must stay inside the feature's allowed scope.
-"$bin/plumbline-scope-check" --repo "$repo" --feature "$feat" \
+"$scope_bin" --repo "$repo" --feature "$feat" \
   --changed-files "$errd/changed" >/dev/null 2>"$errd/scope" || fails="$fails scope"
 
 # Context gate: confirmed product context must exist for the feature.
-"$bin/plumbline-context-check" --repo "$repo" --feature "$feat" \
+"$context_bin" --repo "$repo" --feature "$feat" \
   >/dev/null 2>"$errd/ctx" || fails="$fails context"
 
 # --- I2: reality gate mirrors the feature's boundary class --------------------
@@ -151,7 +362,7 @@ base="$(git -C "$repo" merge-base HEAD main 2>/dev/null)" || base=""
 # "presence-only" via --min-evidence (plumbline_reality.FORBIDDEN_TOKENS rejects
 # the "fake-only" token), so the correct behavior is to skip, not invent a floor.
 if [ -f "$repo/docs/context/.feature-boundary" ]; then
-  "$bin/plumbline-reality-check" --repo "$repo" --feature "$feat" \
+  "$reality_bin" --repo "$repo" --feature "$feat" \
     --min-evidence integration >/dev/null 2>"$errd/real" || fails="$fails reality"
 fi
 
