@@ -56,6 +56,29 @@ installed elsewhere. It resolves each of `plumbline-scope-check`,
 Every selected executable and its source are written to the hook's diagnostic stream.
 If any executable is missing, the hook blocks with `PRIL_CLI_UNAVAILABLE`.
 
+Each PRIL wrapper then resolves its Python 3 interpreter independently using this
+authoritative order:
+
+1. `$PLUMBLINE_PYTHON` — one executable name or path; if set, it is authoritative
+   and an unusable value does not silently fall through
+2. `uv run --no-project --no-config python3` when `uv` is available and its
+   Python 3 probe succeeds; `--no-project --no-config` prevents project/workspace
+   and configuration discovery, including project-file or cache mutations
+3. `python3` on `PATH`
+
+Before running a checker, the wrapper probes that the selected command can start
+Python 3. Runtime failures and governance rejections are deliberately separate:
+
+| Machine code | Class | Wrapper exit | Meaning |
+|--------------|-------|--------------|---------|
+| `PRIL_TOOL_UNAVAILABLE` | `tool_unavailable` | `120` | no usable interpreter executable was resolved |
+| `PRIL_TOOL_BROKEN` | `tool_broken` | `121` | an interpreter resolved but its probe or checker process broke |
+| `PRIL_POLICY_VIOLATION` | `policy_violation` | checker-specific | the checker ran and rejected scope, context, reality, or redaction policy |
+
+On a blocked Stop hook, the reason includes `cli`, `interpreter`, `error_class`,
+and `exit_code`. Set `PLUMBLINE_RUNTIME_DIAGNOSTICS=1` when invoking a wrapper
+directly to print the same runtime selection on successful checks.
+
 For Git scope checks, the baseline order is an explicit
 `$PLUMBLINE_STACK_BASE` (or compatibility alias `$PLUMBLINE_BASE_REF`), the remote
 default, `origin/main`, `origin/master`, local `main`, then local `master`. Set the

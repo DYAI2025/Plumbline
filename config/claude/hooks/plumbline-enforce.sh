@@ -212,6 +212,52 @@ trap 'rm -rf "$errd"' EXIT
 
 fails=""
 
+# Append one stable, machine-readable failure record. Updated PRIL wrappers emit
+# a `PRIL_RUNTIME` diagnostic carrying the selected interpreter; older/external
+# CLIs may not, so retain a fail-closed `unknown` value rather than inventing an
+# interpreter. Exit 120 is the wrapper's tool-unavailable code, 121 is
+# tool-broken. A shell-level 126/127 means the resolved CLI itself could not be
+# executed and is therefore also unavailable.
+append_gate_failure() {
+  local gate="$1" cli="$2" rc="$3" err_file="$4"
+  local runtime_line="" interpreter="unknown"
+  local error_code="" error_class="" detail=""
+
+  runtime_line="$(grep '^PRIL_RUNTIME ' "$err_file" 2>/dev/null | tail -n 1)" \
+    || runtime_line=""
+  if [ -n "$runtime_line" ]; then
+    interpreter="$(printf '%s\n' "$runtime_line" | \
+      sed -n 's/.* interpreter=\([^ ]*\).*/\1/p')"
+    [ -n "$interpreter" ] || interpreter="unknown"
+  fi
+
+  case "$rc" in
+    120|126|127)
+      error_code="PRIL_TOOL_UNAVAILABLE"
+      error_class="tool_unavailable"
+      ;;
+    121)
+      error_code="PRIL_TOOL_BROKEN"
+      error_class="tool_broken"
+      ;;
+    2|3|4)
+      error_code="PRIL_POLICY_VIOLATION"
+      error_class="policy_violation"
+      ;;
+    *)
+      error_code="PRIL_TOOL_BROKEN"
+      error_class="tool_broken"
+      ;;
+  esac
+
+  detail="$error_code: gate=$gate cli=$cli interpreter=$interpreter error_class=$error_class exit_code=$rc"
+  if [ -n "$fails" ]; then
+    fails="$fails; $detail"
+  else
+    fails="$detail"
+  fi
+}
+
 # --- C2 scope surface: the WHOLE feature surface, not bare `git diff` ----------
 # resolved merge-base..HEAD (committed feature work) UNION working-tree UNION
 # staged UNION untracked-non-ignored, sorted-unique. Bare `git diff --name-only`
@@ -347,12 +393,28 @@ then
 fi
 
 # Scope guard: changed files must stay inside the feature's allowed scope.
-"$scope_bin" --repo "$repo" --feature "$feat" \
-  --changed-files "$errd/changed" >/dev/null 2>"$errd/scope" || fails="$fails scope"
+if PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
+  "$scope_bin" --repo "$repo" --feature "$feat" \
+  --changed-files "$errd/changed" >/dev/null 2>"$errd/scope"
+then
+  :
+else
+  gate_rc=$?
+  append_gate_failure \
+    "scope" "plumbline-scope-check" "$gate_rc" "$errd/scope"
+fi
 
 # Context gate: confirmed product context must exist for the feature.
-"$context_bin" --repo "$repo" --feature "$feat" \
-  >/dev/null 2>"$errd/ctx" || fails="$fails context"
+if PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
+  "$context_bin" --repo "$repo" --feature "$feat" \
+  >/dev/null 2>"$errd/ctx"
+then
+  :
+else
+  gate_rc=$?
+  append_gate_failure \
+    "context" "plumbline-context-check" "$gate_rc" "$errd/ctx"
+fi
 
 # --- I2: reality gate mirrors the feature's boundary class --------------------
 # Only a feature that declares an integration boundary (docs/context/.feature-
@@ -362,13 +424,21 @@ fi
 # "presence-only" via --min-evidence (plumbline_reality.FORBIDDEN_TOKENS rejects
 # the "fake-only" token), so the correct behavior is to skip, not invent a floor.
 if [ -f "$repo/docs/context/.feature-boundary" ]; then
-  "$reality_bin" --repo "$repo" --feature "$feat" \
-    --min-evidence integration >/dev/null 2>"$errd/real" || fails="$fails reality"
+  if PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
+    "$reality_bin" --repo "$repo" --feature "$feat" \
+    --min-evidence integration >/dev/null 2>"$errd/real"
+  then
+    :
+  else
+    gate_rc=$?
+    append_gate_failure \
+      "reality" "plumbline-reality-check" "$gate_rc" "$errd/real"
+  fi
 fi
 
 # --- Decision: fail CLOSED on any gate failure --------------------------------
 if [ -n "$fails" ]; then
-  emit_block "PRIL enforcement failed:$fails. Fix the failing gate(s) or escalate to the user; do not finish with a failing gate."
+  emit_block "PRIL enforcement failed: $fails. Fix the failing gate(s) or escalate to the user; do not finish with a failing gate."
 fi
 
 exit 0
