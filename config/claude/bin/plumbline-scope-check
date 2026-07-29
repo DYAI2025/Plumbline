@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$SCRIPT_DIR/../lib/plumbline_scope.py" "$@"
+# shellcheck source=../lib/plumbline_python.sh
+. "$SCRIPT_DIR/../lib/plumbline_python.sh"
+plumbline_python_main \
+  "plumbline-scope-check" "$SCRIPT_DIR/../lib/plumbline_scope.py" "2 3 4" "$@"
+exit $?

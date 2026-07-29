@@ -73,7 +73,8 @@ make_feature_repo() {
     cp "$BIN_SRC"/plumbline-context-check "$BIN_SRC"/plumbline-reality-check \
        "$BIN_SRC"/plumbline-scope-check "$repo/config/claude/bin/"
     cp "$LIB_SRC"/plumbline_context.py "$LIB_SRC"/plumbline_reality.py \
-       "$LIB_SRC"/plumbline_scope.py "$repo/config/claude/lib/"
+       "$LIB_SRC"/plumbline_scope.py "$LIB_SRC"/plumbline_python.sh \
+       "$repo/config/claude/lib/"
     chmod +x "$repo/config/claude/bin/"*
   fi
 
@@ -549,5 +550,183 @@ run_hook_with_env "$committed_bad_repo" '{}' \
   "PLUMBLINE_STACK_BASE=unrelated"
 assert_contains "PLUM-9 unrelated explicit pin: blocks with stable class" \
   "$HOOK_OUT" "PRIL_GIT_BASE_UNRELATED"
+
+# --- 14. PLUM-8: interpreter contract + distinct runtime error classes. -------
+# An explicit interpreter is authoritative. A missing override must never be
+# ignored in favor of a host python3, because that recreates the pilot's
+# false-green/false-diagnosis split between environments.
+missing_python="$WORK/does-not-exist/python"
+override_out="$WORK/plum8-override.out"
+override_err="$WORK/plum8-override.err"
+PLUMBLINE_PYTHON="$missing_python" \
+  "$BIN_SRC/plumbline-scope-check" --help \
+  >"$override_out" 2>"$override_err"
+override_rc=$?
+assert_eq "PLUM-8 missing explicit interpreter: stable unavailable exit" \
+  "120" "$override_rc"
+assert_contains "PLUM-8 missing explicit interpreter: machine code" \
+  "$(cat "$override_err")" "code=PRIL_TOOL_UNAVAILABLE"
+assert_contains "PLUM-8 missing explicit interpreter: error class" \
+  "$(cat "$override_err")" "error_class=tool_unavailable"
+assert_contains "PLUM-8 missing explicit interpreter: affected CLI" \
+  "$(cat "$override_err")" "cli=plumbline-scope-check"
+assert_contains "PLUM-8 missing explicit interpreter: interpreter source" \
+  "$(cat "$override_err")" "interpreter=PLUMBLINE_PYTHON"
+
+# An executable that is found but cannot run a trivial Python probe is a broken
+# tool, not a policy violation and not an unavailable executable.
+broken_python="$WORK/broken-python"
+printf '#!/usr/bin/env bash\nexit 9\n' >"$broken_python"
+chmod +x "$broken_python"
+broken_err="$WORK/plum8-broken.err"
+PLUMBLINE_PYTHON="$broken_python" \
+  "$BIN_SRC/plumbline-context-check" --help \
+  >/dev/null 2>"$broken_err"
+broken_rc=$?
+assert_eq "PLUM-8 broken interpreter: stable broken-tool exit" "121" "$broken_rc"
+assert_contains "PLUM-8 broken interpreter: distinct machine code" \
+  "$(cat "$broken_err")" "code=PRIL_TOOL_BROKEN"
+assert_contains "PLUM-8 broken interpreter: distinct error class" \
+  "$(cat "$broken_err")" "error_class=tool_broken"
+
+# A launcher can fail with the SAME numeric exit used by a policy checker.
+# Prove the wrapper requires evidence that Python actually started the checker
+# before accepting a policy exit; numeric coincidence alone is not governance
+# evidence.
+policy_like_broken="$WORK/policy-like-broken-python"
+cat >"$policy_like_broken" <<'EOF'
+#!/usr/bin/env bash
+case "${2:-}" in
+  *version_info*) exec "$PLUM8_REAL_PYTHON" "$@" ;;
+  *) exit 3 ;;
+esac
+EOF
+chmod +x "$policy_like_broken"
+policy_like_err="$WORK/plum8-policy-like-broken.err"
+PLUM8_REAL_PYTHON="$(command -v python3)" \
+  PLUMBLINE_PYTHON="$policy_like_broken" \
+  "$BIN_SRC/plumbline-scope-check" --help \
+  >/dev/null 2>"$policy_like_err"
+policy_like_rc=$?
+assert_eq "PLUM-8 policy-like launcher failure: classified as tool broken" \
+  "121" "$policy_like_rc"
+assert_contains "PLUM-8 policy-like launcher failure: not numeric-policy confusion" \
+  "$(cat "$policy_like_err")" "error_class=tool_broken"
+assert_not_contains "PLUM-8 policy-like launcher failure: never policy violation" \
+  "$(cat "$policy_like_err")" "error_class=policy_violation"
+
+# With no explicit override, uv wins before python3 and receives the exact
+# `run python3` prefix. The stub delegates to the real interpreter so this is a
+# real wrapper-to-Python composition check rather than a source-text assertion.
+real_python="$(command -v python3)"
+uv_bin="$WORK/uv-bin"
+mkdir -p "$uv_bin"
+cat >"$uv_bin/uv" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >"$PLUM8_UV_LOG"
+[ "${1:-}" = "run" ] && [ "${2:-}" = "python3" ] || exit 88
+shift 2
+exec "$PLUM8_REAL_PYTHON" "$@"
+EOF
+chmod +x "$uv_bin/uv"
+uv_log="$WORK/plum8-uv.log"
+uv_err="$WORK/plum8-uv.err"
+env -u PLUMBLINE_PYTHON \
+  PATH="$uv_bin:$PATH" \
+  PLUM8_UV_LOG="$uv_log" \
+  PLUM8_REAL_PYTHON="$real_python" \
+  PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
+  "$BIN_SRC/plumbline-reality-check" --help \
+  >/dev/null 2>"$uv_err"
+uv_rc=$?
+assert_eq "PLUM-8 uv fallback: wrapper succeeds through uv" "0" "$uv_rc"
+assert_contains "PLUM-8 uv fallback: exact command prefix" \
+  "$(cat "$uv_log")" "run python3"
+assert_contains "PLUM-8 uv fallback: interpreter is audited" \
+  "$(cat "$uv_err")" "interpreter=uv-run-python3"
+
+# If uv is absent, python3 is the final fallback. Isolate PATH to prove the
+# branch rather than accidentally observing the developer machine's uv.
+python_bin="$WORK/python-bin"
+mkdir -p "$python_bin"
+for tool in bash dirname mktemp python3 rm rmdir; do
+  tool_path="$(command -v "$tool")"
+  ln -s "$tool_path" "$python_bin/$tool"
+done
+python_err="$WORK/plum8-python.err"
+env -u PLUMBLINE_PYTHON \
+  PATH="$python_bin" \
+  PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
+  "$BIN_SRC/plumbline-redact" --help \
+  >/dev/null 2>"$python_err"
+python_rc=$?
+assert_eq "PLUM-8 python3 fallback: wrapper succeeds" "0" "$python_rc"
+assert_contains "PLUM-8 python3 fallback: interpreter is audited" \
+  "$(cat "$python_err")" "interpreter=python3"
+
+# The stop hook must transport the runtime classification all the way to its
+# decision JSON and name CLI + interpreter + class. All three CLIs intentionally
+# see the same unusable explicit interpreter; any one is sufficient to block.
+unavailable_repo="$(make_feature_repo unavailablefeat)"
+printf 'unavailablefeat' >"$unavailable_repo/docs/context/.active-feature"
+run_hook_with_env "$unavailable_repo" '{}' \
+  "PLUMBLINE_PYTHON=$missing_python"
+assert_eq "PLUM-8 unavailable interpreter: hook still exits 0" "0" "$HOOK_RC"
+assert_contains "PLUM-8 unavailable interpreter: decision machine code" \
+  "$HOOK_OUT" "PRIL_TOOL_UNAVAILABLE"
+assert_contains "PLUM-8 unavailable interpreter: decision error class" \
+  "$HOOK_OUT" "error_class=tool_unavailable"
+assert_contains "PLUM-8 unavailable interpreter: decision names CLI" \
+  "$HOOK_OUT" "cli=plumbline-scope-check"
+assert_contains "PLUM-8 unavailable interpreter: decision names interpreter" \
+  "$HOOK_OUT" "interpreter=PLUMBLINE_PYTHON"
+assert_not_contains "PLUM-8 unavailable interpreter: not mislabeled as policy" \
+  "$HOOK_OUT" "error_class=policy_violation"
+
+# The second runtime-failure branch must also survive the hook boundary. This
+# separately falsifies a regression that collapses every tool failure back to
+# `tool_unavailable`.
+broken_repo="$(make_feature_repo brokenfeat)"
+printf 'brokenfeat' >"$broken_repo/docs/context/.active-feature"
+run_hook_with_env "$broken_repo" '{}' \
+  "PLUMBLINE_PYTHON=$broken_python"
+assert_contains "PLUM-8 broken interpreter hook: distinct machine code" \
+  "$HOOK_OUT" "PRIL_TOOL_BROKEN"
+assert_contains "PLUM-8 broken interpreter hook: distinct error class" \
+  "$HOOK_OUT" "error_class=tool_broken"
+assert_contains "PLUM-8 broken interpreter hook: names CLI" \
+  "$HOOK_OUT" "cli=plumbline-scope-check"
+assert_contains "PLUM-8 broken interpreter hook: names interpreter" \
+  "$HOOK_OUT" "interpreter=PLUMBLINE_PYTHON"
+assert_not_contains "PLUM-8 broken interpreter hook: not policy violation" \
+  "$HOOK_OUT" "error_class=policy_violation"
+
+# A real out-of-scope change remains fail-closed, but is explicitly classified
+# as a policy violation with a distinct machine code.
+policy_repo="$(make_feature_repo policyfeat)"
+printf 'policyfeat' >"$policy_repo/docs/context/.active-feature"
+mkdir -p "$policy_repo/src/outside"
+printf 'violation\n' >"$policy_repo/src/outside/file.py"
+run_hook_with_env "$policy_repo" '{}' \
+  "PLUMBLINE_PYTHON=$real_python"
+assert_contains "PLUM-8 real scope violation: distinct machine code" \
+  "$HOOK_OUT" "PRIL_POLICY_VIOLATION"
+assert_contains "PLUM-8 real scope violation: distinct error class" \
+  "$HOOK_OUT" "error_class=policy_violation"
+assert_contains "PLUM-8 real scope violation: names scope CLI" \
+  "$HOOK_OUT" "cli=plumbline-scope-check"
+assert_contains "PLUM-8 real scope violation: names interpreter" \
+  "$HOOK_OUT" "interpreter=PLUMBLINE_PYTHON"
+assert_not_contains "PLUM-8 real scope violation: not tool unavailable" \
+  "$HOOK_OUT" "PRIL_TOOL_UNAVAILABLE"
+
+# The operator-facing resolution contract is part of the tested interface.
+setup_text="$(cat "$REPO_DIR/SETUP.md")"
+assert_contains "PLUM-8 docs: explicit interpreter is documented" \
+  "$setup_text" "PLUMBLINE_PYTHON"
+assert_contains "PLUM-8 docs: uv interpreter is documented" \
+  "$setup_text" "uv run python3"
+assert_contains "PLUM-8 docs: python3 fallback is documented" \
+  "$setup_text" "python3"
 
 finish "test_pril_enforce_hook"
