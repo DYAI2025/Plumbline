@@ -49,13 +49,27 @@ SYMLINK_HOME="$TMP_ROOT/install-symlink-home"
 CLAUDE_HOME="$SYMLINK_HOME" "$REPO_DIR/config/claude/install.sh" --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/install-symlink.log"
 assert_file "install creates symlinked plumbline wrapper" "$SYMLINK_HOME/bin/plumbline"
 assert_file "install creates symlinked plumbline library" "$SYMLINK_HOME/lib/plumbline_update.py"
+assert_file "install creates symlinked PRIL Python runtime" "$SYMLINK_HOME/lib/plumbline_python.sh"
+assert "install keeps PRIL Python runtime live in symlink mode" \
+  "test -L '$SYMLINK_HOME/lib/plumbline_python.sh'"
 assert_eq "installed symlink wrapper resolves library" "$REPO_VERSION" "$("$SYMLINK_HOME/bin/plumbline" --root "$REPO_DIR" version)"
+for pril_cli in plumbline-context-check plumbline-reality-check plumbline-redact plumbline-scope-check; do
+  assert "installed symlink $pril_cli resolves shared runtime" \
+    "'$SYMLINK_HOME/bin/$pril_cli' --help"
+done
 
 COPY_HOME="$TMP_ROOT/install-copy-home"
 CLAUDE_HOME="$COPY_HOME" "$REPO_DIR/config/claude/install.sh" --copy --no-agents --no-commands --no-skills --no-hook --force >"$TMP_ROOT/install-copy.log"
 assert_file "install creates copied plumbline wrapper" "$COPY_HOME/bin/plumbline"
 assert_file "install creates copied plumbline library" "$COPY_HOME/lib/plumbline_update.py"
+assert_file "install creates copied PRIL Python runtime" "$COPY_HOME/lib/plumbline_python.sh"
+assert "install materializes PRIL Python runtime in copy mode" \
+  "test ! -L '$COPY_HOME/lib/plumbline_python.sh'"
 assert_eq "installed copy wrapper resolves library" "$REPO_VERSION" "$("$COPY_HOME/bin/plumbline" --root "$REPO_DIR" version)"
+for pril_cli in plumbline-context-check plumbline-reality-check plumbline-redact plumbline-scope-check; do
+  assert "installed copy $pril_cli resolves shared runtime" \
+    "'$COPY_HOME/bin/$pril_cli' --help"
+done
 
 TARGET="$TMP_ROOT/target"
 cp -R "$BASELINE_FIXTURE" "$TARGET"

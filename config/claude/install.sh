@@ -38,7 +38,7 @@ Installs the repo for Claude Code by:
   - installing all vendored skills from config/claude/skills/,
   - registering the sentinel-gated learning-loop Stop hook,
   - registering the fail-closed PRIL enforcement Stop hook,
-  - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its Python libraries in $CLAUDE_HOME/lib/.
+  - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its runtime libraries in $CLAUDE_HOME/lib/.
 
 --update refreshes an existing \$CLAUDE_HOME install in place: a CHANGED existing
 target is overwritten (content-compared) and new files are added, in both symlink
@@ -358,7 +358,7 @@ install_bin_libs() {
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' lib; do
     transfer "$lib" "$CLAUDE_HOME/lib/$(basename "$lib")"
-  done < <(find "$src_dir" -maxdepth 1 -type f -name '*.py' -print0 | sort -z)
+  done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
   write_install_anchor
 }
 
