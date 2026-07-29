@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.23.2](https://github.com/DYAI2025/Plumbline/compare/v0.23.1...v0.23.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **install:** ship PRIL runtime helper ([f36aa85](https://github.com/DYAI2025/Plumbline/commit/f36aa85f109d31e19d29097cdf07dbf4af06f4dc))
+* **PLUM-8:** disable uv config discovery ([f88484e](https://github.com/DYAI2025/Plumbline/commit/f88484e680c82baab89b00900422cea1a66d734d))
+* **PLUM-8:** isolate uv and classify unknown exits ([e5d0464](https://github.com/DYAI2025/Plumbline/commit/e5d0464ebf68856bcb3977e249bda012cb6b491b))
+* **pril:** classify interpreter failures (PLUM-8) ([#100](https://github.com/DYAI2025/Plumbline/issues/100)) ([a83081d](https://github.com/DYAI2025/Plumbline/commit/a83081d2c025df724efc0dd4169c591031a862d1))
+
 ## [0.23.1](https://github.com/DYAI2025/Plumbline/compare/v0.23.0...v0.23.1) (2026-07-29)
 
 
