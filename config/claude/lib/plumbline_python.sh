@@ -4,7 +4,7 @@
 #
 # Resolution is authoritative and deterministic:
 #   1. PLUMBLINE_PYTHON (one executable name or path)
-#   2. uv run --no-project python3
+#   2. uv run --no-project --no-config python3
 #   3. python3
 #
 # Exit codes 120/121 are reserved for runtime failures so callers can
@@ -71,7 +71,7 @@ plumbline_resolve_python() {
 
 plumbline_python_probe() {
   if [ "$PLUMBLINE_PYTHON_MODE" = "uv" ]; then
-    "$PLUMBLINE_PYTHON_EXECUTABLE" run --no-project python3 -c \
+    "$PLUMBLINE_PYTHON_EXECUTABLE" run --no-project --no-config python3 -c \
       'import sys; raise SystemExit(0 if sys.version_info.major == 3 else 1)' \
       >/dev/null 2>&1
     return $?
@@ -100,7 +100,7 @@ plumbline_python_run() {
 
   if [ "$PLUMBLINE_PYTHON_MODE" = "uv" ]; then
     if PLUMBLINE_RUNTIME_STARTED_FILE="$started_file" \
-      "$PLUMBLINE_PYTHON_EXECUTABLE" run --no-project python3 -c "$bootstrap" \
+      "$PLUMBLINE_PYTHON_EXECUTABLE" run --no-project --no-config python3 -c "$bootstrap" \
       "$script" "$@"
     then
       checker_rc=0

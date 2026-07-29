@@ -61,8 +61,9 @@ authoritative order:
 
 1. `$PLUMBLINE_PYTHON` — one executable name or path; if set, it is authoritative
    and an unusable value does not silently fall through
-2. `uv run --no-project python3` when `uv` is available and its Python 3 probe
-   succeeds; `--no-project` prevents project discovery and project-file mutations
+2. `uv run --no-project --no-config python3` when `uv` is available and its
+   Python 3 probe succeeds; `--no-project --no-config` prevents project/workspace
+   and configuration discovery, including project-file or cache mutations
 3. `python3` on `PATH`
 
 Before running a checker, the wrapper probes that the selected command can start

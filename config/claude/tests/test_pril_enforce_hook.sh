@@ -615,10 +615,11 @@ assert_contains "PLUM-8 policy-like launcher failure: not numeric-policy confusi
 assert_not_contains "PLUM-8 policy-like launcher failure: never policy violation" \
   "$(cat "$policy_like_err")" "error_class=policy_violation"
 
-# With no explicit override, uv wins before python3 and receives a project-
-# independent `run --no-project python3` prefix. The mutation tripwire makes the
-# test fail if the wrapper lets uv discover or update the governed repository's
-# project environment before the hook has classified the working tree.
+# With no explicit override, uv wins before python3 and receives a project- and
+# config-independent `run --no-project --no-config python3` prefix. A real
+# uv.toml plus the mutation tripwire make the test fail if the wrapper lets uv
+# discover configuration or update the governed repository before the hook has
+# classified the working tree.
 real_python="$(python3 -c 'import os, sys; print(os.path.realpath(sys.executable))')"
 uv_bin="$WORK/uv-bin"
 mkdir -p "$uv_bin"
@@ -628,35 +629,54 @@ printf '%s\n' "$*" >"$PLUM8_UV_LOG"
 case " $* " in
   *" --no-project "*) ;;
   *)
-    printf 'project mutation attempted\n' >"$PLUM8_UV_PROJECT_MUTATION"
+    if [ -f uv.toml ]; then
+      mkdir -p .project-cache
+      printf 'configuration mutation attempted\n' >"$PLUM8_UV_PROJECT_MUTATION"
+    fi
+    exit 89
+    ;;
+esac
+case " $* " in
+  *" --no-config "*) ;;
+  *)
+    if [ -f uv.toml ]; then
+      mkdir -p .project-cache
+      printf 'configuration mutation attempted\n' >"$PLUM8_UV_PROJECT_MUTATION"
+    fi
     exit 89
     ;;
 esac
 [ "${1:-}" = "run" ] && [ "${2:-}" = "--no-project" ] && \
-  [ "${3:-}" = "python3" ] || exit 88
-shift 3
+  [ "${3:-}" = "--no-config" ] && [ "${4:-}" = "python3" ] || exit 88
+shift 4
 exec "$PLUM8_REAL_PYTHON" "$@"
 EOF
 chmod +x "$uv_bin/uv"
 uv_log="$WORK/plum8-uv.log"
 uv_err="$WORK/plum8-uv.err"
-uv_project_mutation="$WORK/plum8-uv-project-mutation"
-env -u PLUMBLINE_PYTHON \
-  PATH="$uv_bin:$PATH" \
-  PLUM8_UV_LOG="$uv_log" \
-  PLUM8_UV_PROJECT_MUTATION="$uv_project_mutation" \
-  PLUM8_REAL_PYTHON="$real_python" \
-  PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
-  "$BIN_SRC/plumbline-reality-check" --help \
-  >/dev/null 2>"$uv_err"
+uv_config_repo="$WORK/plum8-uv-config-repo"
+uv_project_mutation="$uv_config_repo/project-mutation"
+mkdir -p "$uv_config_repo"
+printf 'cache-dir = ".project-cache"\n' >"$uv_config_repo/uv.toml"
+(
+  cd "$uv_config_repo"
+  env -u PLUMBLINE_PYTHON \
+    PATH="$uv_bin:$PATH" \
+    PLUM8_UV_LOG="$uv_log" \
+    PLUM8_UV_PROJECT_MUTATION="$uv_project_mutation" \
+    PLUM8_REAL_PYTHON="$real_python" \
+    PLUMBLINE_RUNTIME_DIAGNOSTICS=1 \
+    "$BIN_SRC/plumbline-reality-check" --help \
+    >/dev/null 2>"$uv_err"
+)
 uv_rc=$?
 assert_eq "PLUM-8 uv fallback: wrapper succeeds through uv" "0" "$uv_rc"
 assert_contains "PLUM-8 uv fallback: exact command prefix" \
-  "$(cat "$uv_log")" "run --no-project python3"
+  "$(cat "$uv_log")" "run --no-project --no-config python3"
 assert_contains "PLUM-8 uv fallback: interpreter is audited" \
   "$(cat "$uv_err")" "interpreter=uv-run-python3"
 assert "PLUM-8 uv fallback: governed project is not mutated" \
-  "test ! -e '$uv_project_mutation'"
+  "test ! -e '$uv_project_mutation' && test ! -d '$uv_config_repo/.project-cache'"
 
 # If uv is absent, python3 is the final fallback. Isolate PATH to prove the
 # branch rather than accidentally observing the developer machine's uv.
@@ -763,7 +783,7 @@ setup_text="$(cat "$REPO_DIR/SETUP.md")"
 assert_contains "PLUM-8 docs: explicit interpreter is documented" \
   "$setup_text" "PLUMBLINE_PYTHON"
 assert_contains "PLUM-8 docs: uv interpreter is documented" \
-  "$setup_text" "uv run --no-project python3"
+  "$setup_text" "uv run --no-project --no-config python3"
 assert_contains "PLUM-8 docs: python3 fallback is documented" \
   "$setup_text" "python3"
 
