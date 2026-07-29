@@ -29,7 +29,7 @@ cd plumbline
 `install.sh` makes the repository available as `~/.claude/agents`, transfers every
 vendored command (`/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills`) into
 `~/.claude/commands/`, installs every vendored skill from `config/claude/skills/` into
-`~/.claude/skills/`, and registers the learning-loop Stop hook in
+`~/.claude/skills/`, and registers the learning-loop and fail-closed PRIL Stop hooks in
 `~/.claude/settings.json`. Open `/hooks` once (or restart Claude Code) afterwards.
 
 ## 2. Required toolchain
@@ -40,6 +40,34 @@ vendored command (`/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills
 | `jq` | Stop-hook registration in install.sh | hook is skipped (add manually) |
 | `python3` | metrics scripts + the README frontmatter validator | metrics/meta-meta unavailable |
 | `git` | branch strategy, worktrees, provenance | required for the workflow |
+
+### PRIL Stop-hook resolution
+
+The PRIL Stop hook governs the active product repository, but its executables may be
+installed elsewhere. It resolves each of `plumbline-scope-check`,
+`plumbline-context-check`, and `plumbline-reality-check` independently in this order:
+
+1. `$PLUMBLINE_BIN_DIR`
+2. `<product-repo>/config/claude/bin`
+3. `PATH`
+4. `$CLAUDE_HOME/bin`
+5. `$HOME/.claude/bin`
+
+Every selected executable and its source are written to the hook's diagnostic stream.
+If any executable is missing, the hook blocks with `PRIL_CLI_UNAVAILABLE`.
+
+For Git scope checks, the baseline order is an explicit
+`$PLUMBLINE_STACK_BASE` (or compatibility alias `$PLUMBLINE_BASE_REF`), the remote
+default, `origin/main`, `origin/master`, local `main`, then local `master`. Set the
+explicit variable to the parent ref when working on a stacked branch:
+
+```bash
+PLUMBLINE_STACK_BASE=feature/parent claude
+```
+
+An unknown or unrelated baseline blocks with a classified error. The hook never
+substitutes `HEAD...HEAD`, because that would turn an unresolved baseline into an empty,
+false-green committed-change surface.
 
 ## 3. Expected skills
 
