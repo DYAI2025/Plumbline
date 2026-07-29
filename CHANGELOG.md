@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.1](https://github.com/DYAI2025/Plumbline/compare/v0.23.0...v0.23.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **pril:** make runtime enforcement portable and fail-closed ([84f44af](https://github.com/DYAI2025/Plumbline/commit/84f44afc468d5657846a6f7345c1597c1b23791e))
+* **pril:** resolve runtime CLIs and Git baselines safely ([a5a03e3](https://github.com/DYAI2025/Plumbline/commit/a5a03e32b4fd7be21c49cce381968af4a460022a))
+
 ## [0.23.0](https://github.com/DYAI2025/Plumbline/compare/v0.22.2...v0.23.0) (2026-07-08)
 
 
