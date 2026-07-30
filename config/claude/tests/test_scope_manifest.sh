@@ -489,6 +489,20 @@ EOF
 assert_contains "mutable repository updater runtime cannot receive repair exemption" \
   "$MUTABLE_UPDATER_DENY" '"decision":"deny"'
 
+ALTERNATE_UPDATER="$WORK/alternate-updater"
+cp -R "$BASE" "$ALTERNATE_UPDATER"
+mkdir -p "$ALTERNATE_UPDATER/tools"
+cp "$SCOPE_UPDATE" "$ALTERNATE_UPDATER/tools/plumbline-scope-update"
+chmod +x "$ALTERNATE_UPDATER/tools/plumbline-scope-update"
+ALTERNATE_UPDATER_DENY="$(
+  PLUMBLINE_BIN_DIR="$ALTERNATE_UPDATER/tools" \
+    CLAUDE_PROJECT_DIR="$ALTERNATE_UPDATER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"tools/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "noncanonical project updater cannot receive repair exemption" \
+  "$ALTERNATE_UPDATER_DENY" '"decision":"deny"'
+
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
@@ -681,6 +695,21 @@ EOF
 )"
 assert_contains "modified project checker is skipped and immutable checker catches drift" \
   "$MUTABLE_CHECKER_DENY" '"decision":"deny"'
+
+ALTERNATE_CHECKER="$WORK/alternate-checker"
+cp -R "$MISSING" "$ALTERNATE_CHECKER"
+mkdir -p "$ALTERNATE_CHECKER/tools"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$ALTERNATE_CHECKER/tools/plumbline-scope-check"
+chmod +x "$ALTERNATE_CHECKER/tools/plumbline-scope-check"
+ALTERNATE_CHECKER_DENY="$(
+  PLUMBLINE_BIN_DIR="$ALTERNATE_CHECKER/tools" \
+    CLAUDE_PROJECT_DIR="$ALTERNATE_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "noncanonical project checker is skipped in favor of immutable authority" \
+  "$ALTERNATE_CHECKER_DENY" '"decision":"deny"'
 
 # A confirmed checker-runtime change remains implementable, but only while an
 # immutable checker outside the writable project authorizes the exact planned

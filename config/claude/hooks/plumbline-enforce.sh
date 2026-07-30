@@ -136,7 +136,10 @@ scope_checker_candidate_acceptable() {
   local name="$1" found="$2"
   [ "$name" = "plumbline-scope-check" ] || return 0
   case "$found" in
-    "$repo_physical"/*) project_scope_runtime_immutable ;;
+    "$repo_physical"/*)
+      [ "$found" = "$repo_physical/config/claude/bin/plumbline-scope-check" ] \
+        && project_scope_runtime_immutable
+      ;;
     *) return 0 ;;
   esac
 }

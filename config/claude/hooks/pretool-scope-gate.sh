@@ -123,6 +123,11 @@ try:
 except ValueError:
     pass
 else:
+    canonical_updater = (
+        project / "config/claude/bin/plumbline-scope-update"
+    ).resolve()
+    if executable != canonical_updater:
+        raise SystemExit(1)
     immutable_runtime = [
         "config/claude/bin/plumbline-scope-update",
         "config/claude/lib/plumbline_python.sh",
@@ -259,6 +264,10 @@ PY
     case "$resolved_candidate" in
       "$project_physical"/*)
         candidate_project_local=true
+        if [ "$resolved_candidate" != \
+          "$project_physical/config/claude/bin/plumbline-scope-check" ]; then
+          continue
+        fi
         checker_runtime=(
           config/claude/bin/plumbline-scope-check
           config/claude/lib/plumbline_python.sh

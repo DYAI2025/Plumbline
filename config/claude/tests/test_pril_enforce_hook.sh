@@ -412,6 +412,23 @@ assert_contains "project checker via PATH fails closed after mutation" \
 assert_not_contains "mutable PATH checker is not accepted as the scope authority" \
   "$HOOK_ERR" "plumbline-scope-check source=PATH"
 
+# A clean-but-noncanonical project path is rejected too: fixed runtime
+# dependencies cannot establish the integrity of an arbitrary in-repo wrapper.
+alternate_checker_repo="$(make_feature_repo alternatechecker)"
+printf 'alternatechecker' >"$alternate_checker_repo/docs/context/.active-feature"
+mkdir -p "$alternate_checker_repo/tools" "$alternate_checker_repo/src/outside"
+printf '#!/usr/bin/env bash\nexit 0\n' \
+  >"$alternate_checker_repo/tools/plumbline-scope-check"
+chmod +x "$alternate_checker_repo/tools/plumbline-scope-check"
+printf 'violation\n' >"$alternate_checker_repo/src/outside/file.py"
+run_hook_with_env "$alternate_checker_repo" '{}' \
+  "PLUMBLINE_BIN_DIR=$alternate_checker_repo/tools" \
+  "PATH=$BIN_SRC:$PATH"
+assert_contains "noncanonical project checker cannot become Stop authority" \
+  "$HOOK_OUT" "scope"
+assert_not_contains "alternate project checker is rejected despite explicit override" \
+  "$HOOK_ERR" "plumbline-scope-check source=PLUMBLINE_BIN_DIR"
+
 # Every CLI is resolved independently in the documented order. Deliberately
 # distribute the three executables across explicit-dir, repo-local, and PATH;
 # resolving one shared bin directory would fail this case.
