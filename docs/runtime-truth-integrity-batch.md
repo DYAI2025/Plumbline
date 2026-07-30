@@ -293,3 +293,87 @@ CLI. **Not** covered, and deliberately not claimed:
   changing content); it does not run claude-flow or homunculus themselves.
 - the secret-scan half of AC-6 is covered only insofar as the state stays out of the
   index; no scanner is executed here.
+
+## PLUM-13 — green tests were not bound to the changed defect path
+
+**Status: reproduced (2 false greens, one worse than the ticket claims); fixed.**
+
+### Reproduction (measured 2026-07-30, pre-fix gate)
+
+Both of these exited **0** — credited as satisfied evidence:
+
+| ledger record | reality | verdict |
+|---|---|---|
+| `real-boundary-smoke` for a requirement about dataset `W32-default-seed` on `GET /api/v1/tree/read-through` | linked test drove `W40-harness-seed` fixtures on a different route | FALSE GREEN |
+| `production-verified`, `evidence_ref: tests/does_not_exist_at_all.sh` | the referenced file does not exist | FALSE GREEN |
+
+The second is worse than the ticket describes: the gate credited the **highest**
+evidence class to a reference that resolved to nothing at all.
+
+Structural confirmation: across this repo's 9 ledgers, all **84** records use exactly
+six fields — `feature`, `requirement_id`, `evidence_class`, `evidence_ref`,
+`verified_by`, `note`. There was no field in which a dataset, route, boundary or
+precondition could even be expressed, so no gate could have checked one.
+
+### Root cause
+
+Plumbline classified the *strength* of a proof but never modelled its *subject*.
+`evidence_ref` was free text, ranked by the claimed class alone.
+
+### Implementation
+
+`config/claude/lib/plumbline_reality.py`:
+
+- `docs/evidence/<feature>.targets.json` (schema 1) declares, per critical REQ:
+  `dataset`, `boundary`, `expected_result`, optional `preconditions`
+  (`present`/`absent`), an optional per-target `min_evidence` floor that **outranks** a
+  lower CLI floor, and optional `proof_tokens`.
+- The matching ledger record must repeat the binding, and the artifact its
+  `evidence_ref` names must exist **and contain the proof token** — the step that turns
+  a self-declared binding into a checked one.
+- Stable classifications: `MISSING_BOUNDARY` (exit 2) for a target with no record or a
+  record with no binding; `EVIDENCE_MISMATCH` (exit 3) for evidence that proves the
+  wrong thing (contradicting field, unresolvable `evidence_ref`, absent proof token,
+  differing preconditions, unmet target floor, vacuous absence).
+- **Vacuous absence tests** (AC-3): an `absent`-state target must name a resolvable
+  present-state `control_ref`, otherwise the absence is unfalsifiable.
+- Opt-in per feature: no targets file ⇒ unchanged behaviour, so all 84 existing
+  records keep passing. A **present but broken** targets file is `malformed` (exit 4)
+  and never degrades to "no targets declared" — degrading would restore the false green.
+
+Wiring: `config/claude/commands/agileteam.md` documents the target contract inside the
+Phase-3 PRIL Reality Evidence gate, where the check already runs.
+Docs: `docs/evidence-targets.md`.
+
+### Regression test + counter-check
+
+`config/claude/tests/test_evidence_target.sh` — 41 assertions, registered in
+`run_all.sh`. Pre-implementation: **35 of 41 failed**; after: 41/41.
+
+The discriminating controls matter more than the count here:
+
+- the **same repository** contains both tests; the correctly-bound record passes
+  (exit 0) while the W40-bound record fails (exit 3), so the gate distinguishes them
+  rather than rejecting everything;
+- a record whose binding *claims* the right target while the referenced test drives
+  W40 is caught by the proof token — this is the pilot's precise mechanism;
+- removing a proof token from an otherwise-passing test flips it to exit 3, so the
+  check is falsifiable;
+- a feature with no targets file still passes, and this repo's own
+  `openrouter-gui` ledger is asserted to keep passing.
+
+### Evidence ceiling (PLUM-13)
+
+`integration-real` for the target/record/artifact binding: real files, real ledgers,
+the real CLI, both the pilot's mismatch and its correctly-bound twin.
+
+**Not** covered, and deliberately not claimed:
+
+- the proof-token check shows the referenced artifact *mentions* the dataset/route; it
+  does **not** execute the test or observe which fixture the run loaded. An author can
+  still satisfy it by adding the token to an unrelated test. What it removes is the
+  *accidental* mismatch (the pilot's actual failure) and every unresolvable reference.
+  Runtime instrumentation — a test that emits its dataset identity into a machine-read
+  result — would be the next class up, and is not built here;
+- adoption is opt-in per feature, so an undeclared critical AC is still unbound. The
+  gate cannot know which criteria are critical; that judgement stays human.

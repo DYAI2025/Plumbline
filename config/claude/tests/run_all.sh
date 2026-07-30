@@ -130,6 +130,9 @@ bash config/claude/tests/test_plan_scope_drift.sh || mark_fail
 stage "agent runtime-state hygiene tests (PLUM-11)"
 bash config/claude/tests/test_runtime_hygiene.sh || mark_fail
 
+stage "evidence-target binding tests (PLUM-13)"
+bash config/claude/tests/test_evidence_target.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 

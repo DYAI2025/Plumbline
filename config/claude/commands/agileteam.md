@@ -724,6 +724,25 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
   Fake-only, mock-only, placeholder, unverified, missing, malformed, or below-minimum
   evidence is fail-closed. A Gate C/D result may not be reported as pass/done until this
   command passes or the user has explicitly confirmed a lower minimum for that feature.
+
+  **Evidence targets (PLUM-13) — bind the evidence to the boundary the AC demanded.**
+  Ranking the claimed evidence class says nothing about *what the evidence touched*: a
+  green test on its own fixtures can be credited for a defect path it never exercised.
+  For every **critical** acceptance criterion, declare the target in
+  `docs/evidence/<feature>.targets.json` — `dataset`, `boundary`, `expected_result`, plus
+  `preconditions` (`present`/`absent`), an optional per-target `min_evidence` floor and
+  optional `proof_tokens`. The matching ledger record must repeat that binding, and the
+  artifact its `evidence_ref` names must actually contain the proof token, or the gate
+  reports:
+  - `MISSING_BOUNDARY` (exit 2) — a declared target has no record, or the record carries
+    no `dataset`/`boundary`/`expected_result`;
+  - `EVIDENCE_MISMATCH` (exit 3) — the record contradicts the target, its `evidence_ref`
+    is unresolvable, the proof token is absent from the referenced artifact, the
+    preconditions differ, the per-target floor is unmet, or an `absent`-state target has
+    no resolvable present-state `control_ref` (a vacuous absence test).
+
+  A feature with no targets file is unaffected. A **present but broken** targets file is
+  `malformed` (exit 4) and never degrades to "no targets declared".
 - **Gate D — Judgment (ultrathink, ONCE/iteration):** dispatch `product-owner`; run
   `ultrathink-craftsmanship` in kurz/kurz+ mode **once** (no re-run) — "did we build the
   right thing?", bias + failure-mode, konfabulations-audit on claims that entered
