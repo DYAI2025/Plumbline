@@ -579,6 +579,20 @@ config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> -
 Out-of-scope edits are fail-closed: stop, ask the user to expand the confirmed scope, or revert the
 out-of-scope change. Do not silently broaden scope from the PRD, tests, or agent judgement.
 
+**Runtime-state hygiene (PLUM-11) — advisory, runs automatically.** Agent tooling writes volatile
+state (`.claude-flow/`, `.swarm/`, `.claude/homunculus/`) into the product repo. Untracked **and
+unignored** state enters the enforce hook's change surface and blocks every scope check; tracked
+state puts session noise into product diffs forever. The Stop hook runs this automatically and
+**reports without blocking**; run it by hand when you want the fix applied:
+
+```bash
+config/claude/bin/plumbline-runtime-hygiene --repo <repo> [--fix-ignore]
+```
+
+`--fix-ignore` is additive — it appends a marked block to `.gitignore`, never rewrites a foreign
+rule, never deletes a file, and **never untracks anything**: an already-tracked runtime file keeps
+failing until the operator runs the printed `git rm -r --cached` (which keeps the working copy).
+
 **Generated artifacts (PLUM-15) — an allowed path can still be changed the wrong WAY.** The scope
 guard judges paths; it cannot tell a regenerated file from a hand-edited one. Where the feature owns
 a generated artifact, declare the producer relationship in the manifest and run the provenance gate

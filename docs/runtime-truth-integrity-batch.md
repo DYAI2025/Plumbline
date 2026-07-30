@@ -11,6 +11,34 @@ canonical tree does not get a speculative code change. It gets a documented
 non-reproduction plus, where the existing suite only proves the fix indirectly, a
 falsifying test that reddens when the fix is reverted.
 
+## CORRECTION (2026-07-30, after the /concilium review)
+
+This document originally described the batch as CLIs "wired into a fail-closed Stop
+hook and the `/agileteam` orchestrator." **That was an overclaim, and the correction
+matters more than the batch.** Verified against the tree:
+
+- `plumbline-enforce.sh` resolved exactly **three** CLIs — `scope-check`,
+  `context-check`, `reality-check`. The four new wrappers appeared in **zero** hooks.
+- PLUM-10 and PLUM-13 were genuinely wired, because they ride `scope-check` and
+  `reality-check` respectively. PLUM-12/14/15 were reachable only through prose in the
+  orchestrator. PLUM-11 was referenced **nowhere** in the orchestrator at all — only
+  in `install.sh`.
+- The prompt-level wiring was disclosed honestly for PLUM-12 and then **not
+  generalised** to PLUM-14/15, and not mentioned for PLUM-11. Honest once, self-serving
+  at batch level.
+- The assertion count was reported as **279**; the real per-suite sum is **273**.
+  Per this repo's own no-brittle-counts rule it is now stated as approximate and
+  derived from the suite output, not typed by hand.
+
+A capability reachable only through prose is not wired-in-prod. This is the repo's own
+signature failure class, committed inside the batch built to close it. It was found by
+an adversarial review reading the code — not by any gate, and not by the 273 assertions.
+
+**What changed as a result** (see "Post-council remediation" at the end of this file):
+the four CLIs are now invoked by the Stop hook as **advisory, default-ON, never
+blocking**; `test_cli_wiring.sh` makes an unreachable wrapper a hard failure; and the
+KO-1 marker bypass is closed.
+
 ## Test environment (three local false-REDs)
 
 `run_all.sh` is green on CI but the ambient dev environment reddens most stages
@@ -564,3 +592,68 @@ byte comparison, the real CLI.
   capability (arbitrary local execution) gated behind an explicit flag, not a network
   boundary. It is not run in the default path, and no test in this batch executes a
   command from an untrusted manifest.
+
+## Post-council remediation (2026-07-30)
+
+The `/concilium` four-body review of this batch produced findings that changed the
+batch itself. Recorded here because the findings are more useful than the code.
+
+### What the council found that the suite did not
+
+| finding | verified by | status |
+|---|---|---|
+| 4 of 5 gates invoked by **nothing** (prose-only) | `grep` over `hooks/`; `plumbline-enforce.sh` resolves 3 CLIs | fixed — now advisory, default-ON |
+| PLUM-11 referenced nowhere in the 867-line orchestrator | `grep runtime-hygiene commands/` = 0 | fixed — Phase 0.6 section added |
+| **KO-1:** the arming marker is gitignored, so `rm` silently disarms every gate | `.gitignore:8`; hook `[ -f "$marker" ] \|\| exit 0` | fixed — `PRIL_MARKER_ABSENT` |
+| **KO-2:** `docs/GATE-ENFORCEMENT-AUDIT.md` (2026-06-04) already said the governance is prompt-only | line 57 of that file | open — behavioural, not code |
+| **KO-5:** `metrics/runs.jsonl` is 2 lines; no corpus measures false-done escape rate | `wc -l` | open — corpus is the next work |
+| assertion count overstated 279 → 273 | per-suite sum | fixed |
+| the registered Stop hook points at a **different checkout** | `~/.claude/settings.json` → `plumbline_v1/`, HEAD `020c123`, none of the new gates present | open — needs a global settings change |
+
+### The default-ON / notice-only decision
+
+The four newly-wired gates run by **default** and **never block**. Both halves were
+argued, and the argument is worth preserving:
+
+- **Default-ON**, because for a governance check "off by default" is not safety, it is
+  *absence*. The decisive measurement came from the Distribution Realist and is
+  reproducible in one command: in this repo the single artifact a hook *demanded* (the
+  reality ledger) sits at **9/9** features, while every prompt-suggested artifact sits
+  at **0/9** — `docs/scope/` and `docs/evidence/` did not exist at all, and the only
+  `.scope.json` in the tree was a test fixture. Enforced → 100%; suggested → ~0%.
+- **Notice-only**, because these four legitimately need artifacts a feature may not
+  have. Blocking on their absence would block honest work, and this repo has already
+  recorded the fail-closed gate halting its own build twice mid-build, plus "24 of 36
+  stages RED locally without a single code defect". A high false-RED rate trains the
+  human — the only oracle with a track record here — to stop reading reds. Alarm
+  fatigue is the specific mechanism by which this layer would destroy its own value.
+- **Therefore "fail-closed" is NOT claimed for these four.** The blocking core remains
+  scope, context and reality. `test_cli_wiring.sh` encodes `advisory` as a distinct
+  reachability class so the distinction cannot quietly erode.
+
+An earlier plan wired them default-OFF and blocking. That was rejected on the grounds
+that it would satisfy the repo's `*_LIVE=1` invariant while inverting its meaning —
+that pattern exists for *live boundaries*, where ON costs money and OFF is genuinely
+safety. Borrowing its shape for a governance gate is invariant-shaped compliance.
+
+### One council claim that was wrong
+
+The Skeptic called the Tech Arbiter "checkably wrong" for saying `plumbline-plan-check`
+is unwired. It was the Skeptic that erred: the Arbiter's table correctly recorded
+plan-check as present in the orchestrator (`yes:716`) and named **runtime-hygiene** as
+the true orphan. Verified: `plan-check` in `commands/` = 1, `runtime-hygiene` = 0. The
+two bodies agreed on the fact; only the attribution was wrong. Recorded because the
+most aggressive voice in a council is not automatically the correct one.
+
+### Diversity disclosure for that review
+
+Both attempts to run the Skeptic seat on a non-Claude model **failed** — `gpt-5.5`
+requires a newer Codex CLI than the installed 0.41.0, and `gpt-5` is unavailable on a
+ChatGPT-account login. **All four bodies therefore ran on Claude; correlated blind
+spots are NOT covered.** Treat that review as a structured single-model critique.
+
+The council's own `/concilium` contract declares a hard floor of two *independent*
+bodies, where independence means uncorrelated cognition. That floor was not met, and
+nothing aborted — a declared fail-closed gate that did not fire while the run
+continued. It is the same shape as the false greens this batch fixed, and it is
+recorded rather than smoothed over.

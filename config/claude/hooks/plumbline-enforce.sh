@@ -70,7 +70,38 @@ repo="$CLAUDE_PROJECT_DIR"
 # No marker -> not an active feature run -> no-op. This is what keeps normal
 # sessions completely untouched.
 marker="$repo/docs/context/.active-feature"
-[ -f "$marker" ] || exit 0
+if [ ! -f "$marker" ]; then
+  # KO-1 (council finding, 2026-07-30): the marker is GITIGNORED (.gitignore),
+  # so DELETING it disarms every gate below, leaves no git trace, and -- because
+  # the C4 rule exempts gitignored+untracked paths -- no other gate sees it either.
+  # A BLANK marker was already treated as suspicious and blocks (see below); a
+  # DELETED one silently no-opped. Same threat, one keystroke apart, opposite
+  # handling.
+  #
+  # An absent marker is still the normal case for a normal session, so it cannot
+  # simply block. But "absent marker WHILE a confirmed canvas exists AND the tree
+  # has uncommitted work" is not a normal session: that is the disarm shape. Report
+  # it. Fail-closed on the git query, because "cannot tell" must not read as "clean".
+  if [ -d "$repo/docs/canvas" ]; then
+    canvas_count=0
+    for canvas_candidate in "$repo/docs/canvas/"*.canvas.md; do
+      [ -f "$canvas_candidate" ] && canvas_count=$((canvas_count + 1))
+    done
+    if [ "$canvas_count" -gt 0 ]; then
+      dirty="unknown"
+      if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+        if git_status_out="$(git -C "$repo" status --porcelain 2>/dev/null)"; then
+          if [ -n "$git_status_out" ]; then dirty="yes"; else dirty="no"; fi
+        fi
+      fi
+      if [ "$dirty" != "no" ]; then
+        emit_block "PRIL_MARKER_ABSENT: docs/context/.active-feature is missing while $canvas_count confirmed canvas(es) exist and the working tree has uncommitted changes (dirty=$dirty). The marker is gitignored, so its deletion leaves no trace and silently disarms every PRIL gate. Restore the confirmed feature slug, or commit/clean the tree if no feature run is active."
+        exit 0
+      fi
+    fi
+  fi
+  exit 0
+fi
 
 # Read the slug; strip any surrounding whitespace/newlines.
 feat="$(tr -d ' \t\r\n' < "$marker" 2>/dev/null)"
@@ -194,6 +225,73 @@ do
     missing_clis="$missing_clis $required_cli"
   fi
 done
+
+# --- Advisory gates (PLUM-11/12/14/15): DEFAULT ON, NOTICE-ONLY ---------------
+# These four checkers shipped fully implemented and fully tested while NOTHING
+# invoked them: the hook resolved three CLIs, and they were reachable only through
+# prose in the orchestrator prompt. A capability reachable only through prose is not
+# wired-in-prod -- this repo's own signature failure class, committed inside the
+# batch meant to close it (council finding, 2026-07-30, verified against the tree).
+#
+# They run by DEFAULT and they NEVER block. That combination is deliberate and was
+# argued for explicitly:
+#
+#   * Default-ON, because for a governance check "off by default" is not safety, it
+#     is ABSENCE. The measured evidence is unambiguous: in this repo the ONE artifact
+#     a hook demanded (the reality ledger) sits at 9/9 features, while every
+#     prompt-suggested artifact sits at 0/9. A gate nobody runs governs nothing.
+#     (The `*_LIVE=1` default-off pattern elsewhere in this repo exists for LIVE
+#     boundaries, where ON costs money or hits a remote. Importing it here would
+#     borrow the shape of that invariant while inverting its meaning.)
+#   * Notice-only, because these four legitimately need artifacts a feature may not
+#     have (a declared plan, a manifest with generated_artifacts, a recorded remote
+#     snapshot). Blocking on their absence would block honest work -- this repo has
+#     already recorded the fail-closed gate halting its own build twice mid-build.
+#     A notice informs the human without training them to ignore reds.
+#
+# Consequence, stated plainly so no reader has to infer it: these four are ADVISORY.
+# "Fail-closed" is NOT claimed for them. The blocking gates remain scope, context and
+# reality. Set PLUMBLINE_GATE_<NAME>=0 to silence one.
+plan_bin=""
+hygiene_bin=""
+remote_bin=""
+provenance_bin=""
+notices=""
+
+gate_enabled() { # gate_enabled <env-var-name>  -- default ON; only "0" disables
+  local value=""
+  eval "value=\"\${$1:-1}\""
+  [ "$value" != "0" ]
+}
+
+append_notice() { # append_notice <text>
+  if [ -n "$notices" ]; then
+    notices="$notices
+$1"
+  else
+    notices="$1"
+  fi
+}
+
+# An advisory gate whose CLI cannot be resolved is reported, never blocked, and never
+# silently skipped: a missing checker must not read as a clean check.
+resolve_advisory_cli() { # resolve_advisory_cli <flag-var> <cli-name>
+  gate_enabled "$1" || return 1
+  if resolve_cli "$2"; then
+    return 0
+  fi
+  append_notice "PRIL_ADVISORY_UNAVAILABLE: $2 could not be resolved, so its check did NOT run (set $1=0 to silence)."
+  return 1
+}
+
+resolve_advisory_cli PLUMBLINE_GATE_PLAN plumbline-plan-check &&
+  plan_bin="$resolved_cli_path"
+resolve_advisory_cli PLUMBLINE_GATE_HYGIENE plumbline-runtime-hygiene &&
+  hygiene_bin="$resolved_cli_path"
+resolve_advisory_cli PLUMBLINE_GATE_REMOTE plumbline-remote-watch &&
+  remote_bin="$resolved_cli_path"
+resolve_advisory_cli PLUMBLINE_GATE_PROVENANCE plumbline-provenance-check &&
+  provenance_bin="$resolved_cli_path"
 
 if [ -n "$missing_clis" ]; then
   emit_block "PRIL_CLI_UNAVAILABLE: missing executable(s):$missing_clis. Search order: PLUMBLINE_BIN_DIR, project-local config/claude/bin, PATH, CLAUDE_HOME/bin, HOME/.claude/bin. Cannot prove gates; fix the install or escalate to the user."
@@ -436,9 +534,62 @@ if [ -f "$repo/docs/context/.feature-boundary" ]; then
   fi
 fi
 
-# --- Decision: fail CLOSED on any gate failure --------------------------------
+# --- Advisory gates: run, report, never block ---------------------------------
+# Each runs against the SAME ground-truth surface the blocking gates use.
+run_advisory() { # run_advisory <bin> <label> <args...>
+  local bin="$1" label="$2"
+  shift 2
+  [ -n "$bin" ] || return 0
+  local out="$errd/adv-$label"
+  local rc=0
+  # Capture the status explicitly rather than reading $? after an `if`: the compound
+  # resets it, which silently reported every advisory finding as exit=0.
+  PLUMBLINE_RUNTIME_DIAGNOSTICS=1 "$bin" "$@" >"$out" 2>&1
+  rc=$?
+  [ "$rc" -eq 0 ] && return 0
+  local first=""
+  first="$(grep -m1 -E '^(ERROR|VIOLATION|PROVENANCE_|ARTIFACT_|NONDETERMINISTIC_|MISSING_|REMOTE_STATE_|EVIDENCE_)' "$out" 2>/dev/null)"
+  [ -n "$first" ] || first="$(head -n 1 "$out" 2>/dev/null)"
+  append_notice "PRIL_ADVISORY $label exit=$rc: ${first:-(no output)}"
+}
+
+if [ -n "$plan_bin" ]; then
+  # Newest plan naming this feature; absent is normal, not a finding.
+  plan_file=""
+  for candidate in "$repo/docs/plans/"*"$feat"*.md; do
+    [ -f "$candidate" ] && plan_file="$candidate"
+  done
+  if [ -n "$plan_file" ]; then
+    run_advisory "$plan_bin" plan \
+      --repo "$repo" --feature "$feat" --plan "$plan_file"
+  fi
+fi
+
+run_advisory "$hygiene_bin" hygiene --repo "$repo"
+
+if [ -n "$remote_bin" ] && [ -f "$repo/docs/context/$feat.remote-state.json" ]; then
+  # Only meaningful once a run recorded what it expects; no snapshot is not a finding.
+  run_advisory "$remote_bin" remote verify --repo "$repo" --feature "$feat"
+fi
+
+run_advisory "$provenance_bin" provenance \
+  --repo "$repo" --feature "$feat" --changed-files "$errd/changed"
+
+# --- Decision: fail CLOSED on any BLOCKING gate failure ------------------------
+# Advisory notices are attached to the block reason when one is emitted, and printed
+# to stderr otherwise. They never turn a pass into a block: that is what "advisory"
+# means, and saying so here keeps the distinction unmissable for the next reader.
+if [ -n "$notices" ]; then
+  printf 'PRIL advisory notices (do NOT block; these gates are ADVISORY):\n%s\n' \
+    "$notices" >&2
+fi
+
 if [ -n "$fails" ]; then
-  emit_block "PRIL enforcement failed: $fails. Fix the failing gate(s) or escalate to the user; do not finish with a failing gate."
+  block_reason="PRIL enforcement failed: $fails. Fix the failing gate(s) or escalate to the user; do not finish with a failing gate."
+  if [ -n "$notices" ]; then
+    block_reason="$block_reason ADVISORY (non-blocking) notices this run: $notices"
+  fi
+  emit_block "$block_reason"
 fi
 
 exit 0

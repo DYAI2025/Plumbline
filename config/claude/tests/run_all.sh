@@ -139,6 +139,12 @@ bash config/claude/tests/test_remote_state_watch.sh || mark_fail
 stage "generated-artifact provenance tests (PLUM-15)"
 bash config/claude/tests/test_artifact_provenance.sh || mark_fail
 
+stage "CLI reachability contract (every wrapper is invoked by something)"
+bash config/claude/tests/test_cli_wiring.sh || mark_fail
+
+stage "install repoints a hook registered from another checkout"
+bash config/claude/tests/test_install_hook_repoint.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 

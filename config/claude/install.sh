@@ -451,9 +451,34 @@ register_enforce_hook() {
     echo "skip enforce-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  if jq -e '[.hooks.Stop[]?.hooks[]? | .command? // ""] | any(test("plumbline-enforce\\.sh"))' \
-       "$settings" >/dev/null 2>&1; then
-    echo "skip enforce-hook: already registered in $settings"
+  # Idempotence must not become blindness. Registering by "is ANY plumbline-enforce.sh
+  # present?" meant a hook registered from an OLD checkout survived every re-install:
+  # the installer reported "already registered" while the path pointed at a different,
+  # stale tree that lacked the current gates entirely. Measured on this machine
+  # 2026-07-30: the registered Stop hook pointed at a checkout 2 days and 4 CLIs behind.
+  # So: same path -> genuinely idempotent; DIFFERENT path -> repoint, loudly.
+  local registered=""
+  registered="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+    | map(select(test("plumbline-enforce\\.sh"))) | .[0] // ""' "$settings" 2>/dev/null)"
+  if [ -n "$registered" ]; then
+    if [ "$registered" = "$cmd" ]; then
+      echo "skip enforce-hook: already registered in $settings"
+      return
+    fi
+    echo "REPOINTING enforce-hook in $settings:"
+    echo "  was: $registered"
+    echo "  now: $cmd"
+    local rtmp; rtmp="$(mktemp)"
+    if jq --arg cmd "$cmd" '
+      .hooks.Stop = [ .hooks.Stop[]? | .hooks = [ .hooks[]? |
+        if (.command? // "" | test("plumbline-enforce\\.sh")) then .command = $cmd else . end ] ]
+    ' "$settings" > "$rtmp"; then
+      mv "$rtmp" "$settings"
+      echo "repointed enforce-hook to this checkout"
+    else
+      rm -f "$rtmp"
+      echo "skip enforce-hook: jq failed to repoint $settings" >&2
+    fi
     return
   fi
   local tmp; tmp="$(mktemp)"
@@ -498,9 +523,29 @@ register_pretool_vision_hook() {
     echo "skip pretool-vision-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  if jq -e '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""] | any(test("pretool-vision-gate\\.sh"))' \
-       "$settings" >/dev/null 2>&1; then
-    echo "skip pretool-vision-hook: already registered in $settings"
+  # Same stale-path blindness as the enforce hook above: repoint rather than skip.
+  local registered=""
+  registered="$(jq -r '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""]
+    | map(select(test("pretool-vision-gate\\.sh"))) | .[0] // ""' "$settings" 2>/dev/null)"
+  if [ -n "$registered" ]; then
+    if [ "$registered" = "$cmd" ]; then
+      echo "skip pretool-vision-hook: already registered in $settings"
+      return
+    fi
+    echo "REPOINTING pretool-vision-hook in $settings:"
+    echo "  was: $registered"
+    echo "  now: $cmd"
+    local rtmp; rtmp="$(mktemp)"
+    if jq --arg cmd "$cmd" '
+      .hooks.PreToolUse = [ .hooks.PreToolUse[]? | .hooks = [ .hooks[]? |
+        if (.command? // "" | test("pretool-vision-gate\\.sh")) then .command = $cmd else . end ] ]
+    ' "$settings" > "$rtmp"; then
+      mv "$rtmp" "$settings"
+      echo "repointed pretool-vision-hook to this checkout"
+    else
+      rm -f "$rtmp"
+      echo "skip pretool-vision-hook: jq failed to repoint $settings" >&2
+    fi
     return
   fi
   local tmp; tmp="$(mktemp)"
