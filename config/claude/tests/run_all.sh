@@ -121,6 +121,9 @@ bash config/claude/tests/test_agileteam_start_gate.sh || mark_fail
 stage "scope shift notice tests"
 bash config/claude/tests/test_scope_shift_notice.sh || mark_fail
 
+stage "canonical scope manifest tests (PLUM-10)"
+bash config/claude/tests/test_scope_manifest.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 
