@@ -126,4 +126,51 @@ fresh="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
 assert_contains "R5 a fresh settings.json gets the enforce hook registered" \
   "$fresh" "$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
 
+# --- R6: a command with a wrapper/flags keeps them; only the PATH is substituted ----
+# Replacing the whole .command silently discarded a hand-added `env` prefix or flag.
+home3="$WORK/home3"
+mkdir -p "$home3"
+cat >"$home3/settings.json" <<'EOF'
+{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"env FOO=1 bash /OLD/config/claude/hooks/plumbline-enforce.sh --strict","timeout":15}]}]}}
+EOF
+run_install "$home3"
+kept="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("plumbline-enforce"))) | .[0]' "$home3/settings.json")"
+assert_contains "R6 the env prefix survives the repoint" "$kept" "env FOO=1"
+assert_contains "R6 the trailing flag survives the repoint" "$kept" "--strict"
+assert_contains "R6 the path was repointed to this checkout" \
+  "$kept" "$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
+assert_not_contains "R6 the old path is gone" "$kept" "/OLD/"
+
+# --- R7: TWO stale registrations -- neither may survive, and none is deleted --------
+# Checking only the first match either left a second stale entry behind or rewrote
+# every entry to an identical command, producing duplicates.
+home4="$WORK/home4"
+mkdir -p "$home4"
+cat >"$home4/settings.json" <<'EOF'
+{"hooks":{"Stop":[{"hooks":[
+  {"type":"command","command":"bash /OLD_A/config/claude/hooks/plumbline-enforce.sh"},
+  {"type":"command","command":"bash /OLD_B/config/claude/hooks/plumbline-enforce.sh"}
+]}]}}
+EOF
+run_install "$home4"
+stale_left="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("OLD_A|OLD_B"))) | length' "$home4/settings.json")"
+assert_eq "R7 no stale registration survives" "0" "$stale_left"
+total_after="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("plumbline-enforce"))) | length' "$home4/settings.json")"
+assert_eq "R7 both registrations are kept (none deleted for the user)" "2" "$total_after"
+assert_contains "R7 the duplication is reported, not silently normalised" \
+  "$INSTALL_OUT" "registered 2 times"
+
+# --- R8: one CURRENT + one stale -- the stale one must not hide behind the good one --
+home5="$WORK/home5"
+mkdir -p "$home5"
+cat >"$home5/settings.json" <<EOF
+{"hooks":{"Stop":[{"hooks":[
+  {"type":"command","command":"bash $REPO_DIR/config/claude/hooks/plumbline-enforce.sh"},
+  {"type":"command","command":"bash /OLD_C/config/claude/hooks/plumbline-enforce.sh"}
+]}]}}
+EOF
+run_install "$home5"
+stale5="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("OLD_C"))) | length' "$home5/settings.json")"
+assert_eq "R8 a stale entry behind a current one is still repointed" "0" "$stale5"
+
 finish "test_install_hook_repoint"

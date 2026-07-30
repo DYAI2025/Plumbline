@@ -13,6 +13,11 @@
 # prod") committed inside the batch meant to close that class. This test is the
 # regression guard.
 #
+# SCOPE, stated honestly: C1-C8 are NAME-reachability checks (does the wrapper appear
+# where its class requires?). They catch a wrapper nothing references. They do NOT by
+# themselves prove the hook calls it -- that is C9, and the behavioural proof lives in
+# test_pril_enforce_hook.sh, which reddens when the call sites are deleted.
+#
 # The contract: every `config/claude/bin/plumbline*` wrapper is declared in exactly one
 # reachability class, and that class's requirement is checked:
 #
@@ -195,10 +200,34 @@ else
   _fail "C8 advisory gates default to ON (opt-out, not opt-in): a governance check that is off by default is absent, not safe"
 fi
 TESTS_RUN=$((TESTS_RUN + 1))
-if grep -q 'run_advisory' "$ENFORCE_HOOK" 2>/dev/null; then
-  _pass "C8 advisory gates run through the non-blocking run_advisory path"
+# C9: INVOCATION, not mention. Measured 2026-07-30: deleting all four `run_advisory`
+# call sites left this file 62/62 GREEN, because C3/C6/C7 only grep for the CLI NAME
+# (still present in the resolve_* lines) and the old C8 grepped for `run_advisory`
+# (still present as the function DEFINITION). A test that survives deletion of the
+# behaviour it names does not cover it -- the exact class this suite exists to catch.
+# The genuine guard is test_pril_enforce_hook.sh, which did redden.
+for name in $ADVISORY_CLIS; do
+  var=""
+  case "$name" in
+    plumbline-plan-check) var="plan_bin" ;;
+    plumbline-runtime-hygiene) var="hygiene_bin" ;;
+    plumbline-remote-watch) var="remote_bin" ;;
+    plumbline-provenance-check) var="provenance_bin" ;;
+  esac
+  if grep -qE "run_advisory +\"\\\$$var\"" "$ENFORCE_HOOK" 2>/dev/null; then
+    _pass "C9 $name is INVOKED via run_advisory \"\$$var\""
+  else
+    _fail "C9 $name is INVOKED via run_advisory \"\$$var\" (it is resolved but never called -- a gate that is looked up and never run)"
+  fi
+  TESTS_RUN=$((TESTS_RUN + 1))
+done
+
+# The call sites must outnumber the definition: >=4 invocations, definition excluded.
+adv_calls="$(grep -cE '^[[:space:]]*run_advisory +"' "$ENFORCE_HOOK" 2>/dev/null || true)"
+if [ "${adv_calls:-0}" -ge 4 ]; then
+  _pass "C9 at least 4 run_advisory INVOCATIONS exist (found $adv_calls)"
 else
-  _fail "C8 advisory gates run through the non-blocking run_advisory path"
+  _fail "C9 at least 4 run_advisory INVOCATIONS exist (found ${adv_calls:-0}; the function definition alone does not count)"
 fi
 TESTS_RUN=$((TESTS_RUN + 1))
 

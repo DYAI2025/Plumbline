@@ -21,6 +21,25 @@
 # which enforcement could be silently disabled) and BLOCKS — it is not a no-op.
 # Only a truly ABSENT marker is a no-op (a normal session that was never armed).
 #
+# KO-1 AND ITS CEILING (be precise here; the first attempt got this wrong).
+# The marker is gitignored, so DELETING it disarms every gate below and leaves no
+# git trace. That is a real bypass. But it CANNOT be closed by inferring intent from
+# absence, because removing the marker is ALSO the legitimate end of a feature run:
+# "no marker" is the correct steady state of every ordinary session.
+#
+# A first fix blocked when the marker was absent while confirmed canvases existed and
+# the tree was dirty. Measured: that is the NORMAL state of any repo that has ever run
+# /agileteam and is currently being worked in — it blocked ordinary sessions in this
+# repo and in five others, and its remedy text invited committing an unreviewed tree or
+# writing a marker that FALSELY arms enforcement. Both are worse than the threat.
+#
+# So the detection is OPT-IN: PLUMBLINE_GATE_MARKER_ABSENT=1. Default OFF, because a
+# gate that cannot distinguish an attack from the normal case is a false-alarm
+# generator, and this layer's own value dies to alarm fatigue. With the flag ON the
+# absent-marker shape blocks; with it OFF an absent marker is a silent no-op, exactly
+# as the paragraph above describes. KO-1 is therefore NAMED and OPTIONALLY detectable,
+# NOT closed — do not describe it as closed.
+#
 # Safety contract (mirrors stop-learning-loop.sh):
 #   - NEVER exits non-zero (an accidental error must not crash the session).
 #   - Honors stop_hook_active (exit 0, no output) to avoid infinite stop loops.
@@ -71,17 +90,13 @@ repo="$CLAUDE_PROJECT_DIR"
 # sessions completely untouched.
 marker="$repo/docs/context/.active-feature"
 if [ ! -f "$marker" ]; then
-  # KO-1 (council finding, 2026-07-30): the marker is GITIGNORED (.gitignore),
-  # so DELETING it disarms every gate below, leaves no git trace, and -- because
-  # the C4 rule exempts gitignored+untracked paths -- no other gate sees it either.
-  # A BLANK marker was already treated as suspicious and blocks (see below); a
-  # DELETED one silently no-opped. Same threat, one keystroke apart, opposite
-  # handling.
-  #
-  # An absent marker is still the normal case for a normal session, so it cannot
-  # simply block. But "absent marker WHILE a confirmed canvas exists AND the tree
-  # has uncommitted work" is not a normal session: that is the disarm shape. Report
-  # it. Fail-closed on the git query, because "cannot tell" must not read as "clean".
+  # KO-1 detection -- OPT-IN. See the header for why this cannot be on by default:
+  # an absent marker is the normal steady state, so blocking on it blocks ordinary
+  # sessions (measured across six repos). Only an operator who wants the stricter
+  # reading turns it on.
+  if [ "${PLUMBLINE_GATE_MARKER_ABSENT:-0}" != "1" ]; then
+    exit 0
+  fi
   if [ -d "$repo/docs/canvas" ]; then
     canvas_count=0
     for canvas_candidate in "$repo/docs/canvas/"*.canvas.md; do
@@ -259,8 +274,11 @@ provenance_bin=""
 notices=""
 
 gate_enabled() { # gate_enabled <env-var-name>  -- default ON; only "0" disables
-  local value=""
-  eval "value=\"\${$1:-1}\""
+  # Indirect expansion, not eval: `eval "value=\"\${$1:-1}\""` executes its argument, so
+  # a caller-controlled name could inject shell. Every call site passes a literal today,
+  # so the live risk was nil -- but an eval in the security-relevant hook is a
+  # capability nothing here needs. `${!name}` is byte-equivalent and bash-3.2 safe.
+  local value="${!1:-1}"
   [ "$value" != "0" ]
 }
 
@@ -548,13 +566,28 @@ run_advisory() { # run_advisory <bin> <label> <args...>
   rc=$?
   [ "$rc" -eq 0 ] && return 0
   local first=""
-  first="$(grep -m1 -E '^(ERROR|VIOLATION|PROVENANCE_|ARTIFACT_|NONDETERMINISTIC_|MISSING_|REMOTE_STATE_|EVIDENCE_)' "$out" 2>/dev/null)"
+  # PRODUCER_ was missing, so PRODUCER_OUT_OF_SCOPE fell through to `head -n 1` and
+  # reported an unrelated line. Take the LAST match: the classified verdict follows any
+  # progress output rather than preceding it.
+  first="$(grep -E '^(ERROR|VIOLATION|PROVENANCE_|PRODUCER_|ARTIFACT_|NONDETERMINISTIC_|MISSING_|REMOTE_STATE_|EVIDENCE_)' "$out" 2>/dev/null | tail -n 1)"
   [ -n "$first" ] || first="$(head -n 1 "$out" 2>/dev/null)"
-  append_notice "PRIL_ADVISORY $label exit=$rc: ${first:-(no output)}"
+  # Reuse the blocking path's vocabulary so "could not run" never reads like "ran and
+  # found something" -- the whole point of reserving 120/121.
+  local klass=""
+  case "$rc" in
+    120|126|127) klass="PRIL_TOOL_UNAVAILABLE" ;;
+    121)         klass="PRIL_TOOL_BROKEN" ;;
+    2)           klass="PRIL_INPUT_MISSING" ;;
+    3|4)         klass="PRIL_POLICY_FINDING" ;;
+    *)           klass="PRIL_TOOL_BROKEN" ;;
+  esac
+  append_notice "PRIL_ADVISORY $label $klass exit=$rc: ${first:-(no output)}"
 }
 
 if [ -n "$plan_bin" ]; then
-  # Newest plan naming this feature; absent is normal, not a finding.
+  # Last plan naming this feature in glob (lexicographic) order -- correct for the
+  # date-prefixed convention docs/plans/YYYY-MM-DD-<feature>.md, and NOT an mtime sort.
+  # Absent is normal, not a finding.
   plan_file=""
   for candidate in "$repo/docs/plans/"*"$feat"*.md; do
     [ -f "$candidate" ] && plan_file="$candidate"
@@ -567,8 +600,23 @@ fi
 
 run_advisory "$hygiene_bin" hygiene --repo "$repo"
 
-if [ -n "$remote_bin" ] && [ -f "$repo/docs/context/$feat.remote-state.json" ]; then
-  # Only meaningful once a run recorded what it expects; no snapshot is not a finding.
+if [ -n "$remote_bin" ] &&
+   [ -f "$repo/docs/context/$feat.remote-state.json" ] &&
+   [ "${PLUMBLINE_REMOTE_LIVE:-0}" = "1" ]; then
+  # Three conditions, and the live gate is not optional here.
+  #
+  # `verify` needs the forge half of the state. From the hook there is no
+  # --pr-state-file to inject, so without PLUMBLINE_REMOTE_LIVE it ALWAYS returns
+  # EXIT_MISSING ("the forge half is unavailable") -- a guaranteed notice on every
+  # single Stop, forever, for any feature that ever snapshotted. That is precisely the
+  # alarm fatigue this file argues against twenty lines above; a gate whose output is
+  # constant carries no information.
+  #
+  # The live path also crosses a network boundary inside a hook with a 15s registered
+  # timeout. If it overruns, the harness kills the hook and the BLOCKING scope/context/
+  # reality decision is lost with it -- an advisory gate turning a would-be block into
+  # a pass, which is strictly worse than not running it. plumbline_remote.py caps the
+  # forge call well inside that budget.
   run_advisory "$remote_bin" remote verify --repo "$repo" --feature "$feat"
 fi
 

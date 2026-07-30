@@ -26,6 +26,7 @@ operator to run, and the check keeps failing until they do.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -117,21 +118,36 @@ def _existing_block_patterns(gitignore: Path) -> set[str]:
 
 
 def _append_ignore_rules(gitignore: Path, patterns: list[str]) -> list[str]:
-    """Append the missing patterns inside a marked block. Purely additive."""
+    """Append the missing patterns inside a marked block. Purely additive, atomic."""
     already = _existing_block_patterns(gitignore)
     missing = [p for p in patterns if p not in already]
     if not missing:
         return []
     existing_text = ""
     if gitignore.exists():
-        existing_text = gitignore.read_text(encoding="utf-8")
+        try:
+            existing_text = gitignore.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # A non-UTF-8 .gitignore is somebody else's file; refuse rather than
+            # rewrite it from a lossy decode. _existing_block_patterns already
+            # tolerates this case, so the two paths now agree.
+            print(
+                f"ERROR: {gitignore} is not UTF-8 text; refusing to rewrite it. "
+                "Add the ignore rules by hand.",
+                file=sys.stderr,
+            )
+            return []
         if existing_text and not existing_text.endswith("\n"):
             existing_text += "\n"
     body = "\n".join(missing)
-    gitignore.write_text(
+    # Atomic: write a sibling temp file and rename. A direct write_text that is
+    # interrupted leaves a truncated .gitignore in a repo we do not own.
+    tmp = gitignore.with_name(gitignore.name + ".plumbline-tmp")
+    tmp.write_text(
         f"{existing_text}\n{BLOCK_HEADER}\n{body}\n{BLOCK_FOOTER}\n",
         encoding="utf-8",
     )
+    os.replace(tmp, gitignore)
     return missing
 
 

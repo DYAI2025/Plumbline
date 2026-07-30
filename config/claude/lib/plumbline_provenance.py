@@ -190,15 +190,26 @@ def _producer_matches_in_repo(repo: Path, producer: str) -> list[str]:
 
 
 def _run_generator(repo: Path, command: str) -> tuple[int, str]:
-    """Execute the DECLARED generation command. Returns (returncode, output)."""
-    result = subprocess.run(
-        command,
-        shell=True,
-        cwd=str(repo),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    """Execute the DECLARED generation command. Returns (returncode, output).
+
+    TRUST BOUNDARY, stated rather than implied: the command string comes from
+    ``docs/scope/<feature>.scope.json``, i.e. from the repository. Running
+    ``--verify-reproducible`` on a branch you do not trust executes repo-supplied
+    commands (twice per deterministic artifact). That is why the flag is opt-in and why
+    the Stop hook never passes it. Bounded so a hanging generator cannot wedge a caller.
+    """
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, f"the generation command exceeded 60s: {command!r}"
     return result.returncode, (result.stderr or result.stdout).strip()
 
 

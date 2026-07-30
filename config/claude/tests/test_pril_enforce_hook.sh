@@ -30,6 +30,25 @@ CMD="$REPO_DIR/config/claude/commands/agileteam.md"
 BIN_SRC="$REPO_DIR/config/claude/bin"
 LIB_SRC="$REPO_DIR/config/claude/lib"
 
+# PATH with every Plumbline-wrapper directory removed (see run_hook_with_env). Built
+# once: drop any entry that actually contains an installed wrapper, keep the rest so
+# uv/python3/git stay resolvable.
+SANITISED_PATH=""
+_old_ifs="$IFS"
+IFS=':'
+for _p in $PATH; do
+  [ -n "$_p" ] || continue
+  [ -e "$_p/plumbline-scope-check" ] && continue
+  [ -e "$_p/plumbline-reality-check" ] && continue
+  if [ -n "$SANITISED_PATH" ]; then
+    SANITISED_PATH="$SANITISED_PATH:$_p"
+  else
+    SANITISED_PATH="$_p"
+  fi
+done
+IFS="$_old_ifs"
+export SANITISED_PATH
+
 # Workspace for all temp git repos; cleaned on exit.
 WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
@@ -46,7 +65,19 @@ run_hook_with_env() {
   local outf errf
   outf="$(mktemp -p "$WORK")"
   errf="$(mktemp -p "$WORK")"
-  env "$@" CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
+  # PATH is SANITISED, not inherited wholesale. resolve_cli's step 3 is `command -v`,
+  # so an inherited PATH containing ~/.claude/bin lets the REAL installed CLIs satisfy
+  # lookups these cases intend to reach via HOME/PLUMBLINE_BIN_DIR. That made 4 PLUM-7
+  # assertions pass only where Plumbline is NOT installed -- green on CI, red for every
+  # real user. CLAUDE.md names the class and says to pin PATH here rather than paper
+  # over it; the new advisory assertions would have been the fifth instance the moment
+  # ~/.claude/bin gained the four new wrappers.
+  #
+  # Only directories holding a Plumbline wrapper are removed. The toolchain (uv,
+  # python3, git) MUST survive -- the PLUM-8 interpreter-fallback cases need it, and a
+  # blanket pin to /usr/bin:/bin silently converts those into 120/121 tool errors.
+  # Caller-supplied env in "$@" still wins, since it is applied after.
+  env PATH="$SANITISED_PATH" "$@" CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
     >"$outf" 2>"$errf" <<<"$stdin_payload"
   HOOK_RC=$?
   HOOK_OUT="$(cat "$outf")"
@@ -457,20 +488,29 @@ assert_eq "KO-1 baseline: armed marker + in-scope work passes" "" "$HOOK_OUT"
 
 # Now disarm by DELETING the marker, leaving the canvas and the dirty tree in place.
 rm -f "$ko1_repo/docs/context/.active-feature"
+
+# DEFAULT (flag off): silent no-op. This is the assertion that matters most, because
+# the first version of this fix blocked here -- and "absent marker + canvases + dirty
+# tree" is the NORMAL state of any repo that has ever run /agileteam and is being
+# worked in. It blocked ordinary sessions in this repo and five others.
 run_hook "$ko1_repo" '{}'
-assert_eq "KO-1 deleted marker: hook still exits 0" "0" "$HOOK_RC"
-assert_contains "KO-1 deleted marker blocks with a stable class" \
+assert_eq "KO-1 default: absent marker is a SILENT no-op (no false block)" \
+  "" "$HOOK_OUT"
+assert_eq "KO-1 default: exit 0" "0" "$HOOK_RC"
+
+# OPT-IN: the stricter reading is available to an operator who wants it.
+run_hook_with_env "$ko1_repo" '{}' "PLUMBLINE_GATE_MARKER_ABSENT=1"
+assert_eq "KO-1 opt-in: hook still exits 0" "0" "$HOOK_RC"
+assert_contains "KO-1 opt-in: deleted marker blocks with a stable class" \
   "$HOOK_OUT" "PRIL_MARKER_ABSENT"
-assert_contains "KO-1 deleted marker names the gitignored disarm risk" \
+assert_contains "KO-1 opt-in: names the gitignored disarm risk" \
   "$HOOK_OUT" "gitignored"
 
-# Negative control: a repo with canvases but a CLEAN tree is an ordinary un-armed
-# session and must stay a silent no-op. Without this, the fix would block every
-# normal session in any repo that happens to contain a canvas.
+# Negative control: even WITH the opt-in on, a clean tree is not the disarm shape.
 git -C "$ko1_repo" add -A
 git -C "$ko1_repo" commit -q -m "commit the work; no feature run active"
-run_hook "$ko1_repo" '{}'
-assert_eq "KO-1 control: no marker + clean tree is a silent no-op" "" "$HOOK_OUT"
+run_hook_with_env "$ko1_repo" '{}' "PLUMBLINE_GATE_MARKER_ABSENT=1"
+assert_eq "KO-1 control: opt-in + clean tree is still a silent no-op" "" "$HOOK_OUT"
 assert_eq "KO-1 control: exit 0" "0" "$HOOK_RC"
 
 # Negative control: a repo with NO canvases at all is never a feature run.

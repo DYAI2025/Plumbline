@@ -34,10 +34,13 @@ A capability reachable only through prose is not wired-in-prod. This is the repo
 signature failure class, committed inside the batch built to close it. It was found by
 an adversarial review reading the code — not by any gate, and not by the 273 assertions.
 
-**What changed as a result** (see "Post-council remediation" at the end of this file):
-the four CLIs are now invoked by the Stop hook as **advisory, default-ON, never
-blocking**; `test_cli_wiring.sh` makes an unreachable wrapper a hard failure; and the
-KO-1 marker bypass is closed.
+**What changed as a result** (see "Post-council remediation" and "Independent review"
+at the end of this file): the four CLIs are now invoked by the Stop hook as **advisory,
+default-ON, never blocking**; `test_cli_wiring.sh` makes an unreachable wrapper a hard
+failure *and* asserts actual invocation; and the KO-1 marker bypass is **named and
+optionally detectable, not closed** — an independent review showed the first attempt at
+closing it blocked ordinary sessions, and that marker removal cannot be distinguished
+from the legitimate end of a run.
 
 ## Test environment (three local false-REDs)
 
@@ -657,3 +660,83 @@ bodies, where independence means uncorrelated cognition. That floor was not met,
 nothing aborted — a declared fail-closed gate that did not fire while the run
 continued. It is the same shape as the false greens this batch fixed, and it is
 recorded rather than smoothed over.
+
+## Independent review before the global repoint (2026-07-30)
+
+The `/concilium` run did not count as independent review — all four bodies ran on
+Claude. A separate read-only `code-reviewer` pass over the whole branch diff
+(`a83081d..ba5d795`, 29 files, +6970/−85) returned **REQUEST_CHANGES** with 2 HIGH,
+5 MEDIUM and 7 LOW findings. Both HIGHs were in code added by this batch. All were
+fixed before any global change was made.
+
+### Mutation verification (what the reviewer actually measured)
+
+The reviewer mutated the tree on scratch copies and re-ran the suite:
+
+| mutation | behaviour removed | result |
+|---|---|---|
+| all four `run_advisory` call sites deleted | advisory wiring | `test_pril_enforce_hook.sh` **+2 RED** ✅ · `test_cli_wiring.sh` **62/62 GREEN** ❌ |
+| KO-1 block reverted to `[ -f "$marker" ] \|\| exit 0` | marker detection | `test_pril_enforce_hook.sh` **+2 RED** ✅ |
+| both `register_*` reverted to "any match → skip" | the repoint | `test_install_hook_repoint.sh` **+6 RED** ✅ |
+
+Each mutation reddened exactly the assertions naming the removed behaviour and nothing
+else — so those are genuine guards. The exception is the finding below.
+
+### F1 (HIGH) — the KO-1 fix blocked ordinary sessions
+
+Reproduced against this repo with no feature run active: 8 canvases + 2 dirty lines →
+`PRIL_MARKER_ABSENT` block. The trigger was "has ever used /agileteam" × "is being
+worked in", which is the **normal** state, not the disarm shape — it blocked in three of
+six canvas-governed repos immediately and the other three on their next edit. Worse, its
+remedy text invited committing an unreviewed tree or writing a marker that **falsely
+arms** enforcement.
+
+The deeper error: marker removal cannot be distinguished from the legitimate end of a
+run, because "no marker" is the correct steady state of every ordinary session. So the
+detection is now **opt-in** (`PLUMBLINE_GATE_MARKER_ABSENT=1`, default OFF) and the
+header says plainly that **KO-1 is named and optionally detectable, not closed.** The
+earlier claim that it was closed is withdrawn.
+
+### F2 (HIGH) — the wiring test did not detect unwiring
+
+`test_cli_wiring.sh` stayed 62/62 green with every `run_advisory` call site deleted: its
+checks grep for the CLI *name* (still present in the `resolve_*` lines) and for
+`run_advisory` (still present as the function *definition*). Its header claimed it
+"fails the moment a gate is shipped that nothing calls" — it failed only when a name
+left the hooks directory. Added C9: each advisory CLI must appear as an argument to a
+`run_advisory` **invocation**, and invocations must outnumber the definition. The header
+now states its scope honestly and points at the behavioural guard.
+
+### The rest
+
+- **F3/F4** — the remote advisory ran on every Stop with neither seam nor live gate, so
+  it emitted a *guaranteed permanent* notice for any feature that ever snapshotted (the
+  alarm fatigue the design argues against), and with the live gate on, an unbounded
+  `gh pr view` could outlive the hook's 15s budget and take the **blocking** decision
+  down with it. Now gated on `PLUMBLINE_REMOTE_LIVE=1` and capped at 8s, classified.
+- **F7** — the new advisory assertion rode the documented PLUM-7 `PATH`-leak defect and
+  would have gone RED for every real user the moment `~/.claude/bin` gained the four
+  wrappers. `run_hook_with_env` now sanitises `PATH` (dropping only directories holding
+  a Plumbline wrapper, so the `uv`/`python3` fallback cases still resolve). **This also
+  closed the 4 pre-existing PLUM-7 failures** that CLAUDE.md recorded as "green on CI
+  and red for every real user": 128/128 now pass under both a clean PATH and the real
+  ambient PATH.
+- **F5/F6/F14** — the repoint checked only the first match (so a second stale entry
+  could survive, or all entries collapse into duplicates) and replaced the whole
+  command (dropping a hand-added `env` prefix or flag). It now considers every match,
+  substitutes only the path, reports duplication without deleting anything, and leaves
+  groups without a `.hooks` array untouched. Covered by R6/R7/R8.
+- **F8–F13** — `eval` replaced by indirect expansion; `PRODUCER_` added to the finding
+  extractor and the last match preferred; advisory notices reuse the reserved
+  120/121/2/3/4 vocabulary so "could not run" no longer reads like "ran and found
+  something"; `.gitignore` writes are atomic with a decode guard; the generator call is
+  bounded at 60s and its trust boundary is stated.
+
+### Verified clean by the reviewer
+
+Foreign-hook preservation against a copy of the real `~/.claude/settings.json` (all 5
+Stop and 3 PreToolUse groups byte-identical, including `matcher`, `timeout`, `async` and
+unknown keys); CLI install paths; advisory-never-blocks in code; PLUM-13 wired through
+the blocking path; the `_patterns_from_canvas` tuple change; bash-3.2/BSD portability;
+CI registration of all new modules; doc tripwires; and no remaining overclaim in this
+file.

@@ -457,23 +457,50 @@ register_enforce_hook() {
   # stale tree that lacked the current gates entirely. Measured on this machine
   # 2026-07-30: the registered Stop hook pointed at a checkout 2 days and 4 CLIs behind.
   # So: same path -> genuinely idempotent; DIFFERENT path -> repoint, loudly.
-  local registered=""
-  registered="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
-    | map(select(test("plumbline-enforce\\.sh"))) | .[0] // ""' "$settings" 2>/dev/null)"
-  if [ -n "$registered" ]; then
-    if [ "$registered" = "$cmd" ]; then
+  # ALL matches are considered, not just the first: with two registrations, checking
+  # only [0] either declared success while a second stale entry survived, or rewrote
+  # every entry to an identical command and produced duplicates.
+  # Only the PATH is substituted, never the whole command, so a hand-added env prefix
+  # or flag (`env FOO=1 bash /old/... --strict`) survives the repoint.
+  local matches=""
+  matches="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+    | map(select(test("plumbline-enforce\\.sh"))) | .[]' "$settings" 2>/dev/null)"
+  if [ -n "$matches" ]; then
+    local n_match stale=0
+    n_match="$(printf '%s\n' "$matches" | grep -c .)"
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      case "$m" in
+        *"$hook_script"*) ;;
+        *) stale=1; echo "  stale: $m" ;;
+      esac
+    done <<EOF
+$matches
+EOF
+    if [ "$n_match" -gt 1 ]; then
+      echo "NOTE: enforce-hook is registered $n_match times in $settings."
+      echo "      All are repointed; remove the extra entr(ies) by hand if unwanted."
+      echo "      (Registrations are never deleted for you.)"
+    fi
+    if [ "$stale" -eq 0 ]; then
       echo "skip enforce-hook: already registered in $settings"
       return
     fi
-    echo "REPOINTING enforce-hook in $settings:"
-    echo "  was: $registered"
-    echo "  now: $cmd"
+    echo "REPOINTING enforce-hook in $settings -> $hook_script"
     local rtmp; rtmp="$(mktemp)"
-    if jq --arg cmd "$cmd" '
-      .hooks.Stop = [ .hooks.Stop[]? | .hooks = [ .hooks[]? |
-        if (.command? // "" | test("plumbline-enforce\\.sh")) then .command = $cmd else . end ] ]
+    if jq --arg p "$hook_script" '
+      .hooks.Stop = [ .hooks.Stop[]? |
+        if has("hooks") and (.hooks | type == "array") then
+          .hooks = [ .hooks[]? |
+            if (.command? // "" | test("plumbline-enforce\\.sh"))
+            then .command = (.command | sub("[^ \"]*plumbline-enforce\\.sh"; $p))
+            else . end ]
+        else . end ]
     ' "$settings" > "$rtmp"; then
       mv "$rtmp" "$settings"
+      jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+        | map(select(test("plumbline-enforce\\.sh"))) | .[]' "$settings" 2>/dev/null \
+        | sed 's/^/  now: /'
       echo "repointed enforce-hook to this checkout"
     else
       rm -f "$rtmp"
@@ -523,24 +550,46 @@ register_pretool_vision_hook() {
     echo "skip pretool-vision-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  # Same stale-path blindness as the enforce hook above: repoint rather than skip.
-  local registered=""
-  registered="$(jq -r '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""]
-    | map(select(test("pretool-vision-gate\\.sh"))) | .[0] // ""' "$settings" 2>/dev/null)"
-  if [ -n "$registered" ]; then
-    if [ "$registered" = "$cmd" ]; then
+  # Same stale-path blindness, same treatment: all matches, path-only substitution,
+  # groups without a `.hooks` array left alone.
+  local matches=""
+  matches="$(jq -r '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""]
+    | map(select(test("pretool-vision-gate\\.sh"))) | .[]' "$settings" 2>/dev/null)"
+  if [ -n "$matches" ]; then
+    local n_match stale=0
+    n_match="$(printf '%s\n' "$matches" | grep -c .)"
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      case "$m" in
+        *"$hook_script"*) ;;
+        *) stale=1; echo "  stale: $m" ;;
+      esac
+    done <<EOF
+$matches
+EOF
+    if [ "$n_match" -gt 1 ]; then
+      echo "NOTE: pretool-vision-hook is registered $n_match times in $settings."
+      echo "      All are repointed; remove the extra entr(ies) by hand if unwanted."
+    fi
+    if [ "$stale" -eq 0 ]; then
       echo "skip pretool-vision-hook: already registered in $settings"
       return
     fi
-    echo "REPOINTING pretool-vision-hook in $settings:"
-    echo "  was: $registered"
-    echo "  now: $cmd"
+    echo "REPOINTING pretool-vision-hook in $settings -> $hook_script"
     local rtmp; rtmp="$(mktemp)"
-    if jq --arg cmd "$cmd" '
-      .hooks.PreToolUse = [ .hooks.PreToolUse[]? | .hooks = [ .hooks[]? |
-        if (.command? // "" | test("pretool-vision-gate\\.sh")) then .command = $cmd else . end ] ]
+    if jq --arg p "$hook_script" '
+      .hooks.PreToolUse = [ .hooks.PreToolUse[]? |
+        if has("hooks") and (.hooks | type == "array") then
+          .hooks = [ .hooks[]? |
+            if (.command? // "" | test("pretool-vision-gate\\.sh"))
+            then .command = (.command | sub("[^ \"]*pretool-vision-gate\\.sh"; $p))
+            else . end ]
+        else . end ]
     ' "$settings" > "$rtmp"; then
       mv "$rtmp" "$settings"
+      jq -r '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""]
+        | map(select(test("pretool-vision-gate\\.sh"))) | .[]' "$settings" 2>/dev/null \
+        | sed 's/^/  now: /'
       echo "repointed pretool-vision-hook to this checkout"
     else
       rm -f "$rtmp"

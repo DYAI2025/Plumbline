@@ -125,20 +125,34 @@ def _fetch_live_pr_state(repo: Path, pr: int) -> tuple[int, dict]:
             file=sys.stderr,
         )
         return EXIT_MISSING, {}
-    result = subprocess.run(
-        [
-            tool,
-            "pr",
-            "view",
-            str(pr),
-            "--json",
-            ",".join(PR_FIELDS),
-        ],
-        cwd=str(repo),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    # Bounded on purpose: this can be reached from the Stop hook, which the runtime
+    # kills at 15s. An unbounded forge call that overruns takes the hook -- and with it
+    # the BLOCKING gates' decision -- down with it, turning a would-be block into a
+    # silent pass. A timeout is classified as "could not read the forge", never as
+    # "nothing changed".
+    try:
+        result = subprocess.run(
+            [
+                tool,
+                "pr",
+                "view",
+                str(pr),
+                "--json",
+                ",".join(PR_FIELDS),
+            ],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=8,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"ERROR: 'gh pr view {pr}' exceeded 8s, so the forge state is UNKNOWN. "
+            "Refusing to report the remote as verified from the git half alone.",
+            file=sys.stderr,
+        )
+        return EXIT_MISSING, {}
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip().splitlines()
         first = detail[0] if detail else f"exit {result.returncode}"
