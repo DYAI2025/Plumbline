@@ -136,6 +136,9 @@ bash config/claude/tests/test_evidence_target.sh || mark_fail
 stage "remote-state watcher tests (PLUM-14)"
 bash config/claude/tests/test_remote_state_watch.sh || mark_fail
 
+stage "generated-artifact provenance tests (PLUM-15)"
+bash config/claude/tests/test_artifact_provenance.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 
@@ -217,6 +220,7 @@ if command -v shellcheck >/dev/null 2>&1; then
   if shellcheck -x -P SCRIPTDIR \
     config/claude/bin/plumbline-context-check \
     config/claude/bin/plumbline-plan-check \
+    config/claude/bin/plumbline-provenance-check \
     config/claude/bin/plumbline-reality-check \
     config/claude/bin/plumbline-redact \
     config/claude/bin/plumbline-remote-watch \

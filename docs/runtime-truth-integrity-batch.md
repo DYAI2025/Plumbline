@@ -472,3 +472,95 @@ is not claimed: no test in this batch talks to api.github.com. Concretely not co
   the watcher cannot set for you. Without it, the published status is advisory;
 - the snapshot lives in `docs/context/`, so it inherits the same trust boundary as the
   active-feature marker: an actor who can rewrite the snapshot can hide a transition.
+
+## PLUM-15 — an allowed path could still be changed by the wrong route
+
+**Status: reproduced (the guard models paths only); fixed.**
+
+### Reproduction
+
+The scope guard has exactly one matcher and no producer/output model, no notion of an
+allowed generation command (verified by inspection). The pilot's shape is now the
+`manual` fixture, and the test asserts the reproduction directly: with
+`pkg/openapi/v1.json` in the allowed scope, a **hand-edited** generated file makes
+`plumbline-scope-check` exit **0** — the scope gate allows it. Only the new provenance
+gate rejects it. That assertion is the reproduction and the regression guard in one: if
+provenance detection is ever removed, the hand edit passes again.
+
+The pilot also carried the mirror-image contradiction: the artifact was an allowed
+target while its generator under `packages/contracts/src/openapi/**` was not, so the
+only *correct* way to change the file was out of scope.
+
+### Root cause
+
+The manifest expressed *what* may change, never *how* it may come to change: no
+producer→output relationship, no allowed command, no way to distinguish a regeneration
+from a hand edit.
+
+### Implementation
+
+`config/claude/lib/plumbline_provenance.py` + `config/claude/bin/plumbline-provenance-check`,
+driven by a new `generated_artifacts` block in the canonical manifest. Four classes are
+reported **separately** (AC-4) because each needs a different fix:
+`PROVENANCE_VIOLATION`, `ARTIFACT_DRIFT`, `NONDETERMINISTIC_OUTPUT`,
+`MISSING_PRODUCER` / `PRODUCER_OUT_OF_SCOPE`. A byte-level drift test alone cannot
+separate "changed" from "changed legitimately" — hence two answers, not one verdict.
+
+`--verify-reproducible` **executes** the declared command, so it is opt-in; a canary
+assertion proves no command runs without the flag, and another proves the committed
+artifact is byte-identical afterwards (the check restores it).
+
+`config/claude/lib/plumbline_scope.py` learns `generated_artifacts` as a known manifest
+key — the scope guard still judges paths only, but the declaration lives in the same
+canonical file.
+
+Wiring: `config/claude/commands/agileteam.md` Phase 0.6 documents the block and the gate
+beside the scope check. Docs: `docs/scope-manifest.md`.
+
+### Two defects the tests caught in my own implementation
+
+1. **`deterministic: false` still ran the byte comparison.** A comparison against a
+   non-reproducible generator proves nothing, yet it produced `ARTIFACT_DRIFT`. Now the
+   comparison is skipped entirely and the claim is withheld.
+2. **The withheld claim was then reported as `provenance+drift ok`** — wording that reads
+   as a reproducibility pass. Since `deterministic: false` is a potential *bypass*
+   (declare non-determinism, never be drift-checked again), it now has its own wording,
+   `provenance ok, drift NOT checked`, and three assertions pin that it never claims
+   byte-identity and never reads as drift-verified.
+
+A third finding was a defect in my **test**, not the product: the fixture wrote its
+changed-files list inside the repo, so the list itself read as an untracked out-of-scope
+change. Moved outside the repo; the manifest is declared under `governance_paths`, which
+is also how a real feature scopes its own governance artifacts.
+
+### Regression test + counter-check
+
+`config/claude/tests/test_artifact_provenance.sh` — 49 assertions, registered in
+`run_all.sh`; the new wrapper added to the shellcheck list. Pre-implementation: 41 of 46
+failed. All four AC-5 cases are covered with **real** generators (a deterministic
+shell generator, a counter-stamping non-deterministic one, and a failing one).
+
+Load-bearing controls: the precondition that the **scope gate allows** the hand-edited
+path (so provenance is provably what catches it); a run with *both* a drift and a
+provenance problem must report **both** classes, not collapse them; a failing generator
+is a tool failure (exit 2), not a policy violation; unrelated changed files do not trip
+the gate; and a manifest with no `generated_artifacts` passes while saying so.
+
+### Evidence ceiling (PLUM-15)
+
+`integration-real`: real git repositories, real generator scripts really executed, real
+byte comparison, the real CLI.
+
+**Not** covered, and deliberately named:
+
+- **`deterministic: false` is an unfixable-by-code bypass.** It is honest (a byte
+  comparison would prove nothing) but it means an author can opt out of drift detection
+  by declaring the generator non-deterministic. The mitigation is visibility, not
+  enforcement: the output says the claim is withheld. Reviewing that flag is a human job.
+- **Provenance is inferred from co-change, not observed.** "The producer changed too"
+  is not proof that the producer *caused* the new bytes; only `--verify-reproducible`
+  turns that into a real check, and only for deterministic generators.
+- **`--verify-reproducible` executes manifest-declared commands.** That is a real
+  capability (arbitrary local execution) gated behind an explicit flag, not a network
+  boundary. It is not run in the default path, and no test in this batch executes a
+  command from an untrusted manifest.

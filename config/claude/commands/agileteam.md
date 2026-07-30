@@ -579,6 +579,33 @@ config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> -
 Out-of-scope edits are fail-closed: stop, ask the user to expand the confirmed scope, or revert the
 out-of-scope change. Do not silently broaden scope from the PRD, tests, or agent judgement.
 
+**Generated artifacts (PLUM-15) — an allowed path can still be changed the wrong WAY.** The scope
+guard judges paths; it cannot tell a regenerated file from a hand-edited one. Where the feature owns
+a generated artifact, declare the producer relationship in the manifest and run the provenance gate
+beside the scope gate:
+
+```json
+"generated_artifacts": [
+  {"path": "pkg/openapi/v1.json", "producer": "pkg/src/openapi/**",
+   "command": "./scripts/gen.sh", "deterministic": true}
+]
+```
+
+```bash
+config/claude/bin/plumbline-provenance-check --repo <repo> --feature <slug> \
+  --changed-files <changed-files.txt> [--verify-reproducible]
+```
+
+Four classes stay **separately visible**, because they need different fixes:
+`PROVENANCE_VIOLATION` (the artifact changed but nothing matching its producer did — a hand edit of
+generated output) · `ARTIFACT_DRIFT` (the producer changed but re-running the declared command does
+not reproduce the committed file) · `NONDETERMINISTIC_OUTPUT` (the command disagrees with itself
+across two runs, so drift is unprovable) · `PRODUCER_OUT_OF_SCOPE` / `MISSING_PRODUCER` (the
+declaration contradicts the manifest, or names a producer that matches no file). `--verify-reproducible`
+**executes** the declared command, so it is opt-in; without it the report says reproducibility was not
+verified rather than implying it was. `deterministic: false` skips the byte comparison entirely and
+reports "drift NOT checked" — never a reproducibility pass.
+
 ### Safe persistence redaction gate
 
 Before writing metrics, watcher notes, JSONL ledgers, logs, memory-like artifacts, or any durable

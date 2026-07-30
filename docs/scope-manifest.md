@@ -33,6 +33,7 @@ document and may *describe* the scope, but it no longer governs it.
 | `feature` | no | when present it must equal the feature being checked, so a copied manifest cannot govern the wrong feature. |
 | `allowed_change_scope` | **yes** | product paths/globs, repo-relative. One entry per path. |
 | `governance_paths` | no | the feature's own governance artifacts, modelled separately (see below). |
+| `generated_artifacts` | no | producer/output declarations for generated files (see below). |
 | `notes` | no | human prose. Ignored by the guard. |
 | `provenance` | no | the scope-change audit trail (see below). |
 
@@ -178,3 +179,66 @@ It answers three questions in one place:
 
 Exit codes: `0` pass · `2` missing input (no scope, no plan) · `3` drift /
 contradiction · `4` malformed input.
+
+## Generated artifacts and provenance (PLUM-15)
+
+The scope guard judges **paths**. It cannot tell a regenerated file from a hand-edited
+one, so an allowed target path can still be changed the wrong WAY. Declare the
+producer relationship and the provenance gate can:
+
+```json
+{
+  "schema": 1,
+  "feature": "contracts",
+  "allowed_change_scope": [
+    "pkg/openapi/v1.json",
+    "pkg/src/openapi/**",
+    "scripts/gen.sh"
+  ],
+  "generated_artifacts": [
+    {
+      "path": "pkg/openapi/v1.json",
+      "producer": "pkg/src/openapi/**",
+      "command": "./scripts/gen.sh",
+      "deterministic": true
+    }
+  ]
+}
+```
+
+| field | required | meaning |
+|---|---|---|
+| `path` | **yes** | the generated artifact. |
+| `producer` | **yes** | path/glob of the source that legitimately produces it. Must itself be inside the allowed scope. |
+| `command` | **yes** | the allowed generation command. |
+| `deterministic` | no (default `true`) | whether the command is byte-reproducible. |
+
+Run beside the scope gate:
+
+```bash
+config/claude/bin/plumbline-provenance-check --repo . --feature <slug> \
+  --changed-files <list> [--verify-reproducible]
+```
+
+Four classes stay **separately visible**, because each needs a different fix:
+
+| class | exit | meaning |
+|---|---|---|
+| `PROVENANCE_VIOLATION` | 3 | the artifact changed but nothing matching its producer did — a hand edit of generated output. The path is allowed; the production route is not. |
+| `ARTIFACT_DRIFT` | 3 | the producer changed, but re-running the declared command does not reproduce the committed artifact. |
+| `NONDETERMINISTIC_OUTPUT` | 3 | the command does not agree with itself across two consecutive runs, so drift cannot be attributed at all. |
+| `MISSING_PRODUCER` | 3 | the producer glob matches no file, so the declared production route does not exist. |
+| `PRODUCER_OUT_OF_SCOPE` | 4 | the producer is not inside the allowed scope, so the artifact could only ever change by an unauthorized route (the EYT-88 contradiction). |
+
+A byte-level drift test alone cannot separate "changed" from "changed legitimately" —
+that is exactly why provenance and drift remain two answers rather than one verdict.
+
+**`--verify-reproducible` executes the declared command**, so it is opt-in. Without it
+no command runs and the report says reproducibility was *not verified* rather than
+implying it was. The check always restores the committed artifact, so it never leaves
+the tree dirty.
+
+**`deterministic: false`** skips the byte comparison entirely (a comparison against a
+non-reproducible generator proves nothing) and reports `provenance ok, drift NOT
+checked`. That makes the flag a potential bypass — declare non-determinism, never be
+drift-checked again — so it deliberately never reads as a reproducibility pass.

@@ -35,10 +35,15 @@ MANIFEST_KEYS = frozenset(
         "feature",
         "allowed_change_scope",
         "governance_paths",
+        "generated_artifacts",
         "notes",
         "provenance",
     }
 )
+# PLUM-15: `generated_artifacts` declares producer/output relationships. The scope
+# guard itself still judges PATHS only -- provenance is a separate, separately visible
+# answer in plumbline_provenance.py -- but the declaration lives in the same canonical
+# manifest, so the key must be recognised here rather than refused as unknown.
 # PLUM-12 (AC-5): product paths and governance paths are modelled separately, so a
 # drift report can say WHICH class a path belongs to instead of flattening the
 # feature's own canvas/PRD/ledger into its product surface. Both classes authorize
