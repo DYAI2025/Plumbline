@@ -618,6 +618,7 @@ def validate_manifest_artifacts(
     *,
     canvas_override: str | None = None,
     plan_override: str | None = None,
+    write_target: str | None = None,
 ) -> int:
     artifacts = manifest["artifacts"]
     canvas_rel = canvas_override or artifacts["canvas"]
@@ -676,6 +677,24 @@ def validate_manifest_artifacts(
     plan_status, planned = _planned_paths(plan)
     if plan_status != EXIT_PASS:
         return plan_status
+    if write_target is not None:
+        target = Path(write_target)
+        if not target.is_absolute():
+            target = repo / target
+        try:
+            target_rel = target.resolve().relative_to(repo).as_posix()
+        except (OSError, ValueError):
+            print(
+                f"ERROR: write target resolves outside repository: {write_target}",
+                file=sys.stderr,
+            )
+            return EXIT_VIOLATION
+        if target_rel not in planned:
+            print(
+                f"ERROR: write target is not declared in implementation plan: {target_rel}",
+                file=sys.stderr,
+            )
+            return EXIT_VIOLATION
     product = manifest["scope"]["product"]
     governance = manifest["scope"]["governance"]
     for path in planned:
@@ -806,6 +825,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan", help="Explicit plan path to validate against the manifest")
     parser.add_argument("--canvas", help="Explicit Canvas path to validate against the manifest")
     parser.add_argument(
+        "--write-target",
+        help="Concrete Write/Edit target, which must be declared exactly in the implementation plan",
+    )
+    parser.add_argument(
         "--strict-gitignored",
         action="store_true",
         help="Also flag gitignored+untracked paths (default: exempted as tool artifacts, visibly logged)",
@@ -816,13 +839,19 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     repo = Path(args.repo).resolve()
-    if not args.changed_files and not args.preflight and not args.plan and not args.canvas:
+    if (
+        not args.changed_files
+        and not args.preflight
+        and not args.plan
+        and not args.canvas
+        and not args.write_target
+    ):
         print(
             "ERROR: provide --changed-files and/or --preflight/--plan/--canvas",
             file=sys.stderr,
         )
         return EXIT_MISSING
-    if args.preflight or args.plan or args.canvas:
+    if args.preflight or args.plan or args.canvas or args.write_target:
         manifest_status, manifest = load_scope_manifest(repo, args.feature)
         if manifest_status == EXIT_MISSING:
             print(
@@ -839,6 +868,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest,
             canvas_override=args.canvas,
             plan_override=args.plan,
+            write_target=args.write_target,
         )
         if preflight_status != EXIT_PASS:
             return preflight_status

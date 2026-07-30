@@ -13,10 +13,12 @@ PAYLOAD="$(cat 2>/dev/null || true)"
 tool_name=""
 subagent_type=""
 command_text=""
+write_target=""
 if command -v jq >/dev/null 2>&1; then
   tool_name="$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // empty' 2>/dev/null || true)"
   subagent_type="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null || true)"
   command_text="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
+  write_target="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
 else
   tool_name="$(printf '%s' "$PAYLOAD" \
     | sed -nE 's/.*"tool_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
@@ -26,6 +28,9 @@ else
     | head -n1)"
   command_text="$(printf '%s' "$PAYLOAD" \
     | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
+    | head -n1)"
+  write_target="$(printf '%s' "$PAYLOAD" \
+    | sed -nE 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
     | head -n1)"
 fi
 
@@ -49,6 +54,8 @@ if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
   trusted_updaters=()
   for updater_candidate in \
     "$PROJECT/config/claude/bin/plumbline-scope-update" \
+    "${PLUMBLINE_BIN_DIR:+$PLUMBLINE_BIN_DIR/plumbline-scope-update}" \
+    "${CLAUDE_HOME:-$HOME/.claude}/bin/plumbline-scope-update" \
     "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/bin/plumbline-scope-update"
   do
     if [ -x "$updater_candidate" ]; then
@@ -57,6 +64,7 @@ if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
   done
   if python3 - "$command_text" "$PROJECT" "${trusted_updaters[@]}" <<'PY'
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
@@ -76,7 +84,12 @@ operators = set(";&|<>()")
 if not tokens:
     raise SystemExit(1)
 executable = Path(tokens[0])
-if not executable.is_absolute():
+if "/" not in tokens[0]:
+    resolved = shutil.which(tokens[0])
+    if resolved is None:
+        raise SystemExit(1)
+    executable = Path(resolved)
+elif not executable.is_absolute():
     executable = project / executable
 try:
     executable = executable.resolve(strict=True)
@@ -154,7 +167,17 @@ if [ ! -x "$checker" ]; then
   exit 0
 fi
 
-output="$("$checker" --repo "$PROJECT" --feature "$feature" --preflight 2>&1)"
+checker_args=(--repo "$PROJECT" --feature "$feature" --preflight)
+case "$tool_name" in
+  Write|Edit|MultiEdit|NotebookEdit)
+    if [ -z "$write_target" ]; then
+      printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: write-capable tool did not provide file_path"}'
+      exit 0
+    fi
+    checker_args+=(--write-target "$write_target")
+    ;;
+esac
+output="$("$checker" "${checker_args[@]}" 2>&1)"
 status=$?
 [ "$status" -eq 0 ] && exit 0
 

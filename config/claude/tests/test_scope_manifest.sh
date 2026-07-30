@@ -319,6 +319,23 @@ EOF
 assert_contains "untrusted same-named updater cannot bypass preflight" \
   "$UNTRUSTED_REPAIR_DENY" '"decision":"deny"'
 
+PATH_REPAIR_PASS="$(
+  PATH="$(dirname "$SCOPE_UPDATE"):$PATH" \
+    CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "trusted updater installed on PATH remains available as repair path" \
+  "" "$PATH_REPAIR_PASS"
+
+UNTRUSTED_PATH_REPAIR_DENY="$(
+  PATH="$WORK:$PATH" CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"plumbline-scope-update --confirmed"}}
+EOF
+)"
+assert_contains "untrusted same-named updater found on PATH cannot bypass preflight" \
+  "$UNTRUSTED_PATH_REPAIR_DENY" '"decision":"deny"'
+
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
@@ -395,6 +412,32 @@ HOOK_PASS="$(
 EOF
 )"
 assert_eq "pre-write hook passes an aligned plan without output" "" "$HOOK_PASS"
+
+UNPLANNED_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/unplanned.py"}}
+EOF
+)"
+assert_contains "explicit write target absent from plan is denied before dispatch" \
+  "$UNPLANNED_WRITE_DENY" '"decision":"deny"'
+assert_contains "unplanned write denial names the concrete target" \
+  "$UNPLANNED_WRITE_DENY" "src/demo/unplanned.py"
+
+ABSOLUTE_WRITE_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Write","tool_input":{"file_path":"$BASE/src/demo/app.py"}}
+EOF
+)"
+assert_eq "absolute in-repository target matching the plan is accepted" \
+  "" "$ABSOLUTE_WRITE_PASS"
+
+OUTSIDE_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Edit","tool_input":{"file_path":"$WORK/outside.py"}}
+EOF
+)"
+assert_contains "write target outside the repository is denied" \
+  "$OUTSIDE_WRITE_DENY" '"decision":"deny"'
 
 # PLUM-10 owns migration of the old JSON shape. Its presence must not
 # unexpectedly activate PLUM-12's stricter runtime contract.
