@@ -25,10 +25,11 @@ INSTALL_HOOK=1
 INSTALL_BIN=1
 WITH_FLOW=0
 DRY_RUN=0
+IGNORE_RUNTIME_STATE=0
 
 usage() {
   cat <<USAGE
-Usage: $0 [--copy] [--force] [--update] [--dry-run] [--with-flow-agents] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
+Usage: $0 [--copy] [--force] [--update] [--dry-run] [--with-flow-agents] [--ignore-runtime-state] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
 
 Installs the repo for Claude Code by:
   - installing the MCP-free agents into \$CLAUDE_HOME/agents (default; the ~35 claude-flow /
@@ -39,6 +40,13 @@ Installs the repo for Claude Code by:
   - registering the sentinel-gated learning-loop Stop hook,
   - registering the fail-closed PRIL enforcement Stop hook,
   - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its runtime libraries in $CLAUDE_HOME/lib/.
+
+--ignore-runtime-state additionally makes THIS repository ignore volatile agent
+runtime state (.claude-flow/, .swarm/, .claude/homunculus/, ...) by appending a
+marked block to its .gitignore. Purely additive: no existing rule is rewritten, no
+file is deleted, and an already-tracked runtime file is never untracked for you --
+the check prints the removal command instead (git rm -r --cached, which keeps the
+working copy). Without the flag the installer only reports what it would do.
 
 --update refreshes an existing \$CLAUDE_HOME install in place: a CHANGED existing
 target is overwritten (content-compared) and new files are added, in both symlink
@@ -61,6 +69,7 @@ for arg in "$@"; do
     --no-hook) INSTALL_HOOK=0 ;;
     --no-bin) INSTALL_BIN=0 ;;
     --with-flow-agents) WITH_FLOW=1 ;;
+    --ignore-runtime-state) IGNORE_RUNTIME_STATE=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -522,6 +531,26 @@ if [ "$INSTALL_HOOK" -eq 1 ]; then
   register_pretool_vision_hook
 fi
 [ "$INSTALL_BIN" -eq 1 ] && install_bin
+
+# PLUM-11: volatile agent runtime state must not contaminate a product repository
+# or block its scope gates. Reporting is unconditional; WRITING an ignore rule into
+# somebody else's repository is opt-in, and nothing is ever deleted or untracked.
+runtime_state_hygiene() {
+  local hyg="$REPO_DIR/config/claude/bin/plumbline-runtime-hygiene"
+  [ -x "$hyg" ] || return 0
+  git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "would check agent runtime-state hygiene for $REPO_DIR"
+    return 0
+  fi
+  if [ "$IGNORE_RUNTIME_STATE" -eq 1 ]; then
+    "$hyg" --repo "$REPO_DIR" --fix-ignore || true
+  else
+    "$hyg" --repo "$REPO_DIR" || \
+      echo "hint: re-run with --ignore-runtime-state to append the missing ignore rules (additive; deletes nothing)"
+  fi
+}
+runtime_state_hygiene
 
 echo "done. Restart Claude Code (or reload /hooks) so agents, commands, skills, hooks, and plumbline CLI are picked up."
 

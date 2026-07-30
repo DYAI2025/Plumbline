@@ -210,3 +210,86 @@ files. **Not** covered — and deliberately named rather than implied:
   The remedy is a declared block, not a weaker gate;
 - the wiring into Phase 1 is documentation-level (the orchestrator is a prompt);
   the executable proof is the CLI's exit code, not the agent's compliance.
+
+## PLUM-11 — generated agent runtime state contaminated the repo and its gates
+
+**Status: reproduced LIVE in this repository; fixed.**
+
+### Reproduction (measured 2026-07-30, in this working copy)
+
+`git status` reported `?? .claude-flow/` — 604K of `neural/stats.json`,
+`neural/patterns.json`, `policy/state.json` — **untracked and not ignored**
+(`git check-ignore` said NOT IGNORED). That is not harmless: the enforce hook builds
+its change surface from `git ls-files --others --exclude-standard`, and the
+2026-07-08 C4 exemption only covers paths that are gitignored **AND** untracked. An
+unignored dropping therefore enters the surface and blocks **every** scope check
+without a single line of feature work. The pilot hit the worse variant: 11 such
+files (~7.1 MB) actually tracked, changing on every session.
+
+The 2026-07-08 commit had ignored `.plumbline/`, `.claude/homunculus/` and
+`.devin/` — but not `.claude-flow/`, `.swarm/` or `.hive-mind/`. A per-incident
+ignore list is exactly the pattern that keeps regressing.
+
+### Root cause
+
+No binding policy (and no executable check) separating three different kinds of
+content: **volatile runtime state**, **curated insight** and **versionable
+evidence**. Ignore rules were added reactively, one incident at a time.
+
+### Implementation
+
+- `config/claude/lib/plumbline_hygiene.py` + `config/claude/bin/plumbline-runtime-hygiene`
+  classify three distinct violations — `tracked` (in the index), `unignored`
+  (present, neither tracked nor ignored → blocks scope gates) and
+  `curated-location` (volatile state under `docs/`/`metrics/`, which destroys the
+  curated-vs-ephemeral distinction) — and report each with its own fix.
+- `--fix-ignore` is **prophylactic and additive**: it appends a marked block for
+  every known pattern (rules must exist *before* the first session writes), never
+  rewrites a foreign rule, never deletes a file, and **never untracks anything** —
+  an already-tracked file keeps failing the check until the operator runs the printed
+  `git rm -r --cached` (which keeps the working copy). Untracking is a history
+  decision, so the tool refuses to make it silently.
+- `config/claude/install.sh` gains `--ignore-runtime-state` (opt-in write) and
+  otherwise *reports* the findings plus the hint. Writing into someone else's
+  repository is never implicit; `--dry-run` and `--help` write nothing (verified).
+- This repo's `.gitignore` now ignores `.claude-flow/`, `.swarm/`, `.hive-mind/` —
+  applied by running the new tool on this checkout, which also proved the additive
+  behaviour: the pre-existing rules and comments survived and
+  `.claude/homunculus/` was recognised as already-ignored rather than duplicated.
+
+### Regression test + counter-check
+
+`config/claude/tests/test_runtime_hygiene.sh` — 43 assertions, registered in
+`run_all.sh`; the new wrapper is added to the shellcheck list. Coverage includes the
+ACs that are easy to fake: repeated session activity (three runs writing and
+rewriting state) must leave `git status --porcelain` **empty** (AC-5); the scope
+guard must stay green with droppings present (AC-6); `--fix-ignore` must be
+idempotent and must not resolve a *tracked* finding (AC-3/AC-4); a repo with no
+`.gitignore` gets one created; and two assertions pin **this** repository so the
+live finding cannot silently return.
+
+Negative controls: a clean repo produces no findings; an unknown tool's directory
+(`.myagent/`) is **not** invented as a finding unless passed via `--pattern`;
+a non-git directory and a missing path are classified `missing` (exit 2), not
+"clean".
+
+A defect found by the suite itself, worth recording: `install.sh`'s `usage()` uses an
+**unquoted** heredoc, so the backticks in a first draft of the new help text would
+have *executed* `git rm -r --cached` when a user ran `--help`. Shellcheck's SC2006
+caught it as "style"; in an unquoted heredoc it is a destructive command-substitution
+bug. Fixed before commit, and `--help` is now verified to leave the index untouched.
+
+### Evidence ceiling (PLUM-11)
+
+`integration-real` for the tracked/ignored/curated classification and the additive
+fix: real git repositories, real index state, real `.gitignore` content, the real
+CLI. **Not** covered, and deliberately not claimed:
+
+- AC-1's stronger reading — "volatile state lives *outside* the product repository
+  by default" — is **not** achieved. Plumbline cannot relocate a third-party tool's
+  write path; what is enforced is the weaker, verifiable half ("reliably ignored").
+  Making `.claude-flow/` write elsewhere is a claude-flow configuration question.
+- the session simulation writes the droppings the way the tools do (same paths,
+  changing content); it does not run claude-flow or homunculus themselves.
+- the secret-scan half of AC-6 is covered only insofar as the state stays out of the
+  index; no scanner is executed here.
