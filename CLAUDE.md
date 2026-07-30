@@ -8,9 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 proving work is *actually* done, not that it merely *looks* done. It is three things in
 one repo, and editing one usually means touching another:
 
-1. **An agent collection** — ~87 subagent prompt files (`*.md` with YAML frontmatter)
+1. **An agent collection** — ~95 subagent prompt files (`*.md` with YAML frontmatter)
    organized into category directories (`core/`, `agileteam/`, `github/`, `consensus/`,
    `sparc/`, `swarm/`, `hive-mind/`, `concilium/`, …). These are the deliverable.
+   (Count is approximate on purpose — re-derive with the frontmatter scan in
+   `run_all.sh`, never hardcode it in a test or doc.)
 2. **A vendored workflow + tooling tree** under `config/claude/` — the `/agileteam`
    orchestrator, `/concilium` council, vendored skills, hooks, the runtime-integrity
    layer (PRIL), and the metrics harness. This is what makes the agents *portable* and
@@ -23,11 +25,33 @@ one repo, and editing one usually means touching another:
 
 Read `README.md` for the philosophy and `SETUP.md` for portability/web-bootstrap.
 
+## Where things live (the four-way coupling)
+
+Almost every tooling change touches four files at once. Learn the pattern once:
+
+| layer | path | note |
+|---|---|---|
+| logic | `config/claude/lib/*.py` | `plumbline_{reality,scope,context,start,update,run_ledger,redact}.py`, `gate_contracts.py`, `council_*.py`, `deepseek_review.py` |
+| CLI wrapper | `config/claude/bin/plumbline*` | thin bash → `exec python3 ../lib/<x>.py "$@"`; interpreter resolution is shared in `lib/plumbline_python.sh` |
+| enforcement | `config/claude/hooks/*.sh` | `plumbline-enforce.sh` (Stop), `pretool-plumbline-guard.sh`, `pretool-vision-gate.sh`, `session-start.sh`, `stop-learning-loop.sh` |
+| test | `config/claude/tests/test_*.sh` | **must be registered in `run_all.sh` by hand** (see below) |
+
+Governance artifacts the invariants keep referring to live under `docs/`:
+`docs/canvas/` (Product Canvas) · `docs/prd/` · `docs/vision/` · `docs/plans/` ·
+`docs/reality/<feature>.evidence.jsonl` (Reality Ledger) · `docs/trace/<feature>.trace.md`
+(traceability matrix) · `docs/templates/` · `docs/benchmarks/` + `docs/experiments/`.
+`docs/ci-fragility-classes.md` is the catalog of CI fragility classes and which ones have
+a deterministic offline guard. Release plumbing: `VERSION` (release-please-managed),
+`compatibility.json` (declares `frozenContracts` + `verifyCommand`), `.env.example`
+(the `COUNCIL_*` / `OPENROUTER_*` live-boundary gates).
+
 ## Common commands
 
 ```bash
-# Full CI check suite (frontmatter, metrics scripts, settings JSON, hooks,
-# governance + PRIL tests, shellcheck). This is exactly what .github/workflows/ci.yml runs.
+# Full check suite (frontmatter, metrics scripts, settings JSON, hooks, governance +
+# PRIL tests, portability guard, shellcheck). CI runs exactly this — on BOTH
+# ubuntu-latest AND macos-latest (matrix); macOS is the strict leg. .github/workflows/ci.yml
+# additionally runs a focused `governance-start-gates` job (start classifier + scope-shift).
 bash config/claude/tests/run_all.sh
 
 # Run a single test module (each is a standalone bash script):
@@ -35,6 +59,7 @@ bash config/claude/tests/test_stop_hook.sh
 bash config/claude/tests/test_true_line_governance.sh
 bash config/claude/tests/test_product_canvas_gate.sh
 bash config/claude/tests/test_runtime_integrity_layer.sh
+bash config/claude/tests/test_shell_portability.sh     # bash-3.2 / BSD portability guard
 bash config/claude/tests/test_web_bootstrap.sh
 
 # Rebuild the Agent Explorer after ANY agent frontmatter change.
@@ -46,20 +71,92 @@ bash config/claude/tests/test_web_bootstrap.sh
 # and idempotently register the learning-loop Stop hook in ~/.claude/settings.json.
 ./config/claude/install.sh           # or: --copy  (Windows / prefer copies over symlinks)
 
-# Benchmark harness (metrics/):
-python3 config/claude/metrics/emit_run.py --corpus-id <id> --mode <core|full> \
-  --metrics '{...}' --gate-outcomes '{...}' --human-overrides 0   # append a run to runs.jsonl
-python3 config/claude/metrics/process_health.py                   # SPC + drift attribution
+# Self-update / self-diagnosis layer (PUR). `plumbline` == lib/plumbline_update.py:
+config/claude/bin/plumbline version
+config/claude/bin/plumbline doctor            # toolchain + install-state diagnosis
+config/claude/bin/plumbline honest-status
+config/claude/bin/plumbline update --check    # query the release feed only
+config/claude/bin/plumbline update            # snapshot → apply → run verifyCommand
+config/claude/bin/plumbline rollback          # restore the last snapshot
+config/claude/bin/plumbline install -- --dry-run   # forwards flags to install.sh
 
 # PRIL runtime-integrity checks (bash wrappers over config/claude/lib/*.py):
 config/claude/bin/plumbline-reality-check   # evidence-class / wired-in-prod gate
-config/claude/bin/plumbline-scope-check
+config/claude/bin/plumbline-scope-check     # changed files ⊆ confirmed Allowed change scope
 config/claude/bin/plumbline-context-check
+config/claude/bin/plumbline-start-check     # AgileTeam start governance / scope-shift classifier
+config/claude/bin/plumbline-run-ledger      # per-run gate ledger
+config/claude/bin/plumbline-rule-ledger     # learned-rule ledger (metrics/rule_ledger.py)
 config/claude/bin/plumbline-redact          # strip secrets/private data from output
+
+# Benchmark + measurement harness (config/claude/metrics/ → metrics/):
+python3 config/claude/metrics/emit_run.py --corpus-id <id> --mode <core|full> \
+  --metrics '{...}' --gate-outcomes '{...}' --human-overrides 0   # append a run to runs.jsonl
+python3 config/claude/metrics/process_health.py                   # SPC + drift attribution
+python3 config/claude/metrics/challenge_token_oracle.py            # deterministic catch oracle
+python3 config/claude/metrics/council_review_scorer.py             # catch / cry-wolf scorer
+python3 config/claude/metrics/arm_a_review_runner.py               # single-model arm (Arm A)
+python3 config/claude/metrics/council_measurement_run.py           # A/B council measurement
+python3 config/claude/metrics/council_free_diversity_probe.py       # free-tier probe (EXP-009)
+
+# Council GUI (Slice 4) — the real composition root; fails LOUD on a missing precondition:
+config/claude/bin/plumbline-council-gui --self-check   # wiring proof, crosses no boundary
+config/claude/bin/plumbline-council-gui                # serve (live needs COUNCIL_INFERENCE_LIVE=1)
 ```
 
 Requirements: `git`, `bash`, `python3` (+ `PyYAML` for the explorer/validators), and
 `jq` (for hook registration). CI also installs `shellcheck`.
+
+### Run `run_all.sh` in a clean environment (3 verified local false-REDs)
+
+The suite is green on CI but the ambient dev environment can redden **24 of 36 stages**
+locally without a single code defect. Measured on this machine 2026-07-30 — strip these
+before believing a local RED (and never "fix" the tree to satisfy them):
+
+```bash
+CLEAN_PATH="$(printf '%s' "$PATH" | tr ':' '\n' \
+  | grep -v 'modern-python' | grep -v "^$HOME/.claude/bin$" | paste -sd: -)"
+env -u SSL_CERT_FILE PATH="$CLEAN_PATH" bash config/claude/tests/run_all.sh
+```
+
+1. **A `python3` shim on PATH** (the `modern-python` Claude Code plugin ships
+   `…/hooks/shims/python3`) rejects `python3 -` / `python3 -m py_compile` with
+   `ERROR: Use uv run python3 -` → 22 stages RED, including the frontmatter validator.
+2. **`SSL_CERT_FILE` set to an empty/invalid value** makes `uv` print
+   `warning: Ignoring invalid SSL_CERT_FILE…` into captured stdout → `test_update_layer.sh`
+   version assertions compare the warning instead of `0.23.1`.
+3. **`~/.claude/bin` on PATH** (i.e. Plumbline is actually *installed* on the machine)
+   breaks 4 PLUM-7 assertions in `test_pril_enforce_hook.sh`: `run_hook_with_env` overrides
+   `HOME`/`PLUMBLINE_BIN_DIR` but **inherits `PATH`**, so the hook resolves the real
+   installed CLIs (`source=PATH`) instead of exercising the `HOME/.claude/bin` fallback,
+   and the "partially installed runtime" case never reaches `PRIL_CLI_UNAVAILABLE`.
+   This is a **test-isolation defect, not a runner limitation** — the assertion can only
+   pass where Plumbline is *not* installed, so it is green on CI and red for every real
+   user. Fix it by pinning `PATH` inside `run_hook_with_env`; do not paper over it.
+
+**Python interpreter contract for the PRIL wrappers** (`lib/plumbline_python.sh`, PLUM-8):
+resolution is `PLUMBLINE_PYTHON` → `uv run --no-project --no-config python3` → `python3`,
+and exit codes **120** (`TOOL_UNAVAILABLE`) / **121** (`TOOL_BROKEN`) are *reserved* so a
+checker that could not run is never confused with a checker that ran and rejected policy.
+Set `PLUMBLINE_RUNTIME_DIAGNOSTICS=1` to see the `PRIL_RUNTIME code=… error_class=…` line.
+Never add a policy exit code in that range.
+
+## Adding a test or a script (CI wiring is manual — false green lives here)
+
+- **`run_all.sh` has a hand-maintained module list, not a glob.** A new
+  `config/claude/tests/test_<x>.sh` that is not added as its own `stage` + `bash … ||
+  mark_fail` line **never runs in CI** — the suite stays green while the contract is
+  unverified. Register it in the same commit that adds it, and confirm the new stage name
+  appears in the run output.
+- **The `shellcheck` stage is also an explicit path list** (`bin/plumbline-context-check`,
+  `-reality-check`, `-redact`, `-scope-check`, `hooks/*.sh`, `install.sh`,
+  `lib/plumbline_python.sh`, `tests/*.sh`). A new `bin/` wrapper or a root-level script is
+  **not** linted unless you add it — `build-explorer.sh` and 5 of the 9 `bin/` wrappers are
+  currently outside it.
+- Portability is guarded offline by `test_shell_portability.sh` (odd-quote-parity
+  `$()`-wrapped heredocs · confusable non-ASCII quotes · advisory jq `// empty`). It does
+  **not** catch GNU-only flag usage (`sed -i 's/…/'`, GNU `tar` flags) — those still only
+  redden on the macOS CI leg, or silently on a contributor's Mac.
 
 ## Agent frontmatter contract
 
@@ -150,12 +247,37 @@ generalizes them to every default the agent would otherwise take unseen.)
 
 ## `/agileteam` command
 
-`/agileteam <feature>` orchestrates an autonomous TDD team: Product Canvas gate →
-requirements → spec-sanity audit → planning → coder/reviewer TDD loop → security →
-validation → product-judgment → human acceptance → retrospective. Canonical source:
-**`config/claude/commands/agileteam.md`** (other commands in that dir:
-`agileteam-bench`, `concilium`, `honest-status`, `bench-oracle`, `reflect`,
-`reflect-skills`, `plumbline-update`, `merge-when-true`).
+`/agileteam <feature>` orchestrates an autonomous TDD team. Canonical source (767 lines,
+read it before orchestrating): **`config/claude/commands/agileteam.md`**. Other commands in
+that dir: `agileteam-bench`, `concilium`, `honest-status`, `bench-oracle`, `reflect`,
+`reflect-skills`, `plumbline-update`, `merge-when-true`, `openrouter-live-smoke`,
+`persist-learning`.
+
+Phase order (each `###`-numbered in `agileteam.md`; the fractional phases are hard,
+fail-closed gates that are easy to skip by accident):
+
+| phase | gate |
+|---|---|
+| 0.15 | **Product Canvas** (human-confirmed; emits the machine-parseable `Allowed change scope`) |
+| 0.16 | **Council challenge gate** (`/concilium` bodies challenge the Canvas before the PRD is finalized) |
+| 0 | requirements & validation design (PRD, REQ-IDs, traceability matrix) |
+| 0.5 | **PRIL Context Integrity** (`plumbline-context-check`, fail-closed) |
+| 0.6 | **PRIL Scope Guard** setup (`plumbline-scope-check`, fail-closed) |
+| 0.7 | **spec-sanity** (ultrathink, ONCE) → then the **USER GATE** + Vision GO gate |
+| 1 | TDD & QA setup (True-Line Gate Check runs from here on) |
+| 2 | coder ↔ code-reviewer loop, per task, ≤ `MAX_DEVREVIEW_LOOPS` |
+| 3 | **Gate A** verification · **B** security · **C** validation · PRIL reality-evidence · **D** judgment (`product-owner`) · **E** True-Line (`plumbline-watcher`) → **USER ACCEPTANCE** |
+| 4 | retrospective & persistent evolution (human-gated writes) |
+
+**Operating modes:** CORE is the always-on spine (Canvas, requirements, spec-sanity,
+Phase 1–2, Gates A/C/E, human acceptance). Gate B security, Gate D ultrathink, mutation
+testing, hermetic runner and kanban-md are FULL-mode / skip-if-unavailable — a skip must be
+*named*, never silent (see the awareness stance below).
+
+**Team roster is a contract:** the roles `/agileteam` may staff are declared in
+`config/claude/agileteam-roster.yml`, and `test_gate_contracts.sh` asserts every role
+resolves to an in-repo agent `name:` (quote-aware). Adding a role means editing the roster
+**and** the "Team composition" section of `agileteam.md` — they must not drift.
 
 **Bootstrap:** the command must exist at `~/.claude/commands/agileteam.md` to be
 invokable. If it is missing, offer to run `./config/claude/install.sh`. Keep the global
@@ -239,7 +361,7 @@ Each rule is from a real incident in the OD-3 build. Binding for `/agileteam` fe
 
 - **Branch each feature from `main`, not from another feature's tip.** Stacking branch B on branch A's HEAD made the fail-closed PRIL enforce hook (which scopes the whole `merge-base(HEAD,main)…HEAD` surface) read A's files as out-of-B-scope and **block the Stop gate**. So: start every `/agileteam` feature branch from `main`; if a sibling feature's confirmed intake is needed, restore only those specific files onto the clean branch. Keep one feature per branch surface.
 - **Create the PRIL reality ledger during Phase 3, at the honest evidence class.** Gate E (`plumbline-watcher`) cannot return `pass` while `docs/reality/<feature>.evidence.jsonl` is absent — the executable reality floor has nothing to read. So author it in Phase 3 (Gate C) with one record per load-bearing REQ at its TRUE class (`integration-fake` for offline/fake-transport logic; `real-boundary-smoke` only when a real boundary was actually crossed), and run `plumbline-reality-check --min-evidence <the-feature's-honest-floor>` — never raise the ledger class to clear the default `integration` floor (that launders the ceiling). Avoid the `FORBIDDEN_TOKENS` (`fake-only`/`mock-only`/`placeholder`/`unverified`) in the ledger text.
-- **Emit the canvas `Allowed change scope` machine-parseable at intake.** The PRIL scope guard (`plumbline_scope.py`) parses only `-`/`*`/`+` lines and strips backticks, so prose bullets with inline descriptions read as garbage and block the Stop gate. The `requirements-analyst` must write the scope as a clean one-path-per-line list (backtick-wrapped paths/globs) at Phase 0.15/0.6 and validate it with `plumbline-scope-check` THEN — not leave prose for the orchestrator to retrofit mid-build. Include the feature's own evidence/trace/plan/ledger paths and `CLAUDE.md` (the learning-loop target) in that list. **Scope the TEST surface too, not just production + docs (plumbline-update-reliability 2026-06-21 — the fail-closed Stop gate blocked TWICE mid-build):** list every test file the build will add (`config/claude/tests/test_<feature>.sh`) AND the shared test helper `config/claude/tests/lib.sh` (a new macOS-skip / assert helper lands there), or use a `config/claude/tests/` glob — a new test or helper not in the scope reddens the enforce Stop hook mid-build, costing a canvas edit + re-verify each time.
+- **Emit the canvas `Allowed change scope` machine-parseable at intake.** The PRIL scope guard (`plumbline_scope.py`) parses only `-`/`*`/`+` lines and strips backticks, so prose bullets with inline descriptions read as garbage and block the Stop gate. The `requirements-analyst` must write the scope as a clean one-path-per-line list (backtick-wrapped paths/globs) at Phase 0.15/0.6 and validate it with `plumbline-scope-check` THEN — not leave prose for the orchestrator to retrofit mid-build. Include the feature's own evidence/trace/plan/ledger paths and `CLAUDE.md` (the learning-loop target) in that list. **Scope the TEST surface too, not just production + docs (plumbline-update-reliability 2026-06-21 — the fail-closed Stop gate blocked TWICE mid-build):** list every test file the build will add (`config/claude/tests/test_<feature>.sh`) AND the shared test helper `config/claude/tests/lib.sh` (a new macOS-skip / assert helper lands there), or use a `config/claude/tests/` glob — a new test or helper not in the scope reddens the enforce Stop hook mid-build, costing a canvas edit + re-verify each time. **Since 2026-07-08 (retro C4)** `plumbline_scope.py` exempts **gitignored AND untracked** tool droppings (visibly logged as a NOTE; `--strict-gitignored` opts out; a **tracked** file is never exempted; git errors still fail closed) — so you no longer need to scope `.plumbline/` snapshots and similar runtime artifacts, but every file you actually commit still must be in scope.
 
 ## Real-boundary evidence hygiene (learned — openrouter-inference sprint, 2026-06-19)
 
@@ -261,7 +383,7 @@ Each rule is from a real incident in the Slice-2 build, caught by the defense-in
 
 Each rule is from a real incident in the Slice-3a build, caught by the defense-in-depth gates (one only by CI).
 
-- **CI (macOS / bash 3.2) is the source of truth — and a quoted heredoc inside `$(...)` with an apostrophe/single-quote in its body breaks there while parsing fine locally (bash 5).** `lib.sh` grew an `assert_json_eq` helper whose `<<'PY' … PY` heredoc lives inside `got="$(… <<'PY' … PY)"`; bash < 4.4 (macOS `/bin/bash` is 3.2) does **not** skip a quoted-heredoc body when scanning for the closing `)`, so an apostrophe in the body comment (`test-author's`) read as an unclosed quote → `lib.sh` failed to parse → EVERY test that sources it died (`finish: command not found`). `bash -n` + `run_all.sh` were green locally; only macOS CI caught it. **CORRECTION (Slice-3b, a 2nd+3rd instance):** it is NOT just apostrophes — a `"` (double-quote) inside a `$(...)`-wrapped heredoc body breaks bash 3.2 the SAME way (`test_council_measurement_run.sh` died with `unexpected EOF looking for matching '"'` from double-quoted Python inside `VAR="$(python3 - <<'PY' … PY)"`). The only safe rule is: **do NOT wrap a heredoc inside `$(...)` at all** — redirect it to a temp file and read the file (`python3 - args >"$TMP" 2>&1 <<'PY' … PY; VAR="$(cat "$TMP")"`). "Use double-quotes instead of single-quotes" does NOT fix it. (`grep -nE '=\s*"\$\(.*<<'` over your test should return nothing.) And never trust local-green/`mergeable` — confirm the `ci` workflow `conclusion=success` on EVERY OS (macOS bash 3.2 is the strict one) before merge.
+- **CI (macOS / bash 3.2) is the source of truth — and a quoted heredoc inside `$(...)` with an apostrophe/single-quote in its body breaks there while parsing fine locally (bash 5).** `lib.sh` grew an `assert_json_eq` helper whose `<<'PY' … PY` heredoc lives inside `got="$(… <<'PY' … PY)"`; bash < 4.4 (macOS `/bin/bash` is 3.2) does **not** skip a quoted-heredoc body when scanning for the closing `)`, so an apostrophe in the body comment (`test-author's`) read as an unclosed quote → `lib.sh` failed to parse → EVERY test that sources it died (`finish: command not found`). `bash -n` + `run_all.sh` were green locally; only macOS CI caught it. **CORRECTION (Slice-3b, a 2nd+3rd instance):** it is NOT just apostrophes — a `"` (double-quote) inside a `$(...)`-wrapped heredoc body breaks bash 3.2 the SAME way (`test_council_measurement_run.sh` died with `unexpected EOF looking for matching '"'` from double-quoted Python inside `VAR="$(python3 - <<'PY' … PY)"`). The only safe rule is: **do NOT wrap a heredoc inside `$(...)` at all** — redirect it to a temp file and read the file (`python3 - args >"$TMP" 2>&1 <<'PY' … PY; VAR="$(cat "$TMP")"`). "Use double-quotes instead of single-quotes" does NOT fix it. (`grep -nE '=\s*"\$\(.*<<'` over your test should return nothing.) And never trust local-green/`mergeable` — confirm the `ci` workflow `conclusion=success` on EVERY OS (macOS bash 3.2 is the strict one) before merge. **NOW GUARDED OFFLINE (do not rediscover this via a red macOS run):** `config/claude/tests/test_shell_portability.sh` flags this class deterministically, wired into `run_all.sh`; the class catalog (guarded vs. surveyed-but-unguarded) is `docs/ci-fragility-classes.md`. Note the guard is narrower than the prose rule above — it flags a `$()`-wrapped heredoc whose body has **odd** `'`/`"` parity, and the tree deliberately keeps several safe even-parity ones. Treat the guard as the arbiter for existing code and the stricter prose rule as the default for new code.
 - **A measurement corpus needs an oracle↔diff *fidelity* falsifier — and you verify it by MEASURING, not reading.** The new review-catch corpus's oracle line numbers did not point at the seeded-defect lines (off-by-1..3 from inconsistent hunk counting), so a *correct* reviewer scored **0 catches + a cry-wolf per correct flag** — silently inverting the eventual measurement. Schema/variance tests were green (they used synthetic in-test oracles); the bug was caught only when the code-reviewer scored a known-correct reviewer against the real corpus. So: for any scored corpus, add a falsifying test that the oracle's defect lines fall on the real defect lines of the diff (and carry the expected token), and treat that fidelity test — not a hand-guessed number — as the arbiter of the correct line map.
 - **Spec-sanity for a measurement/eval slice must verify the corpus/instrument contract against the REAL files before the build.** The Slice-3 canvas claimed `pipe-providedfake-v1` was the catch+cry-wolf+recall corpus — that property actually belongs to `pipe-core-v1`; the claim was read off the wrong file, and the named corpus was a single saturated task with no controls. It propagated through canvas→PRD until the spec-auditor opened the real corpus dirs. So: for measurement slices, the spec-sanity gate must open the actual corpus/harness/oracle files and confirm the named instrument has the claimed structure (controls, variance, scorer subject) — a corpus premise read off the wrong file is the same konfabulation class as a wrong API.
 - **When re-confirming after a material re-scope, propagate the status to header + body + DoR checkboxes together — a partial flip is a contradiction the True-Line watcher pauses on.** After the user re-confirmed the re-scoped 3a intake, only the header `Status:` lines were flipped to `user-confirmed`; the analyst-written body text + unchecked DoR boxes still said "re-confirmation pending" → Gate E paused on the self-contradiction (the BLOCKER-4 shape, relocated). The resolution must record the REAL confirmation event and reconcile every place (header, body, checkboxes, traceability) to one consistent status — never flip a status that did not happen.
