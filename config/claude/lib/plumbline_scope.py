@@ -298,7 +298,11 @@ def _manifest_error(scope_json: Path, message: str) -> tuple[int, None]:
 def _valid_manifest_path(value: object) -> bool:
     if not isinstance(value, str) or not value or value.startswith("/"):
         return False
-    return ".." not in Path(value).parts and _clean_pattern(value) == value
+    return (
+        value == value.strip()
+        and not any(char in value for char in ("\n", "\r", "\x00", "`"))
+        and ".." not in Path(value).parts
+    )
 
 
 def _validate_scope_mapping(
@@ -738,6 +742,13 @@ def validate_manifest_artifacts(
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
+        reserved = {manifest_rel, str(manifest["artifacts"]["plan"])}
+        if delete_target in reserved:
+            print(
+                f"ERROR: deletion of canonical scope control artifact is forbidden: {delete_target}",
+                file=sys.stderr,
+            )
+            return EXIT_VIOLATION
     if write_target is not None:
         target = Path(write_target)
         if not target.is_absolute():
@@ -750,10 +761,10 @@ def validate_manifest_artifacts(
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
-        manifest_rel = f"docs/scope/{feature}.scope.json"
-        if target_rel == manifest_rel:
+        reserved = {manifest_rel, str(manifest["artifacts"]["plan"])}
+        if target_rel in reserved:
             print(
-                "ERROR: direct writes to the canonical scope manifest are reserved for plumbline-scope-update",
+                "ERROR: direct writes to canonical scope control artifacts are reserved for plumbline-scope-update",
                 file=sys.stderr,
             )
             return EXIT_VIOLATION

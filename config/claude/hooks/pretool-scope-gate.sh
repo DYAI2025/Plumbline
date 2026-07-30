@@ -117,6 +117,15 @@ if (
     or any(token and set(token) <= operators for token in tokens[1:])
 ):
     raise SystemExit(1)
+allowed_options = {
+    "--repo", "--feature", "--product-path", "--governance-path", "--canvas",
+    "--plan", "--planned-create", "--planned-modify", "--planned-delete",
+    "--planned-test", "--replace-plan-declarations", "--origin",
+    "--decision-maker", "--decided-at", "--rationale", "--confirmed",
+}
+for token in tokens[1:]:
+    if token.startswith("--") and token.split("=", 1)[0] not in allowed_options:
+        raise SystemExit(1)
 def option(name: str) -> str | None:
     values = []
     for index, token in enumerate(tokens[1:], start=1):

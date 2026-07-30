@@ -22,7 +22,8 @@ from plumbline_scope import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Atomically update a confirmed, provenance-bound scope decision."
+        allow_abbrev=False,
+        description="Atomically update a confirmed, provenance-bound scope decision.",
     )
     parser.add_argument("--repo", required=True)
     parser.add_argument("--feature", required=True)

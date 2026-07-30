@@ -249,6 +249,22 @@ assert_output_contains "fnmatch class with leading closing bracket overlaps ques
   "src/?.py" \
   "$SCOPE_CHECK" --repo "$LEADING_BRACKET_CLASS" --feature demo --preflight
 
+ROOT_GLOB="$WORK/root-glob"
+cp -R "$BASE" "$ROOT_GLOB"
+printf '%s\n' "- Create: \`root.py\`" >"$ROOT_GLOB/docs/plans/2026-07-29-demo.md"
+python3 - "$ROOT_GLOB/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["*.py"]
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_exit "clean root-level anchored glob remains valid manifest scope" 0 \
+  "$SCOPE_CHECK" --repo "$ROOT_GLOB" --feature demo --preflight
+
 # Every revision must retain complete decision provenance.
 NO_PROVENANCE="$WORK/no-provenance"
 cp -R "$BASE" "$NO_PROVENANCE"
@@ -443,6 +459,14 @@ EOF
 assert_contains "shell expansion syntax cannot alter validated updater arguments" \
   "$EXPANDED_REPAIR_DENY" '"decision":"deny"'
 
+ABBREVIATED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --fea inactive --confirmed"}}
+EOF
+)"
+assert_contains "abbreviated updater options cannot override active feature" \
+  "$ABBREVIATED_REPAIR_DENY" '"decision":"deny"'
+
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
@@ -545,6 +569,28 @@ EOF
 )"
 assert_contains "direct manifest writes are reserved for confirmed updater" \
   "$MANIFEST_WRITE_DENY" '"decision":"deny"'
+
+PLAN_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/plans/2026-07-29-demo.md"}}
+EOF
+)"
+assert_contains "direct active-plan writes are reserved for confirmed updater" \
+  "$PLAN_WRITE_DENY" '"decision":"deny"'
+
+CONTROL_DELETE="$WORK/control-delete"
+cp -R "$BASE" "$CONTROL_DELETE"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/scope/demo.scope.json\`" \
+  >"$CONTROL_DELETE/docs/plans/2026-07-29-demo.md"
+CONTROL_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$CONTROL_DELETE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "canonical manifest cannot be deleted through Delete declaration" \
+  "$CONTROL_DELETE_DENY" '"decision":"deny"'
 
 NOTEBOOK_WRITE_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
