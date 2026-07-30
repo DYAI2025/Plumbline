@@ -119,7 +119,7 @@ assert_exit "manifest preflight passes aligned Canvas and plan" 0 \
 # the separate preflight then catches that copy as drift.
 SOURCE_OF_TRUTH="$WORK/source-of-truth"
 cp -R "$BASE" "$SOURCE_OF_TRUTH"
-printf '%s\n' '- `src/other/**`' >>"$SOURCE_OF_TRUTH/docs/canvas/demo.canvas.md"
+printf '%s\n' "- \`src/other/**\`" >>"$SOURCE_OF_TRUTH/docs/canvas/demo.canvas.md"
 printf 'src/demo/app.py\n' >"$SOURCE_OF_TRUTH/changed-files.txt"
 assert_exit "changed-file guard reads canonical manifest before Canvas Markdown" 0 \
   "$SCOPE_CHECK" --repo "$SOURCE_OF_TRUTH" --feature demo \
@@ -130,7 +130,7 @@ assert_output_contains "preflight independently detects copied Canvas drift" "du
 # Missing: a plan path absent from the canonical manifest blocks before coding.
 MISSING="$WORK/missing"
 cp -R "$BASE" "$MISSING"
-printf '%s\n' '- Create: `src/demo/app.py`' '- Modify: `CLAUDE.md`' \
+printf '%s\n' "- Create: \`src/demo/app.py\`" "- Modify: \`CLAUDE.md\`" \
   >"$MISSING/docs/plans/2026-07-29-demo.md"
 assert_output_contains "missing allowed path blocks preflight" "CLAUDE.md" \
   "$SCOPE_CHECK" --repo "$MISSING" --feature demo --preflight
@@ -139,7 +139,7 @@ assert_output_contains "missing allowed path blocks preflight" "CLAUDE.md" \
 # second truth source and therefore deliberate drift, even if the path is valid.
 EXTRA="$WORK/extra"
 cp -R "$BASE" "$EXTRA"
-printf '%s\n' '- `src/other/**`' >>"$EXTRA/docs/canvas/demo.canvas.md"
+printf '%s\n' "- \`src/other/**\`" >>"$EXTRA/docs/canvas/demo.canvas.md"
 assert_output_contains "extra Canvas scope path is rejected as drift" "duplicated scope path" \
   "$SCOPE_CHECK" --repo "$EXTRA" --feature demo --preflight
 
@@ -173,7 +173,7 @@ assert_output_contains "missing decision provenance fails closed" "rationale" \
 # replacement and records a new, digest-bound provenance revision.
 UPDATE="$WORK/update"
 cp -R "$BASE" "$UPDATE"
-printf '%s\n' '- Create: `src/demo/app.py`' '- Modify: `CLAUDE.md`' \
+printf '%s\n' "- Create: \`src/demo/app.py\`" "- Modify: \`CLAUDE.md\`" \
   >"$UPDATE/docs/plans/2026-07-29-demo.md"
 assert_exit "confirmed scope update succeeds atomically" 0 \
   "$SCOPE_UPDATE" --repo "$UPDATE" --feature demo \
