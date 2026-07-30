@@ -46,12 +46,23 @@ esac
 # write. Accept only a single direct updater command: shell composition,
 # redirection, substitution, and chained commands keep the gate active.
 if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
-  if python3 - "$command_text" <<'PY'
+  trusted_updaters=()
+  for updater_candidate in \
+    "$PROJECT/config/claude/bin/plumbline-scope-update" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/bin/plumbline-scope-update"
+  do
+    if [ -x "$updater_candidate" ]; then
+      trusted_updaters+=("$updater_candidate")
+    fi
+  done
+  if python3 - "$command_text" "$PROJECT" "${trusted_updaters[@]}" <<'PY'
 import shlex
 import sys
 from pathlib import Path
 
 command = sys.argv[1]
+project = Path(sys.argv[2]).resolve()
+trusted = {Path(path).resolve() for path in sys.argv[3:]}
 if not command or "\n" in command or "\r" in command or "`" in command or "$(" in command:
     raise SystemExit(1)
 lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
@@ -62,9 +73,18 @@ try:
 except ValueError:
     raise SystemExit(1)
 operators = set(";&|<>()")
+if not tokens:
+    raise SystemExit(1)
+executable = Path(tokens[0])
+if not executable.is_absolute():
+    executable = project / executable
+try:
+    executable = executable.resolve(strict=True)
+except OSError:
+    raise SystemExit(1)
 if (
-    not tokens
-    or Path(tokens[0]).name != "plumbline-scope-update"
+    executable not in trusted
+    or "--confirmed" not in tokens[1:]
     or any(token and set(token) <= operators for token in tokens[1:])
 ):
     raise SystemExit(1)

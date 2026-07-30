@@ -232,6 +232,20 @@ PY
 assert_output_contains "non-ASCII glob intersection is rejected" "src/?.py" \
   "$SCOPE_CHECK" --repo "$UNICODE_OVERLAP" --feature demo --preflight
 
+LEADING_BRACKET_CLASS="$WORK/leading-bracket-class"
+cp -R "$BASE" "$LEADING_BRACKET_CLASS"
+python3 - "$LEADING_BRACKET_CLASS/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/[!]].py"]
+data["scope"]["governance"] = ["src/?.py"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "fnmatch class with leading closing bracket overlaps question glob" \
+  "src/?.py" \
+  "$SCOPE_CHECK" --repo "$LEADING_BRACKET_CLASS" --feature demo --preflight
+
 # Every revision must retain complete decision provenance.
 NO_PROVENANCE="$WORK/no-provenance"
 cp -R "$BASE" "$NO_PROVENANCE"
@@ -287,12 +301,23 @@ EOF
 assert_contains "Bash write path runs the pre-write scope gate" "$BASH_DENY" '"decision":"deny"'
 
 SCOPE_REPAIR_PASS="$(
-  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
-{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --confirmed"}}
 EOF
 )"
 assert_eq "direct atomic scope updater remains available as repair path" \
   "" "$SCOPE_REPAIR_PASS"
+
+UNTRUSTED_UPDATER="$WORK/plumbline-scope-update"
+printf '%s\n' '#!/usr/bin/env bash' 'printf bypass' >"$UNTRUSTED_UPDATER"
+chmod +x "$UNTRUSTED_UPDATER"
+UNTRUSTED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$UNTRUSTED_UPDATER --confirmed"}}
+EOF
+)"
+assert_contains "untrusted same-named updater cannot bypass preflight" \
+  "$UNTRUSTED_REPAIR_DENY" '"decision":"deny"'
 
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
@@ -357,8 +382,8 @@ assert_contains "missing-manifest denial is actionable" \
   "$MISSING_MANIFEST_DENY" "missing canonical scope manifest"
 
 MISSING_MANIFEST_REPAIR="$(
-  CLAUDE_PROJECT_DIR="$MISSING_MANIFEST" "$PRETOOL_SCOPE" <<'EOF'
-{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+  CLAUDE_PROJECT_DIR="$MISSING_MANIFEST" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --confirmed"}}
 EOF
 )"
 assert_eq "scope updater can create a newly referenced missing manifest" \

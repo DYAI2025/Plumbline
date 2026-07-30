@@ -193,7 +193,12 @@ def _glob_tokens(pattern: str) -> list[str]:
         elif char == "?":
             tokens.append("?")
         elif char == "[":
-            closing = pattern.find("]", index + 1)
+            closing_start = index + 1
+            if closing_start < len(pattern) and pattern[closing_start] == "!":
+                closing_start += 1
+            if closing_start < len(pattern) and pattern[closing_start] == "]":
+                closing_start += 1
+            closing = pattern.find("]", closing_start)
             if closing >= 0:
                 tokens.append(pattern[index : closing + 1])
                 index = closing
