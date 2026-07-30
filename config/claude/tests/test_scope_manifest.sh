@@ -192,6 +192,33 @@ PY
 assert_output_contains "criss-cross glob intersection is rejected" "src/bar/*" \
   "$SCOPE_CHECK" --repo "$CRISS_CROSS" --feature demo --preflight
 
+# Overlap validation must include _matches' directory-prefix shortcuts.
+DIRECTORY_PREFIX="$WORK/directory-prefix"
+cp -R "$BASE" "$DIRECTORY_PREFIX"
+python3 - "$DIRECTORY_PREFIX/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/demo/app.py"]
+data["scope"]["governance"].append("src/demo/")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "directory-prefix runtime overlap is rejected" "src/demo/" \
+  "$SCOPE_CHECK" --repo "$DIRECTORY_PREFIX" --feature demo --preflight
+
+DIRECTORY_ROOT="$WORK/directory-root"
+cp -R "$BASE" "$DIRECTORY_ROOT"
+python3 - "$DIRECTORY_ROOT/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/demo"]
+data["scope"]["governance"].append("src/demo/**")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "directory-root runtime overlap is rejected" "src/demo/**" \
+  "$SCOPE_CHECK" --repo "$DIRECTORY_ROOT" --feature demo --preflight
+
 # Every revision must retain complete decision provenance.
 NO_PROVENANCE="$WORK/no-provenance"
 cp -R "$BASE" "$NO_PROVENANCE"
@@ -264,6 +291,20 @@ EOF
 )"
 assert_contains "multiline schema_version still activates the pre-write gate" \
   "$MULTILINE_DENY" '"decision":"deny"'
+
+MISSING_MANIFEST="$WORK/missing-manifest"
+cp -R "$BASE" "$MISSING_MANIFEST"
+mv "$MISSING_MANIFEST/docs/scope/demo.scope.json" \
+  "$MISSING_MANIFEST/docs/scope/demo.scope.json.removed"
+MISSING_MANIFEST_DENY="$(
+  CLAUDE_PROJECT_DIR="$MISSING_MANIFEST" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "referenced missing manifest fails closed before writes" \
+  "$MISSING_MANIFEST_DENY" '"decision":"deny"'
+assert_contains "missing-manifest denial is actionable" \
+  "$MISSING_MANIFEST_DENY" "missing canonical scope manifest"
 
 HOOK_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'

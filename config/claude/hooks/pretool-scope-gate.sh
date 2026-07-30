@@ -41,7 +41,14 @@ marker="$PROJECT/docs/context/.active-feature"
 feature="$(tr -d '[:space:]' <"$marker" 2>/dev/null || true)"
 [ -n "$feature" ] || exit 0
 manifest="$PROJECT/docs/scope/$feature.scope.json"
-[ -f "$manifest" ] || exit 0
+if [ ! -f "$manifest" ]; then
+  canvas="$PROJECT/docs/canvas/$feature.canvas.md"
+  reference="Scope manifest: \`docs/scope/$feature.scope.json\`"
+  if [ -f "$canvas" ] && grep -Fq "$reference" "$canvas" 2>/dev/null; then
+    printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: Canvas references a missing canonical scope manifest"}'
+  fi
+  exit 0
+fi
 # A legacy `allowed_change_scope` JSON file is not a PLUM-12 versioned manifest.
 # The presence of the canonical key activates the Python validator, which parses
 # and verifies its value. Do not use a line-oriented value regex: valid JSON may

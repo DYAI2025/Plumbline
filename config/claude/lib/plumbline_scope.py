@@ -213,8 +213,8 @@ def _token_characters(token: str, alphabet: set[str]) -> set[str]:
     return {token}
 
 
-def _patterns_overlap(left: str, right: str) -> bool:
-    """Decide whether two supported shell globs share a concrete path.
+def _fnmatch_patterns_overlap(left: str, right: str) -> bool:
+    """Decide whether two shell globs share a concrete path.
 
     ``*`` is modeled as the same zero-or-more-character NFA used by
     :mod:`fnmatch`. Product construction searches for an accepting state, so
@@ -255,6 +255,28 @@ def _patterns_overlap(left: str, right: str) -> bool:
             )
             pending.append((next_left, next_right))
     return False
+
+
+def _runtime_pattern_languages(pattern: str) -> list[str]:
+    """Expand the prefix shortcuts implemented by :func:`_matches`."""
+
+    stripped = pattern.strip()
+    if stripped.endswith("/**"):
+        base = stripped[:-3]
+        return [base, f"{base}/*"]
+    if stripped.endswith("/"):
+        return [f"{stripped}*"]
+    return [stripped]
+
+
+def _patterns_overlap(left: str, right: str) -> bool:
+    """Decide overlap using the exact runtime matching language."""
+
+    return any(
+        _fnmatch_patterns_overlap(left_language, right_language)
+        for left_language in _runtime_pattern_languages(left)
+        for right_language in _runtime_pattern_languages(right)
+    )
 
 
 def _manifest_error(scope_json: Path, message: str) -> tuple[int, None]:
