@@ -18,7 +18,9 @@ if command -v jq >/dev/null 2>&1; then
   tool_name="$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // empty' 2>/dev/null || true)"
   subagent_type="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null || true)"
   command_text="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
-  write_target="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
+  write_target="$(printf '%s' "$PAYLOAD" \
+    | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' \
+      2>/dev/null || true)"
 else
   tool_name="$(printf '%s' "$PAYLOAD" \
     | sed -nE 's/.*"tool_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
@@ -32,11 +34,16 @@ else
   write_target="$(printf '%s' "$PAYLOAD" \
     | sed -nE 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
     | head -n1)"
+  if [ -z "$write_target" ]; then
+    write_target="$(printf '%s' "$PAYLOAD" \
+      | sed -nE 's/.*"notebook_path"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
+      | head -n1)"
+  fi
 fi
 
 case "$tool_name" in
   Bash|Write|Edit|MultiEdit|NotebookEdit) ;;
-  Task)
+  Task|Agent)
     role="$(printf '%s' "$subagent_type" | tr '[:upper:]' '[:lower:]')"
     case "$role" in
       *coder*|*-dev|*developer*|*implement*) ;;
@@ -149,6 +156,17 @@ PY
 )" || manifest_kind="invalid"
 [ "$manifest_kind" = "legacy" ] && exit 0
 
+# A shell command can hide arbitrary writes behind scripts, interpreters,
+# substitutions, or tool-specific flags. There is no sound general-purpose
+# way to infer its complete write set from command text. The trusted atomic
+# updater exemption above is therefore the only Bash path through a canonical
+# scope gate; all other Bash dispatches fail closed instead of pretending that
+# artifact-only validation proves exact plan adherence.
+if [ "$tool_name" = "Bash" ]; then
+  printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: arbitrary Bash writes cannot be proven to match exact planned-file declarations; use explicit Write/Edit tools or the trusted confirmed scope updater"}'
+  exit 0
+fi
+
 checker=""
 for candidate in \
   "${PLUMBLINE_BIN_DIR:+$PLUMBLINE_BIN_DIR/plumbline-scope-check}" \
@@ -171,7 +189,7 @@ checker_args=(--repo "$PROJECT" --feature "$feature" --preflight)
 case "$tool_name" in
   Write|Edit|MultiEdit|NotebookEdit)
     if [ -z "$write_target" ]; then
-      printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: write-capable tool did not provide file_path"}'
+      printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: write-capable tool did not provide a file_path/notebook_path target"}'
       exit 0
     fi
     checker_args+=(--write-target "$write_target")

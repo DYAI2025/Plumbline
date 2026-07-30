@@ -534,19 +534,28 @@ register_pretool_scope_hook() {
     echo "skip pretool-scope-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  if jq -e '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""] | any(test("pretool-scope-gate\\.sh"))' \
-       "$settings" >/dev/null 2>&1; then
-    echo "skip pretool-scope-hook: already registered in $settings"
-    return
-  fi
   local tmp; tmp="$(mktemp)"
   if jq --arg cmd "$cmd" '
     .hooks //= {} |
     .hooks.PreToolUse //= [] |
-    .hooks.PreToolUse += [ { "matcher": "Bash|Task|Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ] } ]
+    if ([.hooks.PreToolUse[]?.hooks[]? | .command? // ""] |
+        any(test("pretool-scope-gate\\.sh"))) then
+      .hooks.PreToolUse |= map(
+        if ([.hooks[]? | .command? // ""] |
+            any(test("pretool-scope-gate\\.sh"))) then
+          .matcher = "Agent|Bash|Task|Write|Edit|MultiEdit|NotebookEdit"
+        else .
+        end
+      )
+    else
+      .hooks.PreToolUse += [ {
+        "matcher": "Agent|Bash|Task|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ]
+      } ]
+    end
   ' "$settings" > "$tmp"; then
     mv "$tmp" "$settings"
-    echo "registered pretool-scope-hook in $settings"
+    echo "registered or updated pretool-scope-hook in $settings"
   else
     rm -f "$tmp"
     echo "skip pretool-scope-hook: jq failed to update $settings" >&2

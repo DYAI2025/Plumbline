@@ -300,6 +300,16 @@ EOF
 )"
 assert_contains "Bash write path runs the pre-write scope gate" "$BASH_DENY" '"decision":"deny"'
 
+ALIGNED_BASH_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"printf x > src/demo/unplanned.py"}}
+EOF
+)"
+assert_contains "opaque Bash writes fail closed even when artifacts are aligned" \
+  "$ALIGNED_BASH_DENY" '"decision":"deny"'
+assert_contains "Bash denial explains exact target proof requirement" \
+  "$ALIGNED_BASH_DENY" "exact planned-file declarations"
+
 SCOPE_REPAIR_PASS="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
 {"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --confirmed"}}
@@ -431,6 +441,14 @@ EOF
 assert_eq "absolute in-repository target matching the plan is accepted" \
   "" "$ABSOLUTE_WRITE_PASS"
 
+NOTEBOOK_WRITE_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"src/demo/app.py"}}
+EOF
+)"
+assert_eq "NotebookEdit reads notebook_path and accepts a planned target" \
+  "" "$NOTEBOOK_WRITE_PASS"
+
 OUTSIDE_WRITE_DENY="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
 {"tool_name":"Edit","tool_input":{"file_path":"$WORK/outside.py"}}
@@ -438,6 +456,14 @@ EOF
 )"
 assert_contains "write target outside the repository is denied" \
   "$OUTSIDE_WRITE_DENY" '"decision":"deny"'
+
+AGENT_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Agent","tool_input":{"subagent_type":"backend-developer"}}
+EOF
+)"
+assert_contains "Agent implementation dispatch runs the scope preflight" \
+  "$AGENT_DENY" '"decision":"deny"'
 
 # PLUM-10 owns migration of the old JSON shape. Its presence must not
 # unexpectedly activate PLUM-12's stricter runtime contract.
@@ -463,6 +489,9 @@ assert_eq "installer registers canonical scope preflight exactly once" "1" \
     "$INSTALL_HOME/settings.json")"
 assert_eq "installer registers the scope gate for Bash writes" "1" \
   "$(jq '[.hooks.PreToolUse[]? | select(.matcher | split("|") | index("Bash")) | .hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
+    "$INSTALL_HOME/settings.json")"
+assert_eq "installer registers the scope gate for Agent dispatches" "1" \
+  "$(jq '[.hooks.PreToolUse[]? | select(.matcher | split("|") | index("Agent")) | .hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
     "$INSTALL_HOME/settings.json")"
 CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
   --no-agents --no-commands --no-skills --no-bin >/dev/null
