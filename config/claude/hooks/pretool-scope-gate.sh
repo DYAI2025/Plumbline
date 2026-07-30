@@ -53,6 +53,11 @@ case "$tool_name" in
   *) exit 0 ;;
 esac
 
+marker="$PROJECT/docs/context/.active-feature"
+[ -f "$marker" ] || exit 0
+feature="$(tr -d '[:space:]' <"$marker" 2>/dev/null || true)"
+[ -n "$feature" ] || exit 0
+
 # The updater is the only repair path allowed through a failed/missing
 # preflight. It requires --confirmed and validates artifacts before its atomic
 # write. Accept only a single direct updater command: shell composition,
@@ -69,7 +74,7 @@ if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
       trusted_updaters+=("$updater_candidate")
     fi
   done
-  if python3 - "$command_text" "$PROJECT" "${trusted_updaters[@]}" <<'PY'
+  if python3 - "$command_text" "$PROJECT" "$feature" "${trusted_updaters[@]}" <<'PY'
 import shlex
 import shutil
 import sys
@@ -77,7 +82,8 @@ from pathlib import Path
 
 command = sys.argv[1]
 project = Path(sys.argv[2]).resolve()
-trusted = {Path(path).resolve() for path in sys.argv[3:]}
+feature = sys.argv[3]
+trusted = {Path(path).resolve() for path in sys.argv[4:]}
 if not command or "\n" in command or "\r" in command or "`" in command or "$(" in command:
     raise SystemExit(1)
 lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
@@ -108,6 +114,27 @@ if (
     or any(token and set(token) <= operators for token in tokens[1:])
 ):
     raise SystemExit(1)
+def option(name: str) -> str | None:
+    values = []
+    for index, token in enumerate(tokens[1:], start=1):
+        if token == name and index + 1 < len(tokens):
+            values.append(tokens[index + 1])
+        elif token.startswith(name + "="):
+            values.append(token.split("=", 1)[1])
+    return values[0] if len(values) == 1 else None
+
+repo_arg = option("--repo")
+feature_arg = option("--feature")
+if repo_arg is None or feature_arg != feature:
+    raise SystemExit(1)
+repo_target = Path(repo_arg)
+if not repo_target.is_absolute():
+    repo_target = project / repo_target
+try:
+    if repo_target.resolve(strict=True) != project:
+        raise SystemExit(1)
+except OSError:
+    raise SystemExit(1)
 raise SystemExit(0)
 PY
   then
@@ -115,10 +142,6 @@ PY
   fi
 fi
 
-marker="$PROJECT/docs/context/.active-feature"
-[ -f "$marker" ] || exit 0
-feature="$(tr -d '[:space:]' <"$marker" 2>/dev/null || true)"
-[ -n "$feature" ] || exit 0
 manifest="$PROJECT/docs/scope/$feature.scope.json"
 if [ ! -f "$manifest" ]; then
   canvas="$PROJECT/docs/canvas/$feature.canvas.md"
@@ -156,15 +179,62 @@ PY
 )" || manifest_kind="invalid"
 [ "$manifest_kind" = "legacy" ] && exit 0
 
-# A shell command can hide arbitrary writes behind scripts, interpreters,
-# substitutions, or tool-specific flags. There is no sound general-purpose
-# way to infer its complete write set from command text. The trusted atomic
-# updater exemption above is therefore the only Bash path through a canonical
-# scope gate; all other Bash dispatches fail closed instead of pretending that
-# artifact-only validation proves exact plan adherence.
+# A shell command can hide arbitrary writes. Permit only two constrained,
+# workflow-required shapes: a direct tracked repository test script (whose
+# source remains subject to the exact plan gate) or deletion of the active
+# feature marker after completion. Both still continue through artifact
+# preflight below; composition, redirection and untracked scripts fail closed.
 if [ "$tool_name" = "Bash" ]; then
-  printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: arbitrary Bash writes cannot be proven to match exact planned-file declarations; use explicit Write/Edit tools or the trusted confirmed scope updater"}'
-  exit 0
+  if ! python3 - "$command_text" "$PROJECT" <<'PY'
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+command = sys.argv[1]
+project = Path(sys.argv[2]).resolve()
+if not command or any(item in command for item in ("\n", "\r", "`", "$(")):
+    raise SystemExit(1)
+lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
+lexer.whitespace_split = True
+lexer.commenters = ""
+try:
+    tokens = list(lexer)
+except ValueError:
+    raise SystemExit(1)
+operators = set(";&|<>()")
+if any(token and set(token) <= operators for token in tokens):
+    raise SystemExit(1)
+if tokens == ["rm", "-f", "docs/context/.active-feature"]:
+    raise SystemExit(0)
+if len(tokens) < 2 or Path(tokens[0]).name not in {"bash", "sh"}:
+    raise SystemExit(1)
+shell = shutil.which(tokens[0])
+if shell is None or Path(shell).resolve().name not in {"bash", "sh"}:
+    raise SystemExit(1)
+script = Path(tokens[1])
+if not script.is_absolute():
+    script = project / script
+try:
+    script = script.resolve(strict=True)
+    relative = script.relative_to(project).as_posix()
+except (OSError, ValueError):
+    raise SystemExit(1)
+if not relative.startswith("config/claude/tests/") or script.suffix != ".sh":
+    raise SystemExit(1)
+tracked = subprocess.run(
+    ["git", "-C", str(project), "ls-files", "--error-unmatch", "--", relative],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    check=False,
+)
+raise SystemExit(0 if tracked.returncode == 0 else 1)
+PY
+  then
+    printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: Bash is limited to direct tracked repository test scripts, active-feature cleanup, or the trusted confirmed updater"}'
+    exit 0
+  fi
 fi
 
 checker=""

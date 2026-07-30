@@ -306,6 +306,24 @@ EOF
 )"
 assert_eq "newly confirmed planned target passes the hook" "" "$UPDATED_PLAN_TARGET_PASS"
 
+assert_exit "confirmed updater can replace superseded plan declarations" 0 \
+  "$SCOPE_UPDATE" --repo "$UPDATE" --feature demo \
+    --product-path 'src/replacement/**' \
+    --governance-path 'CLAUDE.md' \
+    --governance-path 'docs/canvas/demo.canvas.md' \
+    --governance-path 'docs/plans/2026-07-29-demo.md' \
+    --governance-path 'docs/scope/demo.scope.json' \
+    --replace-plan-declarations \
+    --planned-create 'src/replacement/app.py' \
+    --planned-modify 'CLAUDE.md' \
+    --origin 'jira:PLUM-12' --decision-maker 'test-user' \
+    --decided-at '2026-07-29T22:00:00+00:00' \
+    --rationale 'User replaced the superseded implementation path' --confirmed
+assert_exit "replacement plan and narrowed manifest remain aligned" 0 \
+  "$SCOPE_CHECK" --repo "$UPDATE" --feature demo --preflight
+assert_not_contains "superseded declaration is removed from active plan" \
+  "$(cat "$UPDATE/docs/plans/2026-07-29-demo.md")" "src/demo/new.py"
+
 # Integration-real boundary: an active feature with a manifest is validated by
 # the PreToolUse hook before the first write-capable dispatch.
 HOOK_REPO="$WORK/hook"
@@ -333,7 +351,28 @@ EOF
 assert_contains "opaque Bash writes fail closed even when artifacts are aligned" \
   "$ALIGNED_BASH_DENY" '"decision":"deny"'
 assert_contains "Bash denial explains exact target proof requirement" \
-  "$ALIGNED_BASH_DENY" "exact planned-file declarations"
+  "$ALIGNED_BASH_DENY" "direct tracked repository test scripts"
+
+mkdir -p "$BASE/config/claude/tests"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$BASE/config/claude/tests/test_demo.sh"
+chmod +x "$BASE/config/claude/tests/test_demo.sh"
+git -C "$BASE" init -q
+git -C "$BASE" add config/claude/tests/test_demo.sh
+TRACKED_TEST_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"bash config/claude/tests/test_demo.sh"}}
+EOF
+)"
+assert_eq "direct tracked repository test script passes after preflight" \
+  "" "$TRACKED_TEST_PASS"
+
+MARKER_CLEANUP_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/context/.active-feature"}}
+EOF
+)"
+assert_eq "exact active-feature cleanup command remains available" \
+  "" "$MARKER_CLEANUP_PASS"
 
 SCOPE_REPAIR_PASS="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
@@ -370,6 +409,14 @@ EOF
 )"
 assert_contains "untrusted same-named updater found on PATH cannot bypass preflight" \
   "$UNTRUSTED_PATH_REPAIR_DENY" '"decision":"deny"'
+
+INACTIVE_FEATURE_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature inactive --confirmed"}}
+EOF
+)"
+assert_contains "trusted updater cannot repair a feature other than the active one" \
+  "$INACTIVE_FEATURE_REPAIR_DENY" '"decision":"deny"'
 
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'

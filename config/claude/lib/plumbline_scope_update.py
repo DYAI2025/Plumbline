@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -32,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--planned-create", action="append", default=[])
     parser.add_argument("--planned-modify", action="append", default=[])
     parser.add_argument("--planned-delete", action="append", default=[])
+    parser.add_argument(
+        "--replace-plan-declarations",
+        action="store_true",
+        help="Remove existing Create/Modify/Delete declarations before adding the supplied ones",
+    )
     parser.add_argument("--origin", required=True)
     parser.add_argument("--decision-maker", required=True)
     parser.add_argument("--decided-at", required=True)
@@ -140,12 +146,21 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, UnicodeError) as exc:
             print(f"ERROR: cannot read implementation plan {plan_path}: {exc}")
             return EXIT_MALFORMED
-        separator = "" if original_plan_text.endswith("\n") else "\n"
+        base_plan_text = original_plan_text
+        if args.replace_plan_declarations:
+            base_plan_text = "\n".join(
+                line
+                for line in original_plan_text.splitlines()
+                if not re.search(r"\b(?:Create|Modify|Delete):\s*", line)
+            )
+            if original_plan_text.endswith("\n"):
+                base_plan_text += "\n"
+        separator = "" if base_plan_text.endswith("\n") else "\n"
         declarations = "\n".join(
             f"- {action}: `{path}`" for action, path in plan_additions
         )
         proposed_plan_text = (
-            original_plan_text
+            base_plan_text
             + separator
             + "\n## Confirmed plan revision\n\n"
             + declarations
