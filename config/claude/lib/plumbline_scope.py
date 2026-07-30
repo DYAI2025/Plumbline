@@ -30,8 +30,20 @@ MANIFEST_SCHEMA = 1
 # Unknown keys are refused rather than ignored: in a security configuration a
 # typo'd key must not read as "not configured".
 MANIFEST_KEYS = frozenset(
-    {"schema", "feature", "allowed_change_scope", "notes", "provenance"}
+    {
+        "schema",
+        "feature",
+        "allowed_change_scope",
+        "governance_paths",
+        "notes",
+        "provenance",
+    }
 )
+# PLUM-12 (AC-5): product paths and governance paths are modelled separately, so a
+# drift report can say WHICH class a path belongs to instead of flattening the
+# feature's own canvas/PRD/ledger into its product surface. Both classes authorize
+# a change; only their classification differs.
+SCOPE_CLASSES = ("product", "governance")
 PLACEHOLDER_TOKENS = {"MISSING", "OPEN QUESTION", "BLOCKER"}
 
 
@@ -229,7 +241,7 @@ def _manifest_error(manifest: Path, detail: str) -> int:
     return EXIT_MALFORMED
 
 
-def _patterns_from_manifest(manifest: Path, feature: str) -> tuple[int, list[str]]:
+def _patterns_from_manifest(manifest: Path, feature: str) -> tuple[int, dict]:
     """Load the canonical scope manifest. STRICT: every problem is classified.
 
     A manifest is machine configuration, so intent is never guessed: an entry
@@ -238,16 +250,16 @@ def _patterns_from_manifest(manifest: Path, feature: str) -> tuple[int, list[str
     or coerced (which would silently widen).
     """
     if not manifest.exists():
-        return EXIT_MISSING, []
+        return EXIT_MISSING, {}
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
     except UnicodeDecodeError:
-        return _manifest_error(manifest, "file is not UTF-8 text"), []
+        return _manifest_error(manifest, "file is not UTF-8 text"), {}
     except json.JSONDecodeError as exc:
-        return _manifest_error(manifest, f"invalid JSON ({exc.msg} at line {exc.lineno})"), []
+        return _manifest_error(manifest, f"invalid JSON ({exc.msg} at line {exc.lineno})"), {}
 
     if not isinstance(data, dict):
-        return _manifest_error(manifest, "top level must be a JSON object"), []
+        return _manifest_error(manifest, "top level must be a JSON object"), {}
 
     unknown = sorted(set(data) - MANIFEST_KEYS)
     if unknown:
@@ -255,7 +267,7 @@ def _patterns_from_manifest(manifest: Path, feature: str) -> tuple[int, list[str
             manifest,
             f"unknown key(s) {', '.join(repr(k) for k in unknown)}; "
             f"supported: {', '.join(sorted(MANIFEST_KEYS))}",
-        ), []
+        ), {}
 
     # An absent `schema` means the original v1 shape (the pre-PLUM-10 fixtures).
     schema = data.get("schema", MANIFEST_SCHEMA)
@@ -263,52 +275,75 @@ def _patterns_from_manifest(manifest: Path, feature: str) -> tuple[int, list[str
         return _manifest_error(
             manifest,
             f"unsupported schema version {schema!r} (supported: {MANIFEST_SCHEMA})",
-        ), []
+        ), {}
 
     declared = data.get("feature")
     if declared is not None and declared != feature:
         return _manifest_error(
             manifest,
             f"declares feature {declared!r} but the check requested {feature!r}",
-        ), []
+        ), {}
 
     raw = data.get("allowed_change_scope")
     if not isinstance(raw, list):
         return _manifest_error(
             manifest, "'allowed_change_scope' must be a list of repo-relative paths/globs"
-        ), []
+        ), {}
 
-    patterns: list[str] = []
-    for index, item in enumerate(raw, start=1):
-        if not isinstance(item, str):
+    def read_list(key: str, entries: object) -> tuple[int | None, list[str]]:
+        if not isinstance(entries, list):
             return _manifest_error(
-                manifest,
-                f"entry #{index} is not a string (got {type(item).__name__})",
+                manifest, f"{key!r} must be a list of repo-relative paths/globs"
             ), []
-        problem = _pattern_problem(item.strip())
-        if problem is not None:
-            return _manifest_error(
-                manifest, f"entry #{index} {item!r} {problem}"
-            ), []
-        candidate = item.strip()
-        if _is_broad_pattern(candidate):
-            return _manifest_error(
-                manifest,
-                f"entry #{index} {candidate!r} is too broad and would legitimize "
-                "every path; use a pattern with a concrete path segment "
-                "(e.g. 'src/feature/**')",
-            ), []
-        patterns.append(candidate)
+        out: list[str] = []
+        for index, item in enumerate(entries, start=1):
+            label = f"entry #{index}" if key == "allowed_change_scope" else f"{key} entry #{index}"
+            if not isinstance(item, str):
+                return _manifest_error(
+                    manifest, f"{label} is not a string (got {type(item).__name__})"
+                ), []
+            candidate = item.strip()
+            problem = _pattern_problem(candidate)
+            if problem is not None:
+                return _manifest_error(manifest, f"{label} {item!r} {problem}"), []
+            if _is_broad_pattern(candidate):
+                return _manifest_error(
+                    manifest,
+                    f"{label} {candidate!r} is too broad and would legitimize "
+                    "every path; use a pattern with a concrete path segment "
+                    "(e.g. 'src/feature/**')",
+                ), []
+            out.append(candidate)
+        return None, out
 
-    if not patterns:
+    status, product = read_list("allowed_change_scope", raw)
+    if status is not None:
+        return status, {}
+    governance: list[str] = []
+    if "governance_paths" in data:
+        status, governance = read_list("governance_paths", data["governance_paths"])
+        if status is not None:
+            return status, {}
+
+    if not product and not governance:
         print(
             f"ERROR: scope manifest {manifest} declares an EMPTY allowed_change_scope; "
             "an empty allow-list authorizes nothing (it is not a wildcard). "
             "List the confirmed paths/globs.",
             file=sys.stderr,
         )
-        return EXIT_MISSING, []
-    return EXIT_PASS, patterns
+        return EXIT_MISSING, {}
+
+    provenance = data.get("provenance")
+    if provenance is not None and not isinstance(provenance, list):
+        return _manifest_error(manifest, "'provenance' must be a list of records"), {}
+
+    return EXIT_PASS, {
+        "product": product,
+        "governance": governance,
+        "provenance": provenance,
+        "manifest": manifest,
+    }
 
 
 def _reject_broad(patterns: list[str]) -> int | None:
@@ -329,6 +364,43 @@ def manifest_path(repo: Path, feature: str) -> Path:
     return repo / "docs" / "scope" / f"{feature}.scope.json"
 
 
+def load_scope_model(repo: Path, feature: str) -> tuple[int, dict, str]:
+    """Class-aware view of the effective scope, for the PLUM-12 drift checks.
+
+    Returns ``(status, model, source)``. ``model`` carries ``product`` and
+    ``governance`` pattern lists separately (plus the raw ``provenance`` records
+    when the manifest declares them), so a drift report can name the CLASS of a
+    path instead of flattening a feature's own governance artifacts into its
+    product surface.
+
+    A legacy canvas/traceability source has no class information: everything it
+    declares is reported as ``product`` and ``classified`` is False, so a caller
+    can say so rather than implying a distinction the source cannot express.
+    """
+    manifest = manifest_path(repo, feature)
+    if manifest.exists():
+        status, model = _patterns_from_manifest(manifest, feature)
+        if status != EXIT_PASS:
+            return status, {}, f"manifest={_rel(manifest, repo)}"
+        model["classified"] = True
+        return status, model, f"manifest={_rel(manifest, repo)}"
+
+    status, patterns, source = load_allowed_scope(repo, feature)
+    if status != EXIT_PASS:
+        return status, {}, source
+    return (
+        status,
+        {
+            "product": patterns,
+            "governance": [],
+            "provenance": None,
+            "manifest": None,
+            "classified": False,
+        },
+        source,
+    )
+
+
 def load_allowed_scope(repo: Path, feature: str) -> tuple[int, list[str], str]:
     """Resolve the effective allowed scope.
 
@@ -342,7 +414,8 @@ def load_allowed_scope(repo: Path, feature: str) -> tuple[int, list[str], str]:
     """
     manifest = manifest_path(repo, feature)
     if manifest.exists():
-        status, patterns = _patterns_from_manifest(manifest, feature)
+        status, model = _patterns_from_manifest(manifest, feature)
+        patterns = list(model.get("product", [])) + list(model.get("governance", []))
         return status, patterns, f"manifest={_rel(manifest, repo)}"
 
     canvas = repo / "docs" / "canvas" / f"{feature}.canvas.md"

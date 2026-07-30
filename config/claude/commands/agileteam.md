@@ -538,9 +538,16 @@ user for confirmation rather than inventing product context.
 
 ### Phase 0.6 — PRIL Scope Guard setup (hard fail-closed)
 
-Before implementation begins, the confirmed Product Canvas must include an `Allowed change scope`
-section with narrow repo-relative files, directories, or glob patterns. For every implementation
-increment, produce a changed-files list and run:
+The confirmed scope is written to the **canonical manifest** `docs/scope/<feature>.scope.json`
+(schema, entry rules and migration: `docs/scope-manifest.md`). Product paths go in
+`allowed_change_scope`, the feature's own governance artifacts (canvas, PRD, vision, plan, reality
+ledger, trace matrix, `CLAUDE.md`) in `governance_paths`, and each decision carries a `provenance`
+record with `origin`, `decided_by`, `decided_at`, `reason`. The manifest is checked FIRST and is
+authoritative even when broken — it never falls back to the canvas. The legacy Canvas
+`Allowed change scope` section still works when a feature has no manifest, but it is documentation:
+unusable lines are reported with line number and cause, never silently dropped.
+
+For every implementation increment, produce a changed-files list and run:
 
 ```bash
 config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --changed-files <changed-files.txt>
@@ -642,6 +649,30 @@ only encodes where the Vision is shown, the start signal, and the bounded autono
    test.)
 2. `planner` produces the atomic, dependency-aware task sequence (→ kanban-md tickets).
    Save the plan (`writing-plans` format) to `docs/plans/YYYY-MM-DD-<feature>.md`.
+   The plan MUST declare the files it will touch in a machine-readable fenced block
+   so the pre-coding gate is exact rather than inferred:
+
+   ````markdown
+   ```plumbline-touches
+   src/feature/api.py
+   config/claude/tests/test_feature.sh
+   ```
+   ````
+3. **Plan-vs-scope gate (hard, BEFORE any coding — PLUM-12).** A file that is
+   authorized in conversation or named in the plan but missing from the canonical
+   manifest must be caught here, not by the Stop hook after the work is done:
+
+   ```bash
+   config/claude/bin/plumbline-plan-check --repo <repo> --feature <feature-slug> \
+     --plan docs/plans/YYYY-MM-DD-<feature>.md [--require-provenance]
+   ```
+
+   Exit 3 = the plan touches unauthorized paths, or the canvas claims scope the
+   manifest does not authorize (a contradiction; the manifest decides). Resolve it by
+   confirming the addition with the user and recording it in the manifest **with its
+   provenance** — never by widening scope silently. Without a `plumbline-touches`
+   block the check still runs but reports `mode=heuristic`, so an inferred read-only
+   mention is distinguishable from a declared write target.
 
 ### Phase 2 — Subagent-driven dev/review loop (per task; ≤ MAX_DEVREVIEW_LOOPS)
 Follow `executing-plans` + `test-driven-development` (fresh subagent per task). For each task:

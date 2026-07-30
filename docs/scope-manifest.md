@@ -31,9 +31,10 @@ document and may *describe* the scope, but it no longer governs it.
 |---|---|---|
 | `schema` | no (defaults to `1`) | manifest version. An unsupported version is a hard error, never a best-effort parse. |
 | `feature` | no | when present it must equal the feature being checked, so a copied manifest cannot govern the wrong feature. |
-| `allowed_change_scope` | **yes** | list of repo-relative paths/globs. One entry per path. |
+| `allowed_change_scope` | **yes** | product paths/globs, repo-relative. One entry per path. |
+| `governance_paths` | no | the feature's own governance artifacts, modelled separately (see below). |
 | `notes` | no | human prose. Ignored by the guard. |
-| `provenance` | no | reserved for the scope-change audit trail (PLUM-12). |
+| `provenance` | no | the scope-change audit trail (see below). |
 
 Unknown keys are **refused**, not ignored: in a security configuration a typo'd
 key must not read as "not configured".
@@ -113,3 +114,67 @@ never a working pattern — it produced a junk pattern that matched nothing. Aft
 migration those lines are dropped loudly rather than silently, which can surface a
 scope gap that was always there. That is the intended outcome; add the real path
 to the manifest.
+
+## Class separation and provenance (PLUM-12)
+
+Two more keys make the manifest the *single source of truth* rather than one copy
+among several:
+
+```json
+{
+  "schema": 1,
+  "feature": "my-feature",
+  "allowed_change_scope": ["src/feature/**"],
+  "governance_paths": [
+    "docs/canvas/my-feature.canvas.md",
+    "docs/reality/my-feature.evidence.jsonl",
+    "CLAUDE.md"
+  ],
+  "provenance": [
+    {
+      "paths": ["src/feature/**", "docs/canvas/my-feature.canvas.md"],
+      "origin": "requirements confirmation, session 2026-07-30",
+      "decided_by": "product owner (human)",
+      "decided_at": "2026-07-30T09:15:00Z",
+      "reason": "confirmed feature surface plus its own canvas"
+    }
+  ]
+}
+```
+
+- `governance_paths` — the feature's own governance artifacts. Both classes
+  authorize a change; keeping them apart means a drift report can say **which
+  class** a path belongs to instead of flattening a canvas into the product
+  surface. A governance-looking path declared in `allowed_change_scope` is
+  reported as a probable misclassification (visible, non-blocking).
+- `provenance` — who authorized which paths, when, from where, and why. Validation
+  is **opt-in** (`--require-provenance`) so existing manifests keep working; when
+  enabled, every scope entry must be covered by a record, every record must carry
+  all four fields non-empty, and `decided_at` must be ISO-8601.
+
+## Plan-vs-scope gate (`plumbline-plan-check`)
+
+Run before coding starts:
+
+```bash
+config/claude/bin/plumbline-plan-check --repo . --feature <slug> \
+  --plan docs/plans/2026-07-30-<slug>.md [--canvas <path>] [--require-provenance]
+```
+
+It answers three questions in one place:
+
+1. **Does the plan stay inside the confirmed scope?** Files the plan will touch are
+   read from a `plumbline-touches` fenced block (`mode=declared`, exact) or, when
+   absent, inferred from backticked paths in the prose (`mode=heuristic`, announced
+   as such because an inferred candidate may be a read-only mention). Any path the
+   scope does not authorize exits **3** and is named, together with the manifest to
+   edit.
+2. **Does the canvas contradict the manifest?** A canvas pattern the manifest does
+   not authorize exits **3** — the canvas is documentation, the manifest decides.
+   A canvas that documents a *subset* passes, and the extra manifest patterns are
+   listed so the difference is visible rather than hidden.
+3. **Is every scope decision attributable?** With `--require-provenance`, an
+   unattributed entry, a missing field or an unparseable timestamp exits **4**.
+
+Exit codes: `0` pass · `2` missing input (no scope, no plan) · `3` drift /
+contradiction · `4` malformed input.

@@ -124,6 +124,9 @@ bash config/claude/tests/test_scope_shift_notice.sh || mark_fail
 stage "canonical scope manifest tests (PLUM-10)"
 bash config/claude/tests/test_scope_manifest.sh || mark_fail
 
+stage "plan/canvas vs scope drift tests (PLUM-12)"
+bash config/claude/tests/test_plan_scope_drift.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 
@@ -204,6 +207,7 @@ if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
   if shellcheck -x -P SCRIPTDIR \
     config/claude/bin/plumbline-context-check \
+    config/claude/bin/plumbline-plan-check \
     config/claude/bin/plumbline-reality-check \
     config/claude/bin/plumbline-redact \
     config/claude/bin/plumbline-scope-check \
