@@ -736,16 +736,31 @@ def validate_manifest_artifacts(
         )
         if delete_status != EXIT_PASS:
             return delete_status
-        if delete_target not in delete_paths:
+        delete_path = Path(delete_target)
+        if not delete_path.is_absolute():
+            delete_path = repo / delete_path
+        try:
+            delete_rel = delete_path.resolve().relative_to(repo).as_posix()
+            normalized_deletes = {
+                (repo / path).resolve().relative_to(repo).as_posix()
+                for path in delete_paths
+            }
+        except (OSError, ValueError):
+            print(
+                f"ERROR: deletion target resolves outside repository: {delete_target}",
+                file=sys.stderr,
+            )
+            return EXIT_VIOLATION
+        if delete_rel not in normalized_deletes:
             print(
                 f"ERROR: deletion target is not declared with Delete in the implementation plan: {delete_target}",
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
         reserved = {manifest_rel, str(manifest["artifacts"]["plan"])}
-        if delete_target in reserved:
+        if delete_rel in reserved:
             print(
-                f"ERROR: deletion of canonical scope control artifact is forbidden: {delete_target}",
+                f"ERROR: deletion of canonical scope control artifact is forbidden: {delete_rel}",
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
@@ -768,9 +783,25 @@ def validate_manifest_artifacts(
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
-        if target_rel not in planned:
+        create_status, create_paths = _declared_values(
+            plan, "Create", text_override=plan_text_override
+        )
+        modify_status, modify_paths = _declared_values(
+            plan, "Modify", text_override=plan_text_override
+        )
+        if create_status != EXIT_PASS or modify_status != EXIT_PASS:
+            return EXIT_MALFORMED
+        try:
+            writable_paths = {
+                (repo / path).resolve().relative_to(repo).as_posix()
+                for path in create_paths + modify_paths
+            }
+        except (OSError, ValueError):
+            print("ERROR: planned write target resolves outside repository", file=sys.stderr)
+            return EXIT_MALFORMED
+        if target_rel not in writable_paths:
             print(
-                f"ERROR: write target is not declared in implementation plan: {target_rel}",
+                f"ERROR: write target is not declared with Create or Modify in implementation plan: {target_rel}",
                 file=sys.stderr,
             )
             return EXIT_VIOLATION

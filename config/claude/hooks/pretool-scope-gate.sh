@@ -77,6 +77,7 @@ if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
   if python3 - "$command_text" "$PROJECT" "$feature" "${trusted_updaters[@]}" <<'PY'
 import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -117,6 +118,31 @@ if (
     or any(token and set(token) <= operators for token in tokens[1:])
 ):
     raise SystemExit(1)
+try:
+    executable.relative_to(project)
+except ValueError:
+    pass
+else:
+    immutable_runtime = [
+        "config/claude/bin/plumbline-scope-update",
+        "config/claude/lib/plumbline_python.sh",
+        "config/claude/lib/plumbline_scope_update.py",
+        "config/claude/lib/plumbline_scope.py",
+    ]
+    tracked = subprocess.run(
+        ["git", "-C", str(project), "ls-files", "--error-unmatch", "--", *immutable_runtime],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    unchanged = subprocess.run(
+        ["git", "-C", str(project), "diff", "--quiet", "HEAD", "--", *immutable_runtime],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if tracked.returncode != 0 or unchanged.returncode != 0:
+        raise SystemExit(1)
 allowed_options = {
     "--repo", "--feature", "--product-path", "--governance-path", "--canvas",
     "--plan", "--planned-create", "--planned-modify", "--planned-delete",

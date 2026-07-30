@@ -467,6 +467,28 @@ EOF
 assert_contains "abbreviated updater options cannot override active feature" \
   "$ABBREVIATED_REPAIR_DENY" '"decision":"deny"'
 
+MUTABLE_UPDATER="$WORK/mutable-updater"
+cp -R "$BASE" "$MUTABLE_UPDATER"
+mkdir -p "$MUTABLE_UPDATER/config/claude/bin" "$MUTABLE_UPDATER/config/claude/lib"
+cp "$SCOPE_UPDATE" "$MUTABLE_UPDATER/config/claude/bin/plumbline-scope-update"
+cp "$REPO_DIR/config/claude/lib/plumbline_python.sh" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope.py" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope_update.py" \
+  "$MUTABLE_UPDATER/config/claude/lib/"
+git -C "$MUTABLE_UPDATER" init -q
+git -C "$MUTABLE_UPDATER" add config/claude/bin config/claude/lib
+git -C "$MUTABLE_UPDATER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+printf '\n# mutated after confirmation\n' \
+  >>"$MUTABLE_UPDATER/config/claude/lib/plumbline_scope_update.py"
+MUTABLE_UPDATER_DENY="$(
+  CLAUDE_PROJECT_DIR="$MUTABLE_UPDATER" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$MUTABLE_UPDATER/config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "mutable repository updater runtime cannot receive repair exemption" \
+  "$MUTABLE_UPDATER_DENY" '"decision":"deny"'
+
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
@@ -591,6 +613,28 @@ EOF
 )"
 assert_contains "canonical manifest cannot be deleted through Delete declaration" \
   "$CONTROL_DELETE_DENY" '"decision":"deny"'
+
+NORMALIZED_CONTROL_DELETE="$WORK/normalized-control-delete"
+cp -R "$BASE" "$NORMALIZED_CONTROL_DELETE"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/scope/./demo.scope.json\`" \
+  >"$NORMALIZED_CONTROL_DELETE/docs/plans/2026-07-29-demo.md"
+NORMALIZED_CONTROL_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$NORMALIZED_CONTROL_DELETE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/./demo.scope.json"}}
+EOF
+)"
+assert_contains "normalized manifest spelling cannot bypass deletion reservation" \
+  "$NORMALIZED_CONTROL_DELETE_DENY" '"decision":"deny"'
+
+DELETE_ONLY_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/old.py"}}
+EOF
+)"
+assert_contains "Delete-only target cannot be modified through Edit" \
+  "$DELETE_ONLY_WRITE_DENY" '"decision":"deny"'
 
 NOTEBOOK_WRITE_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
