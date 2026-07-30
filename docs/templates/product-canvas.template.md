@@ -109,13 +109,13 @@ Answer:
 
 ## Allowed change scope
 
-List the only repo-relative files, directories, or glob patterns that implementation agents may edit for this feature. Keep this narrow and user-confirmed with the canvas. Examples: `src/<feature>/**`, `docs/<feature>.md`, `tests/<feature>/**`.
+The versioned machine-readable manifest is the only executable scope truth. Keep
+product paths and governance paths separate there; do not copy either list into
+this freely formatted Canvas.
 
 Status: MISSING | OPEN QUESTION | CONFIRMED
 
-Allowed change scope:
-
-- `MISSING`
+Scope manifest: `docs/scope/<feature>.scope.json`
 
 ---
 

@@ -538,16 +538,33 @@ user for confirmation rather than inventing product context.
 
 ### Phase 0.6 — PRIL Scope Guard setup (hard fail-closed)
 
-Before implementation begins, the confirmed Product Canvas must include an `Allowed change scope`
-section with narrow repo-relative files, directories, or glob patterns. For every implementation
-increment, produce a changed-files list and run:
+Before implementation planning completes, create the canonical versioned manifest at
+`docs/scope/<feature>.scope.json`. It is the only executable scope truth and must:
+
+- model `scope.product` and `scope.governance` separately;
+- bind every revision to `origin`, `decision_maker`, timezone-bearing `decided_at`,
+  `rationale`, a confirmation marker, and a digest-bound scope snapshot;
+- name the Canvas and implementation plan under `artifacts`.
+
+The Canvas references the manifest instead of copying its paths. The plan declares each
+planned file on a backtick-wrapped `Create:`, `Modify:`, or `Delete:` line. Apply a
+confirmed decision atomically with `plumbline-scope-update`, then run the plan/Canvas
+preflight **before the first implementation write**:
 
 ```bash
+config/claude/bin/plumbline-scope-update --repo <repo> --feature <feature-slug> \
+  --product-path <path-or-glob> --governance-path <path-or-glob> \
+  --canvas docs/canvas/<feature-slug>.canvas.md --plan docs/plans/<plan>.md \
+  --origin <source> --decision-maker <who> --decided-at <ISO-8601-with-timezone> \
+  --rationale <why> --confirmed
+config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --preflight
 config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --changed-files <changed-files.txt>
 ```
 
-Out-of-scope edits are fail-closed: stop, ask the user to expand the confirmed scope, or revert the
-out-of-scope change. Do not silently broaden scope from the PRD, tests, or agent judgement.
+The installed PreToolUse scope gate repeats the preflight for write-capable tools and
+implementation agents. Missing, extra, contradictory, unprovenanced, or out-of-scope
+paths are fail-closed. Stop, obtain a confirmed scope revision, or revert the
+out-of-scope change; never broaden scope from the PRD, tests, or agent judgment.
 
 ### Safe persistence redaction gate
 

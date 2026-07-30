@@ -508,6 +508,51 @@ register_pretool_vision_hook() {
   fi
 }
 
+# Idempotently add the PLUM-12 canonical-scope preflight. It runs only for
+# write-capable tools and implementation subagents. Canvas-only legacy features
+# pass through; versioned manifests fail closed on missing/extra/contradictory
+# plan paths before the first implementation write.
+register_pretool_scope_hook() {
+  local settings="$CLAUDE_HOME/settings.json"
+  local hook_script="$REPO_DIR/config/claude/hooks/pretool-scope-gate.sh"
+  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/pretool-scope-gate.sh" ]; then
+    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/pretool-scope-gate.sh"
+  fi
+  local cmd="bash \"$hook_script\""
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "skip pretool-scope-hook: jq not found — install jq and re-run, or add it manually to $settings"
+    return
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_action "would register pretool-scope-hook in $settings with command: $cmd"
+    return
+  fi
+  mkdir -p "$CLAUDE_HOME"
+  [ -f "$settings" ] || echo '{}' > "$settings"
+  if ! jq -e . "$settings" >/dev/null 2>&1; then
+    echo "skip pretool-scope-hook: $settings is not valid JSON — fix it first"
+    return
+  fi
+  if jq -e '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""] | any(test("pretool-scope-gate\\.sh"))' \
+       "$settings" >/dev/null 2>&1; then
+    echo "skip pretool-scope-hook: already registered in $settings"
+    return
+  fi
+  local tmp; tmp="$(mktemp)"
+  if jq --arg cmd "$cmd" '
+    .hooks //= {} |
+    .hooks.PreToolUse //= [] |
+    .hooks.PreToolUse += [ { "matcher": "Task|Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ] } ]
+  ' "$settings" > "$tmp"; then
+    mv "$tmp" "$settings"
+    echo "registered pretool-scope-hook in $settings"
+  else
+    rm -f "$tmp"
+    echo "skip pretool-scope-hook: jq failed to update $settings" >&2
+  fi
+}
+
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "dry-run: no changes will be written (target CLAUDE_HOME=$CLAUDE_HOME)"
 fi
@@ -520,6 +565,7 @@ if [ "$INSTALL_HOOK" -eq 1 ]; then
   register_stop_hook
   register_enforce_hook
   register_pretool_vision_hook
+  register_pretool_scope_hook
 fi
 [ "$INSTALL_BIN" -eq 1 ] && install_bin
 
