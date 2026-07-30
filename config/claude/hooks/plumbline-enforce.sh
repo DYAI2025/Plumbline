@@ -116,6 +116,16 @@ canonical_executable() {
   printf '%s/%s\n' "$physical_dir" "$base"
 }
 
+project_scope_runtime_immutable() {
+  local runtime=(
+    config/claude/bin/plumbline-scope-check
+    config/claude/lib/plumbline_python.sh
+    config/claude/lib/plumbline_scope.py
+  )
+  git -C "$repo" ls-files --error-unmatch -- "${runtime[@]}" >/dev/null 2>&1 \
+    && git -C "$repo" diff --quiet HEAD -- "${runtime[@]}" >/dev/null 2>&1
+}
+
 resolved_cli_path=""
 resolved_cli_source=""
 resolve_cli() {
@@ -135,6 +145,10 @@ resolve_cli() {
   if [ -z "$resolved_cli_path" ]; then
     candidate="$repo/config/claude/bin/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
+    if [ "$name" = "plumbline-scope-check" ] && [ -n "$found" ] \
+      && ! project_scope_runtime_immutable; then
+      found=""
+    fi
     if [ -n "$found" ]; then
       resolved_cli_path="$found"
       resolved_cli_source="project-local"

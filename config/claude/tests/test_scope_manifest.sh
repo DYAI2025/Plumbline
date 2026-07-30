@@ -636,6 +636,52 @@ EOF
 assert_contains "Delete-only target cannot be modified through Edit" \
   "$DELETE_ONLY_WRITE_DENY" '"decision":"deny"'
 
+MARKER_CONTROL="$WORK/marker-control"
+cp -R "$BASE" "$MARKER_CONTROL"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`docs/context/.active-feature\`" \
+  >"$MARKER_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$MARKER_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("docs/context/.active-feature")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+MARKER_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$MARKER_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/context/.active-feature"}}
+EOF
+)"
+assert_contains "active-feature marker is reserved from direct writes" \
+  "$MARKER_WRITE_DENY" '"decision":"deny"'
+
+MUTABLE_CHECKER="$WORK/mutable-checker"
+cp -R "$MISSING" "$MUTABLE_CHECKER"
+mkdir -p "$MUTABLE_CHECKER/config/claude/bin" "$MUTABLE_CHECKER/config/claude/lib"
+cp "$SCOPE_CHECK" "$MUTABLE_CHECKER/config/claude/bin/plumbline-scope-check"
+cp "$REPO_DIR/config/claude/lib/plumbline_python.sh" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope.py" \
+  "$MUTABLE_CHECKER/config/claude/lib/"
+git -C "$MUTABLE_CHECKER" init -q
+git -C "$MUTABLE_CHECKER" add config/claude/bin config/claude/lib
+git -C "$MUTABLE_CHECKER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$MUTABLE_CHECKER/config/claude/bin/plumbline-scope-check"
+chmod +x "$MUTABLE_CHECKER/config/claude/bin/plumbline-scope-check"
+MUTABLE_CHECKER_DENY="$(
+  CLAUDE_PROJECT_DIR="$MUTABLE_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "modified project checker is skipped and immutable checker catches drift" \
+  "$MUTABLE_CHECKER_DENY" '"decision":"deny"'
+
 NOTEBOOK_WRITE_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"NotebookEdit","tool_input":{"notebook_path":"src/demo/app.py"}}

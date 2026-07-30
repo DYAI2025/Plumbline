@@ -757,7 +757,16 @@ def validate_manifest_artifacts(
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
-        reserved = {manifest_rel, str(manifest["artifacts"]["plan"])}
+        reserved = {
+            manifest_rel,
+            str(manifest["artifacts"]["plan"]),
+            "docs/context/.active-feature",
+            "config/claude/bin/plumbline-scope-check",
+            "config/claude/bin/plumbline-scope-update",
+            "config/claude/lib/plumbline_python.sh",
+            "config/claude/lib/plumbline_scope.py",
+            "config/claude/lib/plumbline_scope_update.py",
+        }
         if delete_rel in reserved:
             print(
                 f"ERROR: deletion of canonical scope control artifact is forbidden: {delete_rel}",
@@ -776,7 +785,16 @@ def validate_manifest_artifacts(
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
-        reserved = {manifest_rel, str(manifest["artifacts"]["plan"])}
+        reserved = {
+            manifest_rel,
+            str(manifest["artifacts"]["plan"]),
+            "docs/context/.active-feature",
+            "config/claude/bin/plumbline-scope-check",
+            "config/claude/bin/plumbline-scope-update",
+            "config/claude/lib/plumbline_python.sh",
+            "config/claude/lib/plumbline_scope.py",
+            "config/claude/lib/plumbline_scope_update.py",
+        }
         if target_rel in reserved:
             print(
                 "ERROR: direct writes to canonical scope control artifacts are reserved for plumbline-scope-update",

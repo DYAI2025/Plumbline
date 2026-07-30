@@ -226,6 +226,21 @@ for candidate in \
   "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/bin/plumbline-scope-check"
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    case "$candidate" in
+      "$PROJECT"/*)
+        checker_runtime=(
+          config/claude/bin/plumbline-scope-check
+          config/claude/lib/plumbline_python.sh
+          config/claude/lib/plumbline_scope.py
+        )
+        if ! git -C "$PROJECT" ls-files --error-unmatch -- \
+            "${checker_runtime[@]}" >/dev/null 2>&1 \
+          || ! git -C "$PROJECT" diff --quiet HEAD -- \
+            "${checker_runtime[@]}" >/dev/null 2>&1; then
+          continue
+        fi
+        ;;
+    esac
     checker="$candidate"
     break
   fi
