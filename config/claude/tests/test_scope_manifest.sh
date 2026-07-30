@@ -135,6 +135,15 @@ printf '%s\n' "- Create: \`src/demo/app.py\`" "- Modify: \`CLAUDE.md\`" \
 assert_output_contains "missing allowed path blocks preflight" "CLAUDE.md" \
   "$SCOPE_CHECK" --repo "$MISSING" --feature demo --preflight
 
+# A quoted allowed path must not hide an additional unquoted planned path.
+PARTIAL_QUOTE="$WORK/partial-quote"
+cp -R "$BASE" "$PARTIAL_QUOTE"
+printf '%s\n' "- Modify: \`src/demo/app.py\`, src/outside.py" \
+  >"$PARTIAL_QUOTE/docs/plans/2026-07-29-demo.md"
+assert_output_contains "partially unquoted plan declaration is rejected" \
+  "outside backtick-wrapped paths" \
+  "$SCOPE_CHECK" --repo "$PARTIAL_QUOTE" --feature demo --preflight
+
 # Extra: Canvas must only reference the manifest. A copied scope bullet is a
 # second truth source and therefore deliberate drift, even if the path is valid.
 EXTRA="$WORK/extra"
@@ -168,6 +177,20 @@ json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
 PY
 assert_output_contains "intersecting product/governance globs are rejected" "src/demo/private/**" \
   "$SCOPE_CHECK" --repo "$INTERSECTING" --feature demo --preflight
+
+# Intersection must be decided from both glob languages, not guessed witnesses.
+CRISS_CROSS="$WORK/criss-cross"
+cp -R "$BASE" "$CRISS_CROSS"
+python3 - "$CRISS_CROSS/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/*/foo"]
+data["scope"]["governance"] = ["src/bar/*"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "criss-cross glob intersection is rejected" "src/bar/*" \
+  "$SCOPE_CHECK" --repo "$CRISS_CROSS" --feature demo --preflight
 
 # Every revision must retain complete decision provenance.
 NO_PROVENANCE="$WORK/no-provenance"

@@ -179,32 +179,82 @@ def _scope_digest(scope: dict[str, list[str]]) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def _glob_witness(pattern: str) -> str:
-    """Return one concrete path represented by a supported shell-style glob."""
+def _glob_tokens(pattern: str) -> list[str]:
+    """Tokenize the shell-style subset accepted by :mod:`fnmatch`."""
 
-    def class_witness(match: re.Match[str]) -> str:
-        body = match.group(0)[1:-1]
-        if body.startswith(("!", "^")):
-            excluded = set(body[1:])
-            return next((candidate for candidate in "xaz09_" if candidate not in excluded), "x")
-        return body[0] if body else "x"
+    tokens: list[str] = []
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "*":
+            while index + 1 < len(pattern) and pattern[index + 1] == "*":
+                index += 1
+            tokens.append("*")
+        elif char == "?":
+            tokens.append("?")
+        elif char == "[":
+            closing = pattern.find("]", index + 1)
+            if closing >= 0:
+                tokens.append(pattern[index : closing + 1])
+                index = closing
+            else:
+                tokens.append("[")
+        else:
+            tokens.append(char)
+        index += 1
+    return tokens
 
-    witness = re.sub(r"\[[^\]]*\]", class_witness, pattern)
-    witness = witness.replace("**", "x").replace("*", "x").replace("?", "x")
-    return witness
+
+def _token_characters(token: str, alphabet: set[str]) -> set[str]:
+    if token in {"*", "?"}:
+        return alphabet
+    if token.startswith("[") and token.endswith("]"):
+        return {char for char in alphabet if fnmatch.fnmatchcase(char, token)}
+    return {token}
 
 
 def _patterns_overlap(left: str, right: str) -> bool:
-    """Conservatively detect whether two supported scope globs can share a path."""
+    """Decide whether two supported shell globs share a concrete path.
 
-    return any(
-        (
-            fnmatch.fnmatchcase(_glob_witness(left), right),
-            fnmatch.fnmatchcase(_glob_witness(right), left),
-            fnmatch.fnmatchcase(left, right),
-            fnmatch.fnmatchcase(right, left),
-        )
-    )
+    ``*`` is modeled as the same zero-or-more-character NFA used by
+    :mod:`fnmatch`. Product construction searches for an accepting state, so
+    intersections such as ``src/*/foo`` versus ``src/bar/*`` are detected
+    without relying on a guessed witness.
+    """
+
+    left_tokens = _glob_tokens(left)
+    right_tokens = _glob_tokens(right)
+    alphabet = {chr(code) for code in range(32, 127)}
+    alphabet.update(left)
+    alphabet.update(right)
+    left_chars = [_token_characters(token, alphabet) for token in left_tokens]
+    right_chars = [_token_characters(token, alphabet) for token in right_tokens]
+
+    pending = [(0, 0)]
+    visited: set[tuple[int, int]] = set()
+    while pending:
+        left_index, right_index = pending.pop()
+        state = (left_index, right_index)
+        if state in visited:
+            continue
+        visited.add(state)
+        if left_index == len(left_tokens) and right_index == len(right_tokens):
+            return True
+        if left_index < len(left_tokens) and left_tokens[left_index] == "*":
+            pending.append((left_index + 1, right_index))
+        if right_index < len(right_tokens) and right_tokens[right_index] == "*":
+            pending.append((left_index, right_index + 1))
+        if left_index == len(left_tokens) or right_index == len(right_tokens):
+            continue
+        if left_chars[left_index] & right_chars[right_index]:
+            next_left = (
+                left_index if left_tokens[left_index] == "*" else left_index + 1
+            )
+            next_right = (
+                right_index if right_tokens[right_index] == "*" else right_index + 1
+            )
+            pending.append((next_left, next_right))
+    return False
 
 
 def _manifest_error(scope_json: Path, message: str) -> tuple[int, None]:
@@ -495,10 +545,19 @@ def _planned_paths(plan: Path) -> tuple[int, list[str]]:
         match = re.search(r"\b(?:Create|Modify|Delete):\s*(.*)$", line)
         if not match:
             continue
-        paths = re.findall(r"`([^`]+)`", match.group(1))
+        declaration = match.group(1)
+        paths = re.findall(r"`([^`]+)`", declaration)
         if not paths:
             print(
                 f"ERROR: planned-file declaration at {plan}:{lineno} must use backticks",
+                file=sys.stderr,
+            )
+            return EXIT_MALFORMED, []
+        remainder = re.sub(r"`[^`]+`", "", declaration)
+        if remainder.strip(" \t,;"):
+            print(
+                f"ERROR: planned-file declaration at {plan}:{lineno} contains "
+                "content outside backtick-wrapped paths",
                 file=sys.stderr,
             )
             return EXIT_MALFORMED, []
