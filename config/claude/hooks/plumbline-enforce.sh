@@ -104,17 +104,23 @@ esac
 #   3. PATH
 #   4. CLAUDE_HOME/bin, then HOME/.claude/bin (normal user install)
 #
-# Do not use `readlink -f`: macOS does not provide the GNU option. Canonicalize
-# the containing directory with pwd -P and append the basename instead.
+# Do not use `readlink -f`: macOS does not provide the GNU option. Python is
+# already a required runtime dependency, so use Path.resolve to follow both
+# directory and executable symlinks before evaluating the trust boundary.
 canonical_executable() {
-  local candidate="$1" dir base physical_dir
+  local candidate="$1"
   [ -f "$candidate" ] && [ -x "$candidate" ] || return 1
-  dir="$(dirname "$candidate")" || return 1
-  base="$(basename "$candidate")" || return 1
-  physical_dir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
-  [ -n "$physical_dir" ] || return 1
-  printf '%s/%s\n' "$physical_dir" "$base"
+  python3 - "$candidate" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+try:
+    print(Path(sys.argv[1]).resolve(strict=True))
+except OSError:
+    raise SystemExit(1)
+PY
 }
+
+repo_physical="$(cd "$repo" 2>/dev/null && pwd -P)" || repo_physical="$repo"
 
 project_scope_runtime_immutable() {
   local runtime=(
@@ -124,6 +130,15 @@ project_scope_runtime_immutable() {
   )
   git -C "$repo" ls-files --error-unmatch -- "${runtime[@]}" >/dev/null 2>&1 \
     && git -C "$repo" diff --quiet HEAD -- "${runtime[@]}" >/dev/null 2>&1
+}
+
+scope_checker_candidate_acceptable() {
+  local name="$1" found="$2"
+  [ "$name" = "plumbline-scope-check" ] || return 0
+  case "$found" in
+    "$repo_physical"/*) project_scope_runtime_immutable ;;
+    *) return 0 ;;
+  esac
 }
 
 resolved_cli_path=""
@@ -136,6 +151,9 @@ resolve_cli() {
   if [ -n "${PLUMBLINE_BIN_DIR:-}" ]; then
     candidate="$PLUMBLINE_BIN_DIR/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
+    if [ -n "$found" ] && ! scope_checker_candidate_acceptable "$name" "$found"; then
+      found=""
+    fi
     if [ -n "$found" ]; then
       resolved_cli_path="$found"
       resolved_cli_source="PLUMBLINE_BIN_DIR"
@@ -145,8 +163,7 @@ resolve_cli() {
   if [ -z "$resolved_cli_path" ]; then
     candidate="$repo/config/claude/bin/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
-    if [ "$name" = "plumbline-scope-check" ] && [ -n "$found" ] \
-      && ! project_scope_runtime_immutable; then
+    if [ -n "$found" ] && ! scope_checker_candidate_acceptable "$name" "$found"; then
       found=""
     fi
     if [ -n "$found" ]; then
@@ -161,6 +178,9 @@ resolve_cli() {
     if [ -n "$candidate" ]; then
       found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     fi
+    if [ -n "$found" ] && ! scope_checker_candidate_acceptable "$name" "$found"; then
+      found=""
+    fi
     if [ -n "$found" ]; then
       resolved_cli_path="$found"
       resolved_cli_source="PATH"
@@ -170,6 +190,9 @@ resolve_cli() {
   if [ -z "$resolved_cli_path" ] && [ -n "${CLAUDE_HOME:-}" ]; then
     user_bin="$CLAUDE_HOME/bin"
     found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    if [ -n "$found" ] && ! scope_checker_candidate_acceptable "$name" "$found"; then
+      found=""
+    fi
     if [ -n "$found" ]; then
       resolved_cli_path="$found"
       resolved_cli_source="CLAUDE_HOME/bin"
@@ -179,6 +202,9 @@ resolve_cli() {
   if [ -z "$resolved_cli_path" ] && [ -n "${HOME:-}" ]; then
     user_bin="$HOME/.claude/bin"
     found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    if [ -n "$found" ] && ! scope_checker_candidate_acceptable "$name" "$found"; then
+      found=""
+    fi
     if [ -n "$found" ]; then
       resolved_cli_path="$found"
       resolved_cli_source="HOME/.claude/bin"

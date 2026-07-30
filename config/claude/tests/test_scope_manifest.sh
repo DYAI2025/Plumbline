@@ -682,6 +682,45 @@ EOF
 assert_contains "modified project checker is skipped and immutable checker catches drift" \
   "$MUTABLE_CHECKER_DENY" '"decision":"deny"'
 
+# A confirmed checker-runtime change remains implementable, but only while an
+# immutable checker outside the writable project authorizes the exact planned
+# target. This prevents the protection from making its own maintenance
+# impossible.
+CHECKER_MAINTENANCE="$WORK/checker-maintenance"
+cp -R "$BASE" "$CHECKER_MAINTENANCE"
+mkdir -p "$CHECKER_MAINTENANCE/config/claude/bin" \
+  "$CHECKER_MAINTENANCE/config/claude/lib"
+cp "$SCOPE_CHECK" \
+  "$CHECKER_MAINTENANCE/config/claude/bin/plumbline-scope-check"
+cp "$REPO_DIR/config/claude/lib/plumbline_python.sh" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope.py" \
+  "$CHECKER_MAINTENANCE/config/claude/lib/"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`config/claude/lib/plumbline_scope.py\`" \
+  >"$CHECKER_MAINTENANCE/docs/plans/2026-07-29-demo.md"
+python3 - "$CHECKER_MAINTENANCE/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("config/claude/lib/plumbline_scope.py")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+git -C "$CHECKER_MAINTENANCE" init -q
+git -C "$CHECKER_MAINTENANCE" add .
+git -C "$CHECKER_MAINTENANCE" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+CHECKER_MAINTENANCE_PASS="$(
+  CLAUDE_PROJECT_DIR="$CHECKER_MAINTENANCE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"config/claude/lib/plumbline_scope.py"}}
+EOF
+)"
+assert_eq "immutable external checker authorizes exact planned runtime maintenance" \
+  "" "$CHECKER_MAINTENANCE_PASS"
+
 NOTEBOOK_WRITE_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"NotebookEdit","tool_input":{"notebook_path":"src/demo/app.py"}}

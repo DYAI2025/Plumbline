@@ -381,6 +381,37 @@ assert_contains "PLUM-7 audit: scope CLI path is visible" "$HOOK_ERR" \
 assert_contains "PLUM-7 audit: explicit install source is visible" "$HOOK_ERR" \
   "source=PLUMBLINE_BIN_DIR"
 
+# A project-local checker reached through the explicit override is still inside
+# the governed write boundary. Mutating it must make resolution skip it and use
+# the immutable external installation, which then catches the real drift.
+mutable_explicit_repo="$(make_feature_repo mutableexplicit)"
+printf 'mutableexplicit' >"$mutable_explicit_repo/docs/context/.active-feature"
+printf '#!/usr/bin/env bash\nexit 0\n' \
+  >"$mutable_explicit_repo/config/claude/bin/plumbline-scope-check"
+mkdir -p "$mutable_explicit_repo/src/outside"
+printf 'violation\n' >"$mutable_explicit_repo/src/outside/file.py"
+run_hook_with_env "$mutable_explicit_repo" '{}' \
+  "PLUMBLINE_BIN_DIR=$mutable_explicit_repo/config/claude/bin" \
+  "PATH=$BIN_SRC:$PATH"
+assert_contains "project checker via PLUMBLINE_BIN_DIR cannot bypass scope after mutation" \
+  "$HOOK_OUT" "scope"
+assert_not_contains "mutable explicit checker is not accepted as the scope authority" \
+  "$HOOK_ERR" "plumbline-scope-check source=PLUMBLINE_BIN_DIR"
+
+# The same invariant applies when PATH resolves to the writable project.
+mutable_path_repo="$(make_feature_repo mutablepath)"
+printf 'mutablepath' >"$mutable_path_repo/docs/context/.active-feature"
+printf '#!/usr/bin/env bash\nexit 0\n' \
+  >"$mutable_path_repo/config/claude/bin/plumbline-scope-check"
+mkdir -p "$mutable_path_repo/src/outside"
+printf 'violation\n' >"$mutable_path_repo/src/outside/file.py"
+run_hook_with_env "$mutable_path_repo" '{}' \
+  "PATH=$mutable_path_repo/config/claude/bin:$PATH"
+assert_contains "project checker via PATH fails closed after mutation" \
+  "$HOOK_OUT" '"decision":"block"'
+assert_not_contains "mutable PATH checker is not accepted as the scope authority" \
+  "$HOOK_ERR" "plumbline-scope-check source=PATH"
+
 # Every CLI is resolved independently in the documented order. Deliberately
 # distribute the three executables across explicit-dir, repo-local, and PATH;
 # resolving one shared bin directory would fail this case.

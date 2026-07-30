@@ -87,7 +87,7 @@ feature = sys.argv[3]
 trusted = {Path(path).resolve() for path in sys.argv[4:]}
 if (
     not command
-    or any(char in command for char in ("\n", "\r", "`", "$", "{", "}", "*", "?", "[", "]", "~"))
+    or any(char in command for char in ("\n", "\r", chr(96), "$", "{", "}", "*", "?", "[", "]", "~"))
 ):
     raise SystemExit(1)
 lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
@@ -217,7 +217,25 @@ PY
 )" || manifest_kind="invalid"
 [ "$manifest_kind" = "legacy" ] && exit 0
 
+project_physical="$(cd "$PROJECT" 2>/dev/null && pwd -P)" || project_physical="$PROJECT"
+runtime_write=false
+case "$write_target" in
+  "$PROJECT"/config/claude/bin/plumbline-scope-check|\
+  "$PROJECT"/config/claude/bin/plumbline-scope-update|\
+  "$PROJECT"/config/claude/lib/plumbline_python.sh|\
+  "$PROJECT"/config/claude/lib/plumbline_scope.py|\
+  "$PROJECT"/config/claude/lib/plumbline_scope_update.py|\
+  config/claude/bin/plumbline-scope-check|\
+  config/claude/bin/plumbline-scope-update|\
+  config/claude/lib/plumbline_python.sh|\
+  config/claude/lib/plumbline_scope.py|\
+  config/claude/lib/plumbline_scope_update.py)
+    runtime_write=true
+    ;;
+esac
+
 checker=""
+checker_project_local=false
 for candidate in \
   "${PLUMBLINE_BIN_DIR:+$PLUMBLINE_BIN_DIR/plumbline-scope-check}" \
   "$PROJECT/config/claude/bin/plumbline-scope-check" \
@@ -226,8 +244,21 @@ for candidate in \
   "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/bin/plumbline-scope-check"
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
-    case "$candidate" in
-      "$PROJECT"/*)
+    resolved_candidate="$(
+      python3 - "$candidate" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+try:
+    print(Path(sys.argv[1]).resolve(strict=True))
+except OSError:
+    raise SystemExit(1)
+PY
+    )" || resolved_candidate=""
+    [ -n "$resolved_candidate" ] || continue
+    candidate_project_local=false
+    case "$resolved_candidate" in
+      "$project_physical"/*)
+        candidate_project_local=true
         checker_runtime=(
           config/claude/bin/plumbline-scope-check
           config/claude/lib/plumbline_python.sh
@@ -239,9 +270,14 @@ do
             "${checker_runtime[@]}" >/dev/null 2>&1; then
           continue
         fi
+        # Runtime maintenance must be authorized by a checker outside the
+        # writable project; otherwise the first approved edit would mutate the
+        # authority used for subsequent dispatches.
+        [ "$runtime_write" = true ] && continue
         ;;
     esac
-    checker="$candidate"
+    checker="$resolved_candidate"
+    checker_project_local="$candidate_project_local"
     break
   fi
 done
@@ -258,6 +294,9 @@ case "$tool_name" in
       exit 0
     fi
     checker_args+=(--write-target "$write_target")
+    if [ "$runtime_write" = true ] && [ "$checker_project_local" = false ]; then
+      checker_args+=(--allow-runtime-maintenance)
+    fi
     ;;
   Bash)
     if [ "$command_text" != "rm -f docs/context/.active-feature" ]; then
@@ -273,7 +312,7 @@ except ValueError:
 if (
     len(tokens) == 3
     and tokens[:2] == ["rm", "-f"]
-    and not any(char in tokens[2] for char in ("\n", "\r", "$", "`", "{", "}", "*", "?", "[", "]", "~"))
+    and not any(char in tokens[2] for char in ("\n", "\r", "$", chr(96), "{", "}", "*", "?", "[", "]", "~"))
 ):
     print(tokens[2])
 PY

@@ -661,6 +661,7 @@ def validate_manifest_artifacts(
     plan_text_override: str | None = None,
     test_command: str | None = None,
     delete_target: str | None = None,
+    allow_runtime_maintenance: bool = False,
 ) -> int:
     artifacts = manifest["artifacts"]
     canvas_rel = canvas_override or artifacts["canvas"]
@@ -795,7 +796,16 @@ def validate_manifest_artifacts(
             "config/claude/lib/plumbline_scope.py",
             "config/claude/lib/plumbline_scope_update.py",
         }
-        if target_rel in reserved:
+        runtime = {
+            "config/claude/bin/plumbline-scope-check",
+            "config/claude/bin/plumbline-scope-update",
+            "config/claude/lib/plumbline_python.sh",
+            "config/claude/lib/plumbline_scope.py",
+            "config/claude/lib/plumbline_scope_update.py",
+        }
+        if target_rel in reserved and not (
+            allow_runtime_maintenance and target_rel in runtime
+        ):
             print(
                 "ERROR: direct writes to canonical scope control artifacts are reserved for plumbline-scope-update",
                 file=sys.stderr,
@@ -959,6 +969,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-command", help="Bash test command, requiring an exact `Test:` plan declaration")
     parser.add_argument("--delete-target", help="Deletion target, requiring an exact `Delete:` plan declaration")
     parser.add_argument(
+        "--allow-runtime-maintenance",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--strict-gitignored",
         action="store_true",
         help="Also flag gitignored+untracked paths (default: exempted as tool artifacts, visibly logged)",
@@ -1010,6 +1025,7 @@ def main(argv: list[str] | None = None) -> int:
             write_target=args.write_target,
             test_command=args.test_command,
             delete_target=args.delete_target,
+            allow_runtime_maintenance=args.allow_runtime_maintenance,
         )
         if preflight_status != EXIT_PASS:
             return preflight_status
