@@ -114,7 +114,8 @@ plumbline-scope-check --repo . --feature <feature> --preflight
 ```
 
 Record confirmed changes with `plumbline-scope-update ... --confirmed`. Add
-`--planned-create`, `--planned-modify`, or `--planned-delete` when the same
+`--planned-create`, `--planned-modify`, `--planned-delete`, or `--planned-test`
+when the same
 confirmed decision revises the active plan; the updater validates the proposed
 plan and manifest together before replacing either artifact. Add
 `--replace-plan-declarations` for a confirmed replacement or narrowing instead

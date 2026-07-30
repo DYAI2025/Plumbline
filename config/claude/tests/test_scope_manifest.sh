@@ -65,6 +65,9 @@ EOF
 
 - Create: `src/demo/app.py`
 - Modify: `config/claude/tests/test_demo.sh`
+- Modify: `docs/scope/demo.scope.json`
+- Delete: `src/demo/old.py`
+- Test: `bash config/claude/tests/test_demo.sh`
 EOF
   python3 - "$repo/docs/scope/demo.scope.json" <<'PY'
 import hashlib
@@ -351,19 +354,17 @@ EOF
 assert_contains "opaque Bash writes fail closed even when artifacts are aligned" \
   "$ALIGNED_BASH_DENY" '"decision":"deny"'
 assert_contains "Bash denial explains exact target proof requirement" \
-  "$ALIGNED_BASH_DENY" "direct tracked repository test scripts"
+  "$ALIGNED_BASH_DENY" "not declared as a confirmed Test"
 
 mkdir -p "$BASE/config/claude/tests"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$BASE/config/claude/tests/test_demo.sh"
 chmod +x "$BASE/config/claude/tests/test_demo.sh"
-git -C "$BASE" init -q
-git -C "$BASE" add config/claude/tests/test_demo.sh
 TRACKED_TEST_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"bash config/claude/tests/test_demo.sh"}}
 EOF
 )"
-assert_eq "direct tracked repository test script passes after preflight" \
+assert_eq "confirmed project-native Test command passes after preflight" \
   "" "$TRACKED_TEST_PASS"
 
 MARKER_CLEANUP_PASS="$(
@@ -373,6 +374,22 @@ EOF
 )"
 assert_eq "exact active-feature cleanup command remains available" \
   "" "$MARKER_CLEANUP_PASS"
+
+PLANNED_DELETE_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f src/demo/old.py"}}
+EOF
+)"
+assert_eq "exact confirmed Delete target remains executable" \
+  "" "$PLANNED_DELETE_PASS"
+
+UNPLANNED_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f src/demo/unplanned.py"}}
+EOF
+)"
+assert_contains "undeclared deletion target is denied" \
+  "$UNPLANNED_DELETE_DENY" '"decision":"deny"'
 
 SCOPE_REPAIR_PASS="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
@@ -417,6 +434,14 @@ EOF
 )"
 assert_contains "trusted updater cannot repair a feature other than the active one" \
   "$INACTIVE_FEATURE_REPAIR_DENY" '"decision":"deny"'
+
+EXPANDED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo {--repo=/other/repo,--feature=inactive} --confirmed"}}
+EOF
+)"
+assert_contains "shell expansion syntax cannot alter validated updater arguments" \
+  "$EXPANDED_REPAIR_DENY" '"decision":"deny"'
 
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
@@ -512,6 +537,14 @@ EOF
 )"
 assert_eq "absolute in-repository target matching the plan is accepted" \
   "" "$ABSOLUTE_WRITE_PASS"
+
+MANIFEST_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "direct manifest writes are reserved for confirmed updater" \
+  "$MANIFEST_WRITE_DENY" '"decision":"deny"'
 
 NOTEBOOK_WRITE_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'

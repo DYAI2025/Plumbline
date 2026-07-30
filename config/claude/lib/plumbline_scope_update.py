@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--planned-create", action="append", default=[])
     parser.add_argument("--planned-modify", action="append", default=[])
     parser.add_argument("--planned-delete", action="append", default=[])
+    parser.add_argument("--planned-test", action="append", default=[])
     parser.add_argument(
         "--replace-plan-declarations",
         action="store_true",
@@ -125,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
             ("Create", args.planned_create),
             ("Modify", args.planned_modify),
             ("Delete", args.planned_delete),
+            ("Test", args.planned_test),
         )
         for path in paths
     ]
@@ -151,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
             base_plan_text = "\n".join(
                 line
                 for line in original_plan_text.splitlines()
-                if not re.search(r"\b(?:Create|Modify|Delete):\s*", line)
+                if not re.search(r"\b(?:Create|Modify|Delete|Test):\s*", line)
             )
             if original_plan_text.endswith("\n"):
                 base_plan_text += "\n"

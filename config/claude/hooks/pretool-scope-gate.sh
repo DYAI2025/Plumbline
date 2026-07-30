@@ -84,7 +84,10 @@ command = sys.argv[1]
 project = Path(sys.argv[2]).resolve()
 feature = sys.argv[3]
 trusted = {Path(path).resolve() for path in sys.argv[4:]}
-if not command or "\n" in command or "\r" in command or "`" in command or "$(" in command:
+if (
+    not command
+    or any(char in command for char in ("\n", "\r", "`", "$", "{", "}", "*", "?", "[", "]", "~"))
+):
     raise SystemExit(1)
 lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
 lexer.whitespace_split = True
@@ -179,64 +182,6 @@ PY
 )" || manifest_kind="invalid"
 [ "$manifest_kind" = "legacy" ] && exit 0
 
-# A shell command can hide arbitrary writes. Permit only two constrained,
-# workflow-required shapes: a direct tracked repository test script (whose
-# source remains subject to the exact plan gate) or deletion of the active
-# feature marker after completion. Both still continue through artifact
-# preflight below; composition, redirection and untracked scripts fail closed.
-if [ "$tool_name" = "Bash" ]; then
-  if ! python3 - "$command_text" "$PROJECT" <<'PY'
-import shlex
-import shutil
-import subprocess
-import sys
-from pathlib import Path
-
-command = sys.argv[1]
-project = Path(sys.argv[2]).resolve()
-if not command or any(item in command for item in ("\n", "\r", "`", "$(")):
-    raise SystemExit(1)
-lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
-lexer.whitespace_split = True
-lexer.commenters = ""
-try:
-    tokens = list(lexer)
-except ValueError:
-    raise SystemExit(1)
-operators = set(";&|<>()")
-if any(token and set(token) <= operators for token in tokens):
-    raise SystemExit(1)
-if tokens == ["rm", "-f", "docs/context/.active-feature"]:
-    raise SystemExit(0)
-if len(tokens) < 2 or Path(tokens[0]).name not in {"bash", "sh"}:
-    raise SystemExit(1)
-shell = shutil.which(tokens[0])
-if shell is None or Path(shell).resolve().name not in {"bash", "sh"}:
-    raise SystemExit(1)
-script = Path(tokens[1])
-if not script.is_absolute():
-    script = project / script
-try:
-    script = script.resolve(strict=True)
-    relative = script.relative_to(project).as_posix()
-except (OSError, ValueError):
-    raise SystemExit(1)
-if not relative.startswith("config/claude/tests/") or script.suffix != ".sh":
-    raise SystemExit(1)
-tracked = subprocess.run(
-    ["git", "-C", str(project), "ls-files", "--error-unmatch", "--", relative],
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL,
-    check=False,
-)
-raise SystemExit(0 if tracked.returncode == 0 else 1)
-PY
-  then
-    printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: Bash is limited to direct tracked repository test scripts, active-feature cleanup, or the trusted confirmed updater"}'
-    exit 0
-  fi
-fi
-
 checker=""
 for candidate in \
   "${PLUMBLINE_BIN_DIR:+$PLUMBLINE_BIN_DIR/plumbline-scope-check}" \
@@ -263,6 +208,32 @@ case "$tool_name" in
       exit 0
     fi
     checker_args+=(--write-target "$write_target")
+    ;;
+  Bash)
+    if [ "$command_text" != "rm -f docs/context/.active-feature" ]; then
+      delete_target="$(
+        python3 - "$command_text" <<'PY' 2>/dev/null
+import shlex
+import sys
+
+try:
+    tokens = shlex.split(sys.argv[1], posix=True)
+except ValueError:
+    raise SystemExit(1)
+if (
+    len(tokens) == 3
+    and tokens[:2] == ["rm", "-f"]
+    and not any(char in tokens[2] for char in ("\n", "\r", "$", "`", "{", "}", "*", "?", "[", "]", "~"))
+):
+    print(tokens[2])
+PY
+      )"
+      if [ -n "$delete_target" ]; then
+        checker_args+=(--delete-target "$delete_target")
+      else
+        checker_args+=(--test-command "$command_text")
+      fi
+    fi
     ;;
 esac
 output="$("$checker" "${checker_args[@]}" 2>&1)"

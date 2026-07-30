@@ -616,6 +616,36 @@ def _planned_paths(
     return EXIT_PASS, planned
 
 
+def _declared_values(
+    plan: Path, label: str, *, text_override: str | None = None
+) -> tuple[int, list[str]]:
+    try:
+        lines = (
+            text_override.splitlines()
+            if text_override is not None
+            else plan.read_text(encoding="utf-8").splitlines()
+        )
+    except (OSError, UnicodeError) as exc:
+        print(f"ERROR: cannot read implementation plan {plan}: {exc}", file=sys.stderr)
+        return EXIT_MALFORMED, []
+    values: list[str] = []
+    for lineno, line in enumerate(lines, start=1):
+        match = re.search(rf"\b{re.escape(label)}:\s*(.*)$", line)
+        if not match:
+            continue
+        declaration = match.group(1)
+        wrapped = re.findall(r"`([^`]+)`", declaration)
+        remainder = re.sub(r"`[^`]+`", "", declaration)
+        if not wrapped or remainder.strip(" \t,;"):
+            print(
+                f"ERROR: {label} declaration at {plan}:{lineno} must contain only backtick-wrapped values",
+                file=sys.stderr,
+            )
+            return EXIT_MALFORMED, []
+        values.extend(wrapped)
+    return EXIT_PASS, values
+
+
 def validate_manifest_artifacts(
     repo: Path,
     feature: str,
@@ -625,6 +655,8 @@ def validate_manifest_artifacts(
     plan_override: str | None = None,
     write_target: str | None = None,
     plan_text_override: str | None = None,
+    test_command: str | None = None,
+    delete_target: str | None = None,
 ) -> int:
     artifacts = manifest["artifacts"]
     canvas_rel = canvas_override or artifacts["canvas"]
@@ -683,6 +715,29 @@ def validate_manifest_artifacts(
     plan_status, planned = _planned_paths(plan, text_override=plan_text_override)
     if plan_status != EXIT_PASS:
         return plan_status
+    test_status, test_commands = _declared_values(
+        plan, "Test", text_override=plan_text_override
+    )
+    if test_status != EXIT_PASS:
+        return test_status
+    if test_command is not None and test_command not in test_commands:
+        print(
+            f"ERROR: Bash command is not declared as a confirmed Test in the implementation plan: {test_command}",
+            file=sys.stderr,
+        )
+        return EXIT_VIOLATION
+    if delete_target is not None:
+        delete_status, delete_paths = _declared_values(
+            plan, "Delete", text_override=plan_text_override
+        )
+        if delete_status != EXIT_PASS:
+            return delete_status
+        if delete_target not in delete_paths:
+            print(
+                f"ERROR: deletion target is not declared with Delete in the implementation plan: {delete_target}",
+                file=sys.stderr,
+            )
+            return EXIT_VIOLATION
     if write_target is not None:
         target = Path(write_target)
         if not target.is_absolute():
@@ -692,6 +747,13 @@ def validate_manifest_artifacts(
         except (OSError, ValueError):
             print(
                 f"ERROR: write target resolves outside repository: {write_target}",
+                file=sys.stderr,
+            )
+            return EXIT_VIOLATION
+        manifest_rel = f"docs/scope/{feature}.scope.json"
+        if target_rel == manifest_rel:
+            print(
+                "ERROR: direct writes to the canonical scope manifest are reserved for plumbline-scope-update",
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
@@ -834,6 +896,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--write-target",
         help="Concrete Write/Edit target, which must be declared exactly in the implementation plan",
     )
+    parser.add_argument("--test-command", help="Bash test command, requiring an exact `Test:` plan declaration")
+    parser.add_argument("--delete-target", help="Deletion target, requiring an exact `Delete:` plan declaration")
     parser.add_argument(
         "--strict-gitignored",
         action="store_true",
@@ -851,13 +915,22 @@ def main(argv: list[str] | None = None) -> int:
         and not args.plan
         and not args.canvas
         and not args.write_target
+        and not args.test_command
+        and not args.delete_target
     ):
         print(
             "ERROR: provide --changed-files and/or --preflight/--plan/--canvas",
             file=sys.stderr,
         )
         return EXIT_MISSING
-    if args.preflight or args.plan or args.canvas or args.write_target:
+    if (
+        args.preflight
+        or args.plan
+        or args.canvas
+        or args.write_target
+        or args.test_command
+        or args.delete_target
+    ):
         manifest_status, manifest = load_scope_manifest(repo, args.feature)
         if manifest_status == EXIT_MISSING:
             print(
@@ -875,6 +948,8 @@ def main(argv: list[str] | None = None) -> int:
             canvas_override=args.canvas,
             plan_override=args.plan,
             write_target=args.write_target,
+            test_command=args.test_command,
+            delete_target=args.delete_target,
         )
         if preflight_status != EXIT_PASS:
             return preflight_status
