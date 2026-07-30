@@ -25,7 +25,7 @@ else
 fi
 
 case "$tool_name" in
-  Write|Edit|MultiEdit|NotebookEdit) ;;
+  Bash|Write|Edit|MultiEdit|NotebookEdit) ;;
   Task)
     role="$(printf '%s' "$subagent_type" | tr '[:upper:]' '[:lower:]')"
     case "$role" in
@@ -43,10 +43,10 @@ feature="$(tr -d '[:space:]' <"$marker" 2>/dev/null || true)"
 manifest="$PROJECT/docs/scope/$feature.scope.json"
 [ -f "$manifest" ] || exit 0
 # A legacy `allowed_change_scope` JSON file is not a PLUM-12 versioned manifest.
-# Keep that migration boundary explicit (PLUM-10) instead of unexpectedly
-# activating a new pre-write contract for old features.
-grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*1([[:space:]}]|,)' \
-  "$manifest" 2>/dev/null || exit 0
+# The presence of the canonical key activates the Python validator, which parses
+# and verifies its value. Do not use a line-oriented value regex: valid JSON may
+# place the value on a later line.
+grep -Fq '"schema_version"' "$manifest" 2>/dev/null || exit 0
 
 checker=""
 for candidate in \

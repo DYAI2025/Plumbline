@@ -179,6 +179,34 @@ def _scope_digest(scope: dict[str, list[str]]) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def _glob_witness(pattern: str) -> str:
+    """Return one concrete path represented by a supported shell-style glob."""
+
+    def class_witness(match: re.Match[str]) -> str:
+        body = match.group(0)[1:-1]
+        if body.startswith(("!", "^")):
+            excluded = set(body[1:])
+            return next((candidate for candidate in "xaz09_" if candidate not in excluded), "x")
+        return body[0] if body else "x"
+
+    witness = re.sub(r"\[[^\]]*\]", class_witness, pattern)
+    witness = witness.replace("**", "x").replace("*", "x").replace("?", "x")
+    return witness
+
+
+def _patterns_overlap(left: str, right: str) -> bool:
+    """Conservatively detect whether two supported scope globs can share a path."""
+
+    return any(
+        (
+            fnmatch.fnmatchcase(_glob_witness(left), right),
+            fnmatch.fnmatchcase(_glob_witness(right), left),
+            fnmatch.fnmatchcase(left, right),
+            fnmatch.fnmatchcase(right, left),
+        )
+    )
+
+
 def _manifest_error(scope_json: Path, message: str) -> tuple[int, None]:
     print(f"ERROR: invalid canonical scope manifest {scope_json}: {message}", file=sys.stderr)
     return EXIT_MALFORMED, None
@@ -213,12 +241,14 @@ def _validate_scope_mapping(
         broad = _reject_broad(patterns)
         if broad is not None:
             return broad, None
-    overlap = sorted(set(product) & set(governance))
-    if overlap:
-        return _manifest_error(
-            scope_json,
-            f"path is classified as both product and governance: {overlap[0]}",
-        )
+    for product_pattern in product:
+        for governance_pattern in governance:
+            if _patterns_overlap(product_pattern, governance_pattern):
+                return _manifest_error(
+                    scope_json,
+                    "paths overlap across product and governance: "
+                    f"{product_pattern} <> {governance_pattern}",
+                )
     return EXIT_PASS, {"product": list(product), "governance": list(governance)}
 
 

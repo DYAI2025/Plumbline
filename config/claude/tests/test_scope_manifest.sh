@@ -153,8 +153,21 @@ data = json.load(open(path, encoding="utf-8"))
 data["scope"]["governance"].append("src/demo/**")
 json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
 PY
-assert_output_contains "contradictory product/governance path is rejected" "both product and governance" \
+assert_output_contains "contradictory product/governance path is rejected" "overlap across product and governance" \
   "$SCOPE_CHECK" --repo "$CONTRADICTORY" --feature demo --preflight
+
+# Different glob strings may still classify the same path twice.
+INTERSECTING="$WORK/intersecting"
+cp -R "$BASE" "$INTERSECTING"
+python3 - "$INTERSECTING/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("src/demo/private/**")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "intersecting product/governance globs are rejected" "src/demo/private/**" \
+  "$SCOPE_CHECK" --repo "$INTERSECTING" --feature demo --preflight
 
 # Every revision must retain complete decision provenance.
 NO_PROVENANCE="$WORK/no-provenance"
@@ -203,6 +216,32 @@ EOF
 assert_contains "pre-write hook denies a drifted plan" "$HOOK_DENY" '"decision":"deny"'
 assert_contains "pre-write hook names the out-of-scope planned path" "$HOOK_DENY" "CLAUDE.md"
 
+BASH_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"python3 build.py"}}
+EOF
+)"
+assert_contains "Bash write path runs the pre-write scope gate" "$BASH_DENY" '"decision":"deny"'
+
+MULTILINE_SCHEMA="$WORK/multiline-schema"
+cp -R "$MISSING" "$MULTILINE_SCHEMA"
+python3 - "$MULTILINE_SCHEMA/docs/scope/demo.scope.json" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(
+    path.read_text(encoding="utf-8").replace('"schema_version": 1', '"schema_version":\n  1'),
+    encoding="utf-8",
+)
+PY
+MULTILINE_DENY="$(
+  CLAUDE_PROJECT_DIR="$MULTILINE_SCHEMA" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "multiline schema_version still activates the pre-write gate" \
+  "$MULTILINE_DENY" '"decision":"deny"'
+
 HOOK_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
@@ -231,6 +270,9 @@ CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
   --no-agents --no-commands --no-skills --no-bin >/dev/null
 assert_eq "installer registers canonical scope preflight exactly once" "1" \
   "$(jq '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
+    "$INSTALL_HOME/settings.json")"
+assert_eq "installer registers the scope gate for Bash writes" "1" \
+  "$(jq '[.hooks.PreToolUse[]? | select(.matcher | split("|") | index("Bash")) | .hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
     "$INSTALL_HOME/settings.json")"
 CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
   --no-agents --no-commands --no-skills --no-bin >/dev/null

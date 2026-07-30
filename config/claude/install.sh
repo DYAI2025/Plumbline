@@ -543,7 +543,7 @@ register_pretool_scope_hook() {
   if jq --arg cmd "$cmd" '
     .hooks //= {} |
     .hooks.PreToolUse //= [] |
-    .hooks.PreToolUse += [ { "matcher": "Task|Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ] } ]
+    .hooks.PreToolUse += [ { "matcher": "Bash|Task|Write|Edit|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ] } ]
   ' "$settings" > "$tmp"; then
     mv "$tmp" "$settings"
     echo "registered pretool-scope-hook in $settings"
