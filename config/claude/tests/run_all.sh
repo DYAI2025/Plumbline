@@ -133,6 +133,9 @@ bash config/claude/tests/test_runtime_hygiene.sh || mark_fail
 stage "evidence-target binding tests (PLUM-13)"
 bash config/claude/tests/test_evidence_target.sh || mark_fail
 
+stage "remote-state watcher tests (PLUM-14)"
+bash config/claude/tests/test_remote_state_watch.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 
@@ -216,6 +219,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     config/claude/bin/plumbline-plan-check \
     config/claude/bin/plumbline-reality-check \
     config/claude/bin/plumbline-redact \
+    config/claude/bin/plumbline-remote-watch \
     config/claude/bin/plumbline-runtime-hygiene \
     config/claude/bin/plumbline-scope-check \
     config/claude/hooks/*.sh \

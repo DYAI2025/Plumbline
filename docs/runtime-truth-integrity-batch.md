@@ -377,3 +377,98 @@ the real CLI, both the pilot's mismatch and its correctly-bound twin.
   result — would be the next class up, and is not built here;
 - adoption is opt-in per feature, so an undeclared critical AC is still unbound. The
   gate cannot know which criteria are critical; that judgement stays human.
+
+## PLUM-14 — a documented draft / no-merge state was not enforced remotely
+
+**Status: reproduced (absence of any remote view, verified by inspection); fixed.**
+
+### Reproduction
+
+Again a *missing* capability, so verified by inspection and then by demonstration.
+Nothing under `config/claude/{lib,bin,hooks}` read any remote or PR state: the run
+ledger records gates and artifact hashes — so a human gate whose artifact changed is
+caught — but a PR merged, force-pushed or re-pointed **under an active run** left no
+trace at all. The pilot: PR #26 was a draft, explicitly not cleared for merge or
+review, and was merged through GitHub anyway; Plumbline noticed only afterwards, by
+hand.
+
+The 2026-07-08 C3 rule already added a *resume-time* ground-truth cross-check. That is
+a different moment: it reconciles a stale ledger when a run restarts, and cannot notice
+a merge that lands mid-run.
+
+### Root cause
+
+Plumbline controlled local agent and hook paths and had no remote-state watcher and no
+technical merge-policy integration. A stop gate that exists only in prose has no effect
+on a remote merge button.
+
+### Implementation
+
+`config/claude/lib/plumbline_remote.py` + `config/claude/bin/plumbline-remote-watch`:
+
+- `snapshot` records what the run expects: PR number, head/base refs and SHAs, the
+  draft flag, the PR state — and whether the head was **already** contained in the base.
+- `verify` classifies every change as `REMOTE_STATE_CHANGED: kind=…` for `merged`,
+  `force-push`, `base-advanced`, `base-changed`, `draft-changed`, `pr-state-changed`,
+  `head-gone`, `base-gone`, and exits **3**.
+- **Merge and force-push are read from git containment**, not from forge metadata, so
+  they are caught even when the PR still reports OPEN (asserted).
+- The audit names the account and mechanism **as reported by the remote** and states
+  plainly that it does not infer whether a person or a program acted (AC-5). The words
+  "human" and "automation" are asserted absent from the output.
+- `publish-status --state pending|success|failure` publishes the run's merge gate as a
+  forge check (AC-4); `--dry-run` prints the exact request and crosses no boundary.
+
+Boundary discipline, per the repo's injectable-seam invariant: the forge half has a
+test seam (`--pr-state-file`) **and** a paired real entrypoint (`gh pr view --json`)
+gated OFF by default behind `PLUMBLINE_REMOTE_LIVE=1`. With neither, `verify`
+**refuses** (exit 2) instead of checking only the git half and reporting success. A
+`gh` failure is classified, never a fallback to "unchanged".
+
+Wiring: `config/claude/commands/agileteam.md` documents snapshot/verify beside the C3
+delivery-gate rules, where the resume-time cross-check already lives.
+
+### A design defect the tests caught
+
+The first implementation treated "the head is contained in the base" as the merge
+signal. After a merge is reviewed and re-snapshotted the head *is* legitimately
+contained in the base, so `verify` could never clear — the run would block forever
+(`after explicit re-evaluation verify passes: expected '0', got '3'`). Merge detection
+is now a **transition** check against `head_in_base` recorded at snapshot time.
+
+That fix introduces its own risk — a blind spot for the *next* event — so the suite
+carries falsifiers for exactly that: after a reviewed merge and a fresh snapshot, a
+further base advance and a subsequent force-push both still block.
+
+### Regression test + counter-check
+
+`config/claude/tests/test_remote_state_watch.sh` — 60 assertions, registered in
+`run_all.sh`; the new wrapper added to the shellcheck list. All four AC-6 events are
+exercised against **real** git remotes (a bare repo plus a second clone that merges,
+force-pushes and advances the base). Pre-implementation: 49 of 55 failed (exit 127).
+
+The load-bearing controls:
+
+- a **counter-based falsifier** for the live path: with `PLUMBLINE_REMOTE_LIVE=1` and a
+  counting `gh` stub, the forge CLI must actually be invoked exactly once and the
+  invocation must request `isDraft` — an outcome assertion alone would still pass if
+  the wiring were reverted to the seam;
+- the gate is proven **OFF by default** (no seam, no gate ⇒ exit 2, and the output must
+  not claim verification);
+- an unchanged remote must **not** be reported as changed;
+- `verify` without a snapshot fails closed rather than passing by absence.
+
+### Evidence ceiling (PLUM-14)
+
+`integration-real` for the git-observable half — merge, force-push, base advance and
+base re-point are measured against real git remotes. The forge half is
+`integration-real` over an injected seam plus a **wiring-proven** (counter-falsified)
+real entrypoint; the ticket's `real-boundary-smoke` target is **not** reached, and this
+is not claimed: no test in this batch talks to api.github.com. Concretely not covered:
+
+- a live `gh pr view` against a real GitHub PR, and a live `publish-status` write;
+- AC-4's *enforcement* half — publishing a check does not make it **required**; branch
+  protection ("require the `plumbline/no-merge-gate` status") is a repository setting
+  the watcher cannot set for you. Without it, the published status is advisory;
+- the snapshot lives in `docs/context/`, so it inherits the same trust boundary as the
+  active-feature marker: an actor who can rewrite the snapshot can hide a transition.

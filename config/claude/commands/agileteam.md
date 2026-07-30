@@ -342,6 +342,29 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   not a RED product state — reconcile the matrix first, then resume. (Measured failure
   2026-07-08: PR merged+deployed with no ledger event; resume misclassified the base
   feature as undeployed.)
+  **Remote-state watch (PLUM-14) — a documented no-merge state must be enforced, not
+  only written down.** The cross-check above is a *resume-time* reconciliation; it does
+  not notice a merge that lands mid-run. Once a PR exists for the run, snapshot the
+  expected remote state and re-verify it before each further write phase:
+
+  ```bash
+  config/claude/bin/plumbline-remote-watch snapshot --repo <repo> --feature <slug> \
+    --pr <n> --base <base-branch>          # needs PLUMBLINE_REMOTE_LIVE=1 (default OFF)
+  config/claude/bin/plumbline-remote-watch verify  --repo <repo> --feature <slug>
+  ```
+
+  `verify` exits **3** with `REMOTE_STATE_CHANGED: kind=…` for an unexpected `merged`,
+  `force-push`, `base-advanced`, `base-changed`, `draft-changed` or `pr-state-changed`,
+  and names the account and mechanism the remote reports **without** inferring whether a
+  person or an automation acted. Merge and force-push come from git containment, so they
+  are caught even when the forge metadata still says OPEN. The block persists until the
+  run is re-evaluated and a fresh `snapshot` records the reviewed state; a *further*
+  change after that still blocks. With no snapshot, `verify` fails closed (exit 2) rather
+  than passing by absence — and with neither the live gate nor an injected
+  `--pr-state-file` it refuses instead of checking only the git half.
+  Optionally publish the run's merge gate as a forge check with
+  `publish-status --state pending|success|failure` (`--dry-run` prints the exact request
+  and crosses no boundary).
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
 - Identify the **target repo**. If the change is non-trivial and you are on a default
