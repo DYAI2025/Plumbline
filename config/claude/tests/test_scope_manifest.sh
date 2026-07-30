@@ -281,6 +281,31 @@ assert_eq "scope update appends provenance revision" "2" \
   "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["provenance"]))' \
     "$UPDATE/docs/scope/demo.scope.json")"
 
+# The same confirmed updater can revise the active plan and record provenance
+# in one validated operation, avoiding a deadlock caused by exact target checks.
+assert_exit "confirmed updater can add a newly approved planned file" 0 \
+  "$SCOPE_UPDATE" --repo "$UPDATE" --feature demo \
+    --product-path 'src/demo/**' \
+    --governance-path 'CLAUDE.md' \
+    --governance-path 'docs/canvas/demo.canvas.md' \
+    --governance-path 'docs/plans/2026-07-29-demo.md' \
+    --governance-path 'docs/scope/demo.scope.json' \
+    --planned-create 'src/demo/new.py' \
+    --origin 'jira:PLUM-12' --decision-maker 'test-user' \
+    --decided-at '2026-07-29T21:30:00+00:00' \
+    --rationale 'User confirmed the new implementation file' --confirmed
+assert_exit "joint plan/manifest revision remains aligned" 0 \
+  "$SCOPE_CHECK" --repo "$UPDATE" --feature demo --preflight
+assert_eq "plan repair records a provenance revision" "3" \
+  "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["provenance"]))' \
+    "$UPDATE/docs/scope/demo.scope.json")"
+UPDATED_PLAN_TARGET_PASS="$(
+  CLAUDE_PROJECT_DIR="$UPDATE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Write","tool_input":{"file_path":"src/demo/new.py"}}
+EOF
+)"
+assert_eq "newly confirmed planned target passes the hook" "" "$UPDATED_PLAN_TARGET_PASS"
+
 # Integration-real boundary: an active feature with a manifest is validated by
 # the PreToolUse hook before the first write-capable dispatch.
 HOOK_REPO="$WORK/hook"

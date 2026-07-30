@@ -29,6 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--governance-path", action="append", default=[])
     parser.add_argument("--canvas")
     parser.add_argument("--plan")
+    parser.add_argument("--planned-create", action="append", default=[])
+    parser.add_argument("--planned-modify", action="append", default=[])
+    parser.add_argument("--planned-delete", action="append", default=[])
     parser.add_argument("--origin", required=True)
     parser.add_argument("--decision-maker", required=True)
     parser.add_argument("--decided-at", required=True)
@@ -51,6 +54,22 @@ def _atomic_json_write(path: Path, data: dict[str, object]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2)
             handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _atomic_text_write(path: Path, text: str) -> None:
+    fd, temporary_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
@@ -94,9 +113,44 @@ def main(argv: list[str] | None = None) -> int:
         "product": list(args.product_path),
         "governance": list(args.governance_path),
     }
-    if existing is not None and existing["scope"] == scope:
+    plan_additions = [
+        (action, path)
+        for action, paths in (
+            ("Create", args.planned_create),
+            ("Modify", args.planned_modify),
+            ("Delete", args.planned_delete),
+        )
+        for path in paths
+    ]
+    if existing is not None and existing["scope"] == scope and not plan_additions:
         print("ERROR: proposed scope is unchanged; no provenance revision written")
         return EXIT_MALFORMED
+
+    try:
+        plan_path = (repo / str(artifacts["plan"])).resolve()
+        plan_path.relative_to(repo)
+    except (OSError, ValueError):
+        print("ERROR: implementation plan resolves outside repository")
+        return EXIT_MALFORMED
+    original_plan_text: str | None = None
+    proposed_plan_text: str | None = None
+    if plan_additions:
+        try:
+            original_plan_text = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            print(f"ERROR: cannot read implementation plan {plan_path}: {exc}")
+            return EXIT_MALFORMED
+        separator = "" if original_plan_text.endswith("\n") else "\n"
+        declarations = "\n".join(
+            f"- {action}: `{path}`" for action, path in plan_additions
+        )
+        proposed_plan_text = (
+            original_plan_text
+            + separator
+            + "\n## Confirmed plan revision\n\n"
+            + declarations
+            + "\n"
+        )
 
     provenance.append(
         {
@@ -123,12 +177,26 @@ def main(argv: list[str] | None = None) -> int:
     if validation_status != EXIT_PASS or normalized is None:
         return validation_status
     artifact_status = validate_manifest_artifacts(
-        repo, args.feature, normalized
+        repo,
+        args.feature,
+        normalized,
+        plan_text_override=proposed_plan_text,
     )
     if artifact_status != EXIT_PASS:
         return artifact_status
 
-    _atomic_json_write(manifest_path, manifest)
+    if proposed_plan_text is not None and original_plan_text is not None:
+        _atomic_text_write(plan_path, proposed_plan_text)
+        try:
+            _atomic_json_write(manifest_path, manifest)
+        except BaseException:
+            # Restore the old plan if the manifest replacement fails. If this
+            # rollback itself fails, the normal preflight sees plan/manifest
+            # drift and blocks all implementation writes.
+            _atomic_text_write(plan_path, original_plan_text)
+            raise
+    else:
+        _atomic_json_write(manifest_path, manifest)
     print(
         f"PRIL canonical scope updated atomically for feature '{args.feature}' "
         f"(revision {len(provenance)}, digest {_scope_digest(scope)})"

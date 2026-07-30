@@ -561,18 +561,23 @@ def _canvas_scope_lines(canvas: Path) -> tuple[int, list[str]]:
     return EXIT_PASS, body
 
 
-def _planned_paths(plan: Path) -> tuple[int, list[str]]:
-    try:
-        lines = plan.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        print(f"ERROR: missing implementation plan: {plan}", file=sys.stderr)
-        return EXIT_MISSING, []
-    except OSError as exc:
-        print(f"ERROR: cannot read implementation plan {plan}: {exc}", file=sys.stderr)
-        return EXIT_MALFORMED, []
-    except UnicodeDecodeError:
-        print(f"ERROR: implementation plan is not UTF-8 text: {plan}", file=sys.stderr)
-        return EXIT_MALFORMED, []
+def _planned_paths(
+    plan: Path, *, text_override: str | None = None
+) -> tuple[int, list[str]]:
+    if text_override is None:
+        try:
+            lines = plan.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            print(f"ERROR: missing implementation plan: {plan}", file=sys.stderr)
+            return EXIT_MISSING, []
+        except OSError as exc:
+            print(f"ERROR: cannot read implementation plan {plan}: {exc}", file=sys.stderr)
+            return EXIT_MALFORMED, []
+        except UnicodeDecodeError:
+            print(f"ERROR: implementation plan is not UTF-8 text: {plan}", file=sys.stderr)
+            return EXIT_MALFORMED, []
+    else:
+        lines = text_override.splitlines()
     planned: list[str] = []
     for lineno, line in enumerate(lines, start=1):
         match = re.search(r"\b(?:Create|Modify|Delete):\s*(.*)$", line)
@@ -619,6 +624,7 @@ def validate_manifest_artifacts(
     canvas_override: str | None = None,
     plan_override: str | None = None,
     write_target: str | None = None,
+    plan_text_override: str | None = None,
 ) -> int:
     artifacts = manifest["artifacts"]
     canvas_rel = canvas_override or artifacts["canvas"]
@@ -674,7 +680,7 @@ def validate_manifest_artifacts(
         )
         return EXIT_VIOLATION
 
-    plan_status, planned = _planned_paths(plan)
+    plan_status, planned = _planned_paths(plan, text_override=plan_text_override)
     if plan_status != EXIT_PASS:
         return plan_status
     if write_target is not None:

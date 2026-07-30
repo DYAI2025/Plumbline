@@ -113,7 +113,10 @@ Before coding, validate the Canvas reference and every planned file:
 plumbline-scope-check --repo . --feature <feature> --preflight
 ```
 
-Record confirmed changes with `plumbline-scope-update ... --confirmed`. The updater
+Record confirmed changes with `plumbline-scope-update ... --confirmed`. Add
+`--planned-create`, `--planned-modify`, or `--planned-delete` when the same
+confirmed decision revises the active plan; the updater validates the proposed
+plan and manifest together before replacing either artifact. The updater
 validates the proposed manifest and its referenced artifacts before replacing the
 manifest atomically. The installed `pretool-scope-gate.sh` repeats this preflight
 before write-capable tool calls. Canvas-only scopes remain readable for backward
