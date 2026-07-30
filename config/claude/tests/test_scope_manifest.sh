@@ -219,6 +219,19 @@ PY
 assert_output_contains "directory-root runtime overlap is rejected" "src/demo/**" \
   "$SCOPE_CHECK" --repo "$DIRECTORY_ROOT" --feature demo --preflight
 
+UNICODE_OVERLAP="$WORK/unicode-overlap"
+cp -R "$BASE" "$UNICODE_OVERLAP"
+python3 - "$UNICODE_OVERLAP/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/[! -~].py"]
+data["scope"]["governance"] = ["src/?.py"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "non-ASCII glob intersection is rejected" "src/?.py" \
+  "$SCOPE_CHECK" --repo "$UNICODE_OVERLAP" --feature demo --preflight
+
 # Every revision must retain complete decision provenance.
 NO_PROVENANCE="$WORK/no-provenance"
 cp -R "$BASE" "$NO_PROVENANCE"
@@ -273,6 +286,22 @@ EOF
 )"
 assert_contains "Bash write path runs the pre-write scope gate" "$BASH_DENY" '"decision":"deny"'
 
+SCOPE_REPAIR_PASS="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "direct atomic scope updater remains available as repair path" \
+  "" "$SCOPE_REPAIR_PASS"
+
+CHAINED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
+EOF
+)"
+assert_contains "chained scope-updater command cannot bypass the gate" \
+  "$CHAINED_REPAIR_DENY" '"decision":"deny"'
+
 MULTILINE_SCHEMA="$WORK/multiline-schema"
 cp -R "$MISSING" "$MULTILINE_SCHEMA"
 python3 - "$MULTILINE_SCHEMA/docs/scope/demo.scope.json" <<'PY'
@@ -292,6 +321,27 @@ EOF
 assert_contains "multiline schema_version still activates the pre-write gate" \
   "$MULTILINE_DENY" '"decision":"deny"'
 
+ESCAPED_SCHEMA="$WORK/escaped-schema"
+cp -R "$MISSING" "$ESCAPED_SCHEMA"
+python3 - "$ESCAPED_SCHEMA/docs/scope/demo.scope.json" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(
+    path.read_text(encoding="utf-8").replace(
+        '"schema_version"', '"schema\\u005fversion"'
+    ),
+    encoding="utf-8",
+)
+PY
+ESCAPED_SCHEMA_DENY="$(
+  CLAUDE_PROJECT_DIR="$ESCAPED_SCHEMA" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "escaped canonical JSON key still activates the gate" \
+  "$ESCAPED_SCHEMA_DENY" '"decision":"deny"'
+
 MISSING_MANIFEST="$WORK/missing-manifest"
 cp -R "$BASE" "$MISSING_MANIFEST"
 mv "$MISSING_MANIFEST/docs/scope/demo.scope.json" \
@@ -305,6 +355,14 @@ assert_contains "referenced missing manifest fails closed before writes" \
   "$MISSING_MANIFEST_DENY" '"decision":"deny"'
 assert_contains "missing-manifest denial is actionable" \
   "$MISSING_MANIFEST_DENY" "missing canonical scope manifest"
+
+MISSING_MANIFEST_REPAIR="$(
+  CLAUDE_PROJECT_DIR="$MISSING_MANIFEST" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "scope updater can create a newly referenced missing manifest" \
+  "" "$MISSING_MANIFEST_REPAIR"
 
 HOOK_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'

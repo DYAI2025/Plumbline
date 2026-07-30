@@ -225,8 +225,14 @@ def _fnmatch_patterns_overlap(left: str, right: str) -> bool:
     left_tokens = _glob_tokens(left)
     right_tokens = _glob_tokens(right)
     alphabet = {chr(code) for code in range(32, 127)}
-    alphabet.update(left)
-    alphabet.update(right)
+    alphabet.update({"\x00", "\x1f", "\x7f", "\x80", "é", "Ā", "\u1000", "\U0010ffff"})
+    for char in left + right:
+        alphabet.add(char)
+        codepoint = ord(char)
+        if codepoint > 0:
+            alphabet.add(chr(codepoint - 1))
+        if codepoint < 0x10FFFF:
+            alphabet.add(chr(codepoint + 1))
     left_chars = [_token_characters(token, alphabet) for token in left_tokens]
     right_chars = [_token_characters(token, alphabet) for token in right_tokens]
 

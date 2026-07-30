@@ -12,15 +12,20 @@ PAYLOAD="$(cat 2>/dev/null || true)"
 
 tool_name=""
 subagent_type=""
+command_text=""
 if command -v jq >/dev/null 2>&1; then
   tool_name="$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // empty' 2>/dev/null || true)"
   subagent_type="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null || true)"
+  command_text="$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
 else
   tool_name="$(printf '%s' "$PAYLOAD" \
     | sed -nE 's/.*"tool_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
     | head -n1)"
   subagent_type="$(printf '%s' "$PAYLOAD" \
     | sed -nE 's/.*"subagent_type"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
+    | head -n1)"
+  command_text="$(printf '%s' "$PAYLOAD" \
+    | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' \
     | head -n1)"
 fi
 
@@ -36,6 +41,40 @@ case "$tool_name" in
   *) exit 0 ;;
 esac
 
+# The updater is the only repair path allowed through a failed/missing
+# preflight. It requires --confirmed and validates artifacts before its atomic
+# write. Accept only a single direct updater command: shell composition,
+# redirection, substitution, and chained commands keep the gate active.
+if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
+  if python3 - "$command_text" <<'PY'
+import shlex
+import sys
+from pathlib import Path
+
+command = sys.argv[1]
+if not command or "\n" in command or "\r" in command or "`" in command or "$(" in command:
+    raise SystemExit(1)
+lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
+lexer.whitespace_split = True
+lexer.commenters = ""
+try:
+    tokens = list(lexer)
+except ValueError:
+    raise SystemExit(1)
+operators = set(";&|<>()")
+if (
+    not tokens
+    or Path(tokens[0]).name != "plumbline-scope-update"
+    or any(token and set(token) <= operators for token in tokens[1:])
+):
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+  then
+    exit 0
+  fi
+fi
+
 marker="$PROJECT/docs/context/.active-feature"
 [ -f "$marker" ] || exit 0
 feature="$(tr -d '[:space:]' <"$marker" 2>/dev/null || true)"
@@ -49,11 +88,33 @@ if [ ! -f "$manifest" ]; then
   fi
   exit 0
 fi
-# A legacy `allowed_change_scope` JSON file is not a PLUM-12 versioned manifest.
-# The presence of the canonical key activates the Python validator, which parses
-# and verifies its value. Do not use a line-oriented value regex: valid JSON may
-# place the value on a later line.
-grep -Fq '"schema_version"' "$manifest" 2>/dev/null || exit 0
+# Parse the object before deciding it is legacy. JSON permits escaped member
+# names (for example schema\u005fversion), so raw-text key matching can fail
+# open on a canonical manifest.
+manifest_kind="$(
+  python3 - "$manifest" <<'PY' 2>/dev/null
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        data = json.load(handle)
+except (OSError, UnicodeError, json.JSONDecodeError):
+    print("invalid")
+    raise SystemExit(0)
+if isinstance(data, dict) and "schema_version" in data:
+    print("canonical")
+elif (
+    isinstance(data, dict)
+    and "allowed_change_scope" in data
+    and "schema_version" not in data
+):
+    print("legacy")
+else:
+    print("invalid")
+PY
+)" || manifest_kind="invalid"
+[ "$manifest_kind" = "legacy" ] && exit 0
 
 checker=""
 for candidate in \
