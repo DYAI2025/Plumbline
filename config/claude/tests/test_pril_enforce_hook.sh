@@ -527,6 +527,34 @@ git -C "$committed_bad_repo" commit -q -m "committed scope violation"
 run_hook "$committed_bad_repo" '{}'
 assert_contains "PLUM-9 committed foreign file blocks" "$HOOK_OUT" "scope"
 
+# AC-5 at the OUTCOME level, not just via the audit line. On a repo whose only
+# default branch is `master` (no `main`, no remote) a COMMITTED foreign file must
+# still be detected. This is the pilot's actual harm: with the defect the base
+# degrades to HEAD...HEAD, the committed surface is empty, the work tree is clean,
+# and the hook returns a FALSE GREEN. The `source=`/`ref=` assertions above cannot
+# catch that, because they only inspect the audit string of an already-passing run.
+# Measured 2026-07-30: defect reintroduced -> "false green, no block"; canonical ->
+# blocks with PRIL_POLICY_VIOLATION gate=scope.
+master_committed_repo="$(make_feature_repo mastercommitted master)"
+printf 'mastercommitted' >"$master_committed_repo/docs/context/.active-feature"
+mkdir -p "$master_committed_repo/src/billing"
+printf 'committed violation\n' \
+  >"$master_committed_repo/src/billing/committed.py"
+git -C "$master_committed_repo" add src/billing/committed.py
+git -C "$master_committed_repo" commit -q -m "committed scope violation"
+master_base_sha="$(git -C "$master_committed_repo" rev-parse master)"
+# Precondition: the violation lives ONLY in history — it is absent from the
+# working/staged/untracked surface, so detecting it REQUIRES a real committed
+# range. (The repo does carry an untracked docs/context/ marker, but `docs/` is
+# in scope and can never produce this block.)
+assert_eq "PLUM-9 master default: violation is committed-only, not in the work tree" \
+  "" "$(git -C "$master_committed_repo" status --porcelain -- src/billing)"
+run_hook "$master_committed_repo" '{}'
+assert_contains "PLUM-9 master default: committed foreign file blocks" \
+  "$HOOK_OUT" "scope"
+assert_contains "PLUM-9 master default: base is the real master, never HEAD" \
+  "$HOOK_ERR" "merge-base=$master_base_sha"
+
 # No known base: classify and block. The old implementation silently replaced
 # this with HEAD and evaluated the vacuous HEAD...HEAD range.
 unknown_base_repo="$(make_feature_repo unknownbase trunk)"
