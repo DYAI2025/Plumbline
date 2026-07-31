@@ -33,6 +33,16 @@ echo "test_runtime_hygiene"
 
 HYG_BIN="$REPO_DIR/config/claude/bin/plumbline-runtime-hygiene"
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
+# Manifest-governed fixtures below are ARMED immediately before each scope-check
+# invocation: this module's subject is not run-trust binding (that is
+# test_run_trust_anchor.sh), and an unarmed manifest run now blocks by design.
+TRUST_BIN="$REPO_DIR/config/claude/bin/plumbline-run-trust"
+export PLUMBLINE_STATE_DIR="${PLUMBLINE_STATE_DIR:-$(mktemp -d)}"
+arm_fixture() { # arm_fixture <repo> <feature>
+  "$TRUST_BIN" disarm --repo "$1" --feature "$2" >/dev/null 2>&1
+  "$TRUST_BIN" arm --repo "$1" --feature "$2" >/dev/null 2>&1
+}
+
 
 WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
@@ -212,6 +222,7 @@ changed="$WORK/changed.txt"
 git -C "$repo" ls-files --others --exclude-standard >"$changed"
 printf 'src/feature/app.py\n' >>"$changed"
 scope_out="$WORK/scope.out"
+arm_fixture "$repo" feat
 "$SCOPE_BIN" --repo "$repo" --feature feat --changed-files "$changed" \
   >"$scope_out" 2>&1
 scope_rc=$?

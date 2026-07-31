@@ -268,7 +268,24 @@ refused_cli_reason=""
 # Accept a candidate only after it survives the integrity test. A refused
 # candidate does not end resolution: the search continues, so an immutable
 # checker installed outside the repo still takes over and enforcement is kept.
+# When set, a candidate resolving INSIDE the governed repo is rejected outright
+# and the search continues. Used for the anchor reader: a candidate checkout that
+# supplies its own verifier verifies nothing, and rejecting it must not end the
+# search -- otherwise the in-repo copy (resolution priority 2) simply masks the
+# external install that would have been trustworthy.
+require_external_cli=0
+
 accept_candidate() { # accept_candidate <canonical-path> <source-label>
+  local phys=""
+  if [ "$require_external_cli" = "1" ]; then
+    phys="$(resolve_link_chain "$1" 2>/dev/null)" || phys=""
+    [ -n "$phys" ] || phys="$1"
+    if path_inside_repo "$phys"; then
+      printf 'PRIL TRUST_ANCHOR: ignoring in-repo %s (a candidate checkout cannot supply its own verifier); continuing the search\n' \
+        "$phys" >&2
+      return 1
+    fi
+  fi
   if verify_checker_integrity "$1"; then
     resolved_cli_path="$1"
     resolved_cli_source="$2"
@@ -358,6 +375,64 @@ do
     missing_clis="$missing_clis $required_cli"
   fi
 done
+
+# --- Run-trust anchor: the frame of reference the run cannot move -------------
+#
+# Comparing the checker against the CURRENT HEAD was defeated by committing the
+# mutation: tracked and byte-identical to HEAD, therefore trusted. Trust has to
+# be bound BEFORE the run, outside the repository, by an externally installed
+# Plumbline -- and read here, never written.
+#
+# Applies to features governed by a scope manifest. A legacy canvas-only feature
+# that was never armed keeps the pre-existing posture; that residual is named in
+# docs/run-trust-anchor.md rather than carried silently.
+verify_run_trust_anchor() {
+  local manifest="$repo/docs/scope/$feat.scope.json"
+  local anchor="" out="" rc=0
+
+  if [ -n "$trust_bin" ]; then
+    anchor="$("$trust_bin" path --repo "$repo" --feature "$feat" 2>/dev/null)" || anchor=""
+  fi
+
+  if [ ! -f "$manifest" ] && { [ -z "$anchor" ] || [ ! -f "$anchor" ]; }; then
+    return 0   # legacy canvas-only feature, never armed
+  fi
+
+  if [ -z "$trust_bin" ]; then
+    emit_block "PRIL_TRUST_ANCHOR_MISSING: this feature is governed by a scope manifest but plumbline-run-trust could not be resolved, so the run's trust anchor cannot be read. Gates never fall back to trusting the checkout under judgement. Install Plumbline outside this repository and arm the run."
+    return 1
+  fi
+
+  if [ -z "$anchor" ] || [ ! -f "$anchor" ]; then
+    emit_block "PRIL_TRUST_ANCHOR_MISSING: no run-trust anchor for feature '$feat'. The run was never armed, or its anchor was removed. A gate never creates, repairs or updates an anchor -- arm the run with an externally installed Plumbline before implementation writes begin."
+    return 1
+  fi
+
+  out="$("$trust_bin" verify --repo "$repo" --feature "$feat" 2>&1)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    case "$out" in
+      *RUN_TRUST_CHECKER_CHANGED*)
+        emit_block "PRIL_CHECKER_INTEGRITY_UNVERIFIED: the runtime differs from the checker set bound when this run was armed. $out Committing a checker change during a run does not make it trusted; take the new runtime through a separate, explicitly approved upgrade step."
+        ;;
+      *)
+        emit_block "PRIL_RUN_TRUST_VIOLATION: $out"
+        ;;
+    esac
+    return 1
+  fi
+  return 0
+}
+
+# The anchor reader must not come from the checkout under judgement: a candidate
+# that supplies its own verifier verifies nothing. An in-repo plumbline-run-trust
+# is therefore treated as absent, which yields TRUST_ANCHOR_MISSING rather than a
+# fallback to the candidate.
+trust_bin=""
+require_external_cli=1
+resolve_cli plumbline-run-trust && trust_bin="$resolved_cli_path"
+require_external_cli=0
+verify_run_trust_anchor || exit 0
 
 # Integrity is decided BEFORE any checker result is interpreted: a checker that
 # cannot be proven unmodified never runs, so there is no verdict to weigh.

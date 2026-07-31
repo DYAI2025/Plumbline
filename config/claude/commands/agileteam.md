@@ -570,6 +570,22 @@ authoritative even when broken — it never falls back to the canvas. The legacy
 `Allowed change scope` section still works when a feature has no manifest, but it is documentation:
 unusable lines are reported with line number and cause, never silently dropped.
 
+**Arm the run BEFORE the first implementation write.** The confirmed manifest is frozen into
+an immutable run-trust anchor that lives OUTSIDE the repository, so the scope this run was
+granted cannot be widened from inside it, and the checkers cannot be rewritten mid-run —
+not even by committing the change. Arm with an **externally installed** Plumbline; a
+candidate checkout may not arm itself.
+
+```bash
+plumbline-run-trust arm --repo <repo> --feature <feature-slug>
+```
+
+Gates only ever READ that anchor; none creates, repairs or updates it. A missing, altered
+or unreadable anchor blocks with a classified reason (`TRUST_ANCHOR_MISSING`,
+`RUN_TRUST_BASELINE_CHANGED`, `RUN_TRUST_CHECKER_CHANGED`, …). Changing a confirmed scope
+mid-run is **disarm → re-confirm with the human → re-arm**, never a file edit. Full
+contract: `docs/run-trust-anchor.md`.
+
 For every implementation increment, produce a changed-files list and run:
 
 ```bash

@@ -31,6 +31,16 @@ echo "test_artifact_provenance"
 
 PROV_BIN="$REPO_DIR/config/claude/bin/plumbline-provenance-check"
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
+# Manifest-governed fixtures below are ARMED immediately before each scope-check
+# invocation: this module's subject is not run-trust binding (that is
+# test_run_trust_anchor.sh), and an unarmed manifest run now blocks by design.
+TRUST_BIN="$REPO_DIR/config/claude/bin/plumbline-run-trust"
+export PLUMBLINE_STATE_DIR="${PLUMBLINE_STATE_DIR:-$(mktemp -d)}"
+arm_fixture() { # arm_fixture <repo> <feature>
+  "$TRUST_BIN" disarm --repo "$1" --feature "$2" >/dev/null 2>&1
+  "$TRUST_BIN" arm --repo "$1" --feature "$2" >/dev/null 2>&1
+}
+
 
 WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
@@ -124,6 +134,7 @@ scope_out="$WORK/scope.out"
   git -C "$repo" diff --name-only
   git -C "$repo" ls-files --others --exclude-standard
 } | sort -u >"$WORK/scope-changed.txt"
+arm_fixture "$repo" gen
 "$SCOPE_BIN" --repo "$repo" --feature gen --changed-files "$WORK/scope-changed.txt" \
   >"$scope_out" 2>&1
 scope_rc=$?

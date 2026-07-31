@@ -63,6 +63,28 @@ trap cleanup EXIT
 NOHOME="$WORK/nohome"
 mkdir -p "$NOHOME"
 
+# The scope authority now lives in an immutable run-trust anchor OUTSIDE the
+# repository, armed by an EXTERNALLY installed Plumbline. The O2 cases below keep
+# their original intent -- widening refused, deletion refused, no false positive,
+# disarm/re-arm supported -- but are re-pointed at that mechanism, because the
+# in-repo baseline they used to drive was itself the defect (a gate-created file
+# inside the repository under judgement).
+STATE="$WORK/state"
+EXT="$WORK/ext"
+mkdir -p "$STATE" "$EXT/bin" "$EXT/lib"
+cp "$BIN_SRC"/* "$EXT/bin/" 2>/dev/null
+cp "$LIB_SRC"/*.py "$LIB_SRC"/*.sh "$EXT/lib/" 2>/dev/null
+chmod +x "$EXT/bin/"*
+
+arm_run() { # arm_run <repo> <feature>
+  env PATH="$SANITISED_PATH" HOME="$NOHOME" PLUMBLINE_STATE_DIR="$STATE" \
+    "$EXT/bin/plumbline-run-trust" arm --repo "$1" --feature "$2" >/dev/null 2>&1
+}
+disarm_run() { # disarm_run <repo> <feature>
+  env PATH="$SANITISED_PATH" HOME="$NOHOME" PLUMBLINE_STATE_DIR="$STATE" \
+    "$EXT/bin/plumbline-run-trust" disarm --repo "$1" --feature "$2" >/dev/null 2>&1
+}
+
 # Run a given hook file against a project dir. Extra args are NAME=value env.
 # Sets: HOOK_OUT HOOK_ERR HOOK_RC
 run_hook_file() {
@@ -259,6 +281,7 @@ make_scope_repo() { # make_scope_repo <feature>
   git -C "$repo" config user.name "Trust Test"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m base
+  arm_run "$repo" "$feat"
   printf '%s' "$repo"
 }
 
@@ -269,8 +292,8 @@ run_scope() { # run_scope <repo> <feature> <changed-file-lines...>
   : >"$cf"
   local line
   for line in "$@"; do printf '%s\n' "$line" >>"$cf"; done
-  SCOPE_OUT="$(env PATH="$SANITISED_PATH" "$SCOPE_CLI" \
-    --repo "$repo" --feature "$feat" --changed-files "$cf" 2>&1)"
+  SCOPE_OUT="$(env PATH="$SANITISED_PATH" HOME="$NOHOME" PLUMBLINE_STATE_DIR="$STATE" \
+    "$SCOPE_CLI" --repo "$repo" --feature "$feat" --changed-files "$cf" 2>&1)"
   SCOPE_RC=$?
 }
 
@@ -285,7 +308,7 @@ printf '{"schema":1,"feature":"authfeat","allowed_change_scope":["src/**","secre
   >"$o2/docs/scope/authfeat.scope.json"
 run_scope "$o2" authfeat "secrets.txt" "docs/scope/authfeat.scope.json"
 assert_contains "O2b: an in-run manifest widening is refused, classified" \
-  "$SCOPE_OUT" "SCOPE_AUTHORITY_CHANGED"
+  "$SCOPE_OUT" "RUN_TRUST_BASELINE_CHANGED"
 assert_eq "O2b: and it is a policy violation, not a pass" "3" "$SCOPE_RC"
 assert_not_contains "O2b: the widened manifest never reports success" \
   "$SCOPE_OUT" "scope check passed"
@@ -296,7 +319,7 @@ run_scope "$o2c" delfeat "src/app.py"
 rm -f "$o2c/docs/scope/delfeat.scope.json"
 run_scope "$o2c" delfeat "src/app.py"
 assert_contains "O2c: removing the bound manifest is refused, classified" \
-  "$SCOPE_OUT" "SCOPE_AUTHORITY_CHANGED"
+  "$SCOPE_OUT" "RUN_TRUST_BASELINE_CHANGED"
 
 # --- O2d NO false positive: an unchanged manifest keeps passing --------------
 o2d="$(make_scope_repo stablefeat)"
@@ -304,7 +327,7 @@ run_scope "$o2d" stablefeat "src/app.py"
 run_scope "$o2d" stablefeat "src/app.py"
 assert_eq "O2d: an unchanged manifest passes on every later run" "0" "$SCOPE_RC"
 assert_not_contains "O2d: and raises no authority finding" \
-  "$SCOPE_OUT" "SCOPE_AUTHORITY_CHANGED"
+  "$SCOPE_OUT" "RUN_TRUST_BASELINE_CHANGED"
 
 # --- O2e the legitimate path: disarm, re-confirm, re-arm ---------------------
 # Removing the bound baseline is the explicit end-of-run/disarm step. The next
@@ -314,7 +337,8 @@ run_scope "$o2e" refeat "src/app.py"
 printf 'y\n' >"$o2e/wide.txt"
 printf '{"schema":1,"feature":"refeat","allowed_change_scope":["src/**","wide.txt"],"governance_paths":["docs/scope/refeat.scope.json"]}\n' \
   >"$o2e/docs/scope/refeat.scope.json"
-rm -rf "$o2e/.plumbline/scope-authority"
+disarm_run "$o2e" refeat
+arm_run "$o2e" refeat
 run_scope "$o2e" refeat "wide.txt"
 assert_eq "O2e: after an explicit disarm and re-arm the new scope is honored" \
   "0" "$SCOPE_RC"
@@ -415,16 +439,16 @@ printf '{"schema":1,"feature":"cmfeat","allowed_change_scope":["src/**","secrets
   >"$cm2/docs/scope/cmfeat.scope.json"
 CM2_LIB="$WORK/cm2lib"
 mkdir -p "$CM2_LIB"
-cp "$LIB_SRC"/plumbline_cli.py "$CM2_LIB/"
+cp "$LIB_SRC"/plumbline_cli.py "$LIB_SRC"/plumbline_run_trust.py "$CM2_LIB/"
 # Neutralise the guard at its call site, the way a reverted fix would: the
 # manifest is read but never pinned.
-sed 's/^\( *\)authority_error = check_scope_authority(.*)$/\1authority_error = None/' \
+sed 's/^\( *\)trust_error = verify_run_trust_for_scope(.*)$/\1trust_error = None/' \
   "$LIB_SRC/plumbline_scope.py" >"$CM2_LIB/plumbline_scope.py"
 assert "CM-2 precondition: the mutation actually changed the checker" \
   "! cmp -s '$LIB_SRC/plumbline_scope.py' '$CM2_LIB/plumbline_scope.py'"
 cf="$cm2/.changed"
 printf 'secrets.txt\ndocs/scope/cmfeat.scope.json\n' >"$cf"
-CM2_OUT="$(env PATH="$SANITISED_PATH" PLUMBLINE_PYTHON_LIB_OVERRIDE=1 \
+CM2_OUT="$(env PATH="$SANITISED_PATH" HOME="$NOHOME" PLUMBLINE_STATE_DIR="$STATE" \
   python3 "$CM2_LIB/plumbline_scope.py" --repo "$cm2" --feature cmfeat \
   --changed-files "$cf" 2>&1)"
 CM2_RC=$?

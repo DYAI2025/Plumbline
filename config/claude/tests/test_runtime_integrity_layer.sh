@@ -15,6 +15,20 @@ FIXTURES="$REPO_DIR/config/claude/tests/fixtures/pril"
 CONTEXT_BIN="$REPO_DIR/config/claude/bin/plumbline-context-check"
 REALITY_BIN="$REPO_DIR/config/claude/bin/plumbline-reality-check"
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
+# Manifest-governed fixtures are ARMED once, up front. This module's subject is
+# the gate contract, not run-trust binding (that is test_run_trust_anchor.sh),
+# and an unarmed manifest run now blocks by design. Arming is best-effort: a
+# fixture with no manifest simply has nothing to bind.
+TRUST_BIN="$REPO_DIR/config/claude/bin/plumbline-run-trust"
+export PLUMBLINE_STATE_DIR="${PLUMBLINE_STATE_DIR:-$(mktemp -d)}"
+arm_all_fixtures() {
+  local d
+  for d in "$FIXTURES"/scope-*; do
+    [ -d "$d" ] || continue
+    "$TRUST_BIN" arm --repo "$d" --feature demo >/dev/null 2>&1
+  done
+}
+
 REDACT_BIN="$REPO_DIR/config/claude/bin/plumbline-redact"
 CMD="$REPO_DIR/config/claude/commands/agileteam.md"
 WATCHER="$REPO_DIR/agileteam/plumbline-watcher.md"
@@ -124,6 +138,8 @@ assert_output_contains "missing evidence_class error is actionable" "evidence_cl
   "$REALITY_BIN" --repo "$FIXTURES/reality-missing-evidence-class" --feature demo --min-evidence integration
 assert_output_contains "fake-only error is actionable" "fake-only" \
   "$REALITY_BIN" --repo "$FIXTURES/reality-fake-only" --feature demo --min-evidence integration
+
+arm_all_fixtures
 
 # G2-REQ-001: scope guard keeps implementation inside confirmed allowed scope.
 assert_exit "scope-pass exits 0" 0 \

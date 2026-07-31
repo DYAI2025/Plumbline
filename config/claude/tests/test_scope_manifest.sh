@@ -34,9 +34,12 @@ REPO_DIR="$(cd "$HERE/../../.." && pwd)"
 echo "test_scope_manifest"
 
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
+TRUST_BIN="$REPO_DIR/config/claude/bin/plumbline-run-trust"
 
 WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
+# Anchors live outside every governed repo; keep them inside this run's workspace.
+export PLUMBLINE_STATE_DIR="$WORK/state"
 trap cleanup EXIT
 
 # new_repo <feature> -- create a git repo with docs/canvas + docs/scope dirs.
@@ -72,6 +75,13 @@ run_scope() {
   : >"$list"
   for p in "$@"; do printf '%s\n' "$p" >>"$list"; done
   local outf="$WORK/scope.out"
+  # This module's subject is MANIFEST SEMANTICS, not run-trust binding: the
+  # anchor is re-bound to the current manifest before each invocation so these
+  # cases keep measuring what they claim to. Trust binding itself is covered by
+  # test_run_trust_anchor.sh. Arming is best-effort -- a deliberately malformed
+  # manifest cannot be armed, and must still be reported as malformed.
+  "$TRUST_BIN" disarm --repo "$repo" --feature "$feat" >/dev/null 2>&1
+  "$TRUST_BIN" arm --repo "$repo" --feature "$feat" >/dev/null 2>&1
   "$SCOPE_BIN" --repo "$repo" --feature "$feat" \
     --changed-files "$list" >"$outf" 2>&1
   SCOPE_RC=$?

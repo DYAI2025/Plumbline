@@ -53,6 +53,7 @@ CMD_DIR="$REPO_DIR/config/claude/commands"
 # --- The declared reachability classes ---------------------------------------
 # Keep these lists in sync with reality. A wrapper in the wrong class fails loudly.
 ENFORCED_CLIS="
+plumbline-run-trust
 plumbline-scope-check
 plumbline-context-check
 plumbline-reality-check

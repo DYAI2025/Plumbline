@@ -188,6 +188,9 @@ bash config/claude/tests/test_pril_enforce_hook.sh || mark_fail
 stage "gate trust boundary (checker integrity, scope authority, invocation errors)"
 bash config/claude/tests/test_gate_trust_boundary.sh || mark_fail
 
+stage "immutable run-trust anchor (commit-bypass, rewritable baseline, pre-gate widening)"
+bash config/claude/tests/test_run_trust_anchor.sh || mark_fail
+
 stage "pretool vision-gate hook tests"
 bash config/claude/tests/test_pretool_vision_gate_hook.sh || mark_fail
 
@@ -242,6 +245,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     config/claude/bin/plumbline-reality-check \
     config/claude/bin/plumbline-redact \
     config/claude/bin/plumbline-remote-watch \
+    config/claude/bin/plumbline-run-trust \
     config/claude/bin/plumbline-runtime-hygiene \
     config/claude/bin/plumbline-scope-check \
     config/claude/hooks/*.sh \
