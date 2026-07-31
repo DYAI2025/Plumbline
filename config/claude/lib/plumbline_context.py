@@ -6,6 +6,12 @@ import argparse
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
+
 CONFIRMATION_MARKERS = (
     "Status: user-confirmed",
     "Confirmed by user: yes",
@@ -62,7 +68,7 @@ def validate_context(repo: Path, feature: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate confirmed product context for a feature.")
+    parser = PlumblineArgumentParser(description="Validate confirmed product context for a feature.")
     parser.add_argument("--repo", required=True, help="Repository root to inspect")
     parser.add_argument("--feature", required=True, help="Feature slug")
     return parser

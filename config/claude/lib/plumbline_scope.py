@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
 
 EXIT_PASS = 0
 EXIT_MISSING = 2
@@ -530,10 +537,109 @@ def _gitignored_untracked(repo: Path, paths: list[str]) -> set[str]:
         return set()
 
 
+AUTHORITY_DIRNAME = ".plumbline/scope-authority"
+AUTHORITY_TOKEN = "SCOPE_AUTHORITY_CHANGED"
+
+
+def authority_path(repo: Path, feature: str) -> Path:
+    """Where the run baseline for a feature's scope authority is bound."""
+    return repo / ".plumbline" / "scope-authority" / f"{feature}.json"
+
+
+def _digest(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def check_scope_authority(repo: Path, feature: str) -> str | None:
+    """Bind the active scope manifest on arming; refuse any later change.
+
+    OPEN-2. The manifest is the artifact that decides what may change, and it was
+    itself writable by the agent being judged. Adding the exact out-of-scope path
+    to it inside the run and declaring both files passed with a success message:
+    the authority ratified its own widening. The `**` guard caught only the
+    wildcard form; the targeted form -- the realistic one -- went straight
+    through.
+
+    So the manifest is pinned for the life of an armed run. The first run binds
+    its path and digest; every later run compares. A change, a replacement or a
+    deletion is refused and classified, and the changed manifest never gets to
+    authorize its own change.
+
+    A legitimate scope change is therefore not a file edit. It is: end/disarm the
+    run (remove the bound baseline), confirm the new scope with the human, re-arm.
+    Provenance recorded *inside* the same mutable file cannot carry that -- an
+    attacker who can edit the scope can edit its audit trail in the same write.
+
+    Returns an error message on violation, or None when the run may proceed.
+    """
+    manifest = manifest_path(repo, feature)
+    current = _digest(manifest)
+    baseline = authority_path(repo, feature)
+
+    if baseline.exists():
+        try:
+            data = json.loads(baseline.read_text(encoding="utf-8"))
+            bound_digest = data["digest"]
+            bound_path = data["path"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return (
+                f"{AUTHORITY_TOKEN}: the bound scope baseline {baseline} is unreadable, "
+                "so the active scope authority cannot be proven unchanged. Disarm the "
+                "run (remove the baseline), re-confirm the scope, and re-arm."
+            )
+        if current is None:
+            return (
+                f"{AUTHORITY_TOKEN}: the bound scope manifest {bound_path} is gone. "
+                "An armed run cannot lose the artifact that defines its authority. "
+                "Disarm the run, re-confirm the scope, and re-arm."
+            )
+        if current != bound_digest:
+            return (
+                f"{AUTHORITY_TOKEN}: {bound_path} changed during an armed run "
+                f"(bound {bound_digest[:12]}, now {current[:12]}). A manifest never "
+                "authorizes its own change. Disarm the run, have the new scope "
+                "confirmed, then re-arm."
+            )
+        return None
+
+    # Arming. Nothing to bind when the feature has no manifest at all: that
+    # feature is governed by the legacy canvas source and this check must not
+    # invent a red for it.
+    if current is None:
+        return None
+
+    try:
+        baseline.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema": 1,
+            "feature": feature,
+            "path": _rel(manifest, repo),
+            "digest": current,
+        }
+        baseline.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        # Visible, never silent. Refusing to run here would invent a new false
+        # red for read-only checkouts; pretending the run is pinned would be a
+        # false green. Say which one the operator has.
+        print(
+            f"NOTE: could not bind the scope authority baseline ({exc}); this run is "
+            "NOT pinned against an in-run manifest change.",
+            file=sys.stderr,
+        )
+    return None
+
+
 def validate_scope(repo: Path, feature: str, changed_files: Path, strict_gitignored: bool = False) -> int:
     if not _valid_feature(feature):
         print(f"ERROR: malformed feature slug: {feature!r}", file=sys.stderr)
         return EXIT_MALFORMED
+    authority_error = check_scope_authority(repo, feature)
+    if authority_error is not None:
+        print(f"ERROR: {authority_error}", file=sys.stderr)
+        return EXIT_VIOLATION
     status, patterns, source = load_allowed_scope(repo, feature)
     if status != EXIT_PASS:
         return status
@@ -541,6 +647,12 @@ def validate_scope(repo: Path, feature: str, changed_files: Path, strict_gitigno
     if changed_status != EXIT_PASS:
         return changed_status
     out = [path for path in changed if not any(_matches(path, pattern) for pattern in patterns)]
+    # Plumbline's own runtime directory is never feature work. It holds the scope
+    # baseline this checker just bound, so leaving it in the surface would make the
+    # guard report itself as an out-of-scope change -- a false red manufactured by
+    # the fix. Exempted unconditionally, not merely when the repo happens to
+    # gitignore it, because a governed foreign repo has no reason to know the name.
+    out = [path for path in out if not path.startswith(".plumbline/")]
     if out and not strict_gitignored:
         exempt = _gitignored_untracked(repo, out)
         if exempt:
@@ -568,7 +680,7 @@ def validate_scope(repo: Path, feature: str, changed_files: Path, strict_gitigno
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate changed files against a feature's allowed scope.")
+    parser = PlumblineArgumentParser(description="Validate changed files against a feature's allowed scope.")
     parser.add_argument("--repo", required=True, help="Repository root to inspect")
     parser.add_argument("--feature", required=True, help="Feature slug")
     parser.add_argument("--changed-files", required=True, help="File containing repo-relative changed paths")

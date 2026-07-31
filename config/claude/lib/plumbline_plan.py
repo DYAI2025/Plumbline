@@ -27,6 +27,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
+
 from plumbline_scope import (  # noqa: E402  (path shim above must run first)
     EXIT_MALFORMED,
     EXIT_MISSING,
@@ -341,7 +345,7 @@ def check_plan(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PlumblineArgumentParser(
         description="Validate an implementation plan (and the canvas) against the "
         "canonical scope manifest before coding starts.",
     )

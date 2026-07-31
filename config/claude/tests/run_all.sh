@@ -185,6 +185,9 @@ bash config/claude/tests/test_runtime_integrity_layer.sh || mark_fail
 stage "PRIL enforce hook tests"
 bash config/claude/tests/test_pril_enforce_hook.sh || mark_fail
 
+stage "gate trust boundary (checker integrity, scope authority, invocation errors)"
+bash config/claude/tests/test_gate_trust_boundary.sh || mark_fail
+
 stage "pretool vision-gate hook tests"
 bash config/claude/tests/test_pretool_vision_gate_hook.sh || mark_fail
 

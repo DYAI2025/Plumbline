@@ -6,6 +6,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
 from typing import Any
 
 RANKS = {
@@ -501,7 +507,7 @@ def validate_reality(repo: Path, feature: str, min_evidence: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate reality evidence for a feature.")
+    parser = PlumblineArgumentParser(description="Validate reality evidence for a feature.")
     parser.add_argument("--repo", required=True, help="Repository root to inspect")
     parser.add_argument("--feature", required=True, help="Feature slug")
     parser.add_argument("--min-evidence", default="integration", choices=tuple(RANKS), help="Minimum evidence class")

@@ -48,6 +48,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
+
 from plumbline_scope import (  # noqa: E402  (path shim above must run first)
     EXIT_MALFORMED,
     EXIT_MISSING,
@@ -437,7 +441,7 @@ def _matches_pattern_pair(producer: str, allowed_pattern: str) -> bool:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PlumblineArgumentParser(
         description="Check that generated artifacts changed only through their "
         "declared producer, and (opt-in) that they reproduce.",
     )

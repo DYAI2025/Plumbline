@@ -35,6 +35,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
+
 EXIT_PASS = 0
 EXIT_MISSING = 2
 EXIT_CHANGED = 3
@@ -549,7 +555,7 @@ def cmd_publish_status(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PlumblineArgumentParser(
         description="Record and verify the remote PR/branch state an active "
         "Plumbline run depends on.",
     )

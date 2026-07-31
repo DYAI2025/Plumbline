@@ -105,6 +105,7 @@ make_feature_repo() {
        "$BIN_SRC"/plumbline-scope-check "$repo/config/claude/bin/"
     cp "$LIB_SRC"/plumbline_context.py "$LIB_SRC"/plumbline_reality.py \
        "$LIB_SRC"/plumbline_scope.py "$LIB_SRC"/plumbline_python.sh \
+       "$LIB_SRC"/plumbline_cli.py \
        "$repo/config/claude/lib/"
     chmod +x "$repo/config/claude/bin/"*
   fi
@@ -426,6 +427,13 @@ printf '#!/usr/bin/env bash\nexit 0\n' >"$split_path/plumbline-reality-check"
 chmod +x "$split_explicit/plumbline-scope-check" \
   "$split_repo/config/claude/bin/plumbline-context-check" \
   "$split_path/plumbline-reality-check"
+# OPEN-1: an in-repo checker is only executed when it is tracked AND identical to
+# HEAD. This case is about RESOLUTION ORDER, so the repo-local stub is committed --
+# leaving it untracked would make the hook refuse it (correctly) and fall through
+# to whatever checker the developer machine happens to have installed, which is how
+# this assertion silently stopped testing resolution order at all.
+git -C "$split_repo" add config/claude/bin/plumbline-context-check
+git -C "$split_repo" commit -q -m "vendored context checker for the resolution-order case"
 run_hook_with_env "$split_repo" '{}' \
   "PLUMBLINE_BIN_DIR=$split_explicit" "PATH=$split_path:$PATH"
 assert_eq "PLUM-7 per-CLI resolution: distributed executables pass" "" "$HOOK_OUT"

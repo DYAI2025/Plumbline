@@ -31,6 +31,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from plumbline_cli import (  # noqa: E402  (path shim above must run first)
+    PlumblineArgumentParser,
+)
+
 EXIT_PASS = 0
 EXIT_MISSING = 2
 EXIT_VIOLATION = 3
@@ -261,7 +267,7 @@ def check_hygiene(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = PlumblineArgumentParser(
         description="Detect agent runtime state that contaminates a product "
         "repository, and offer a non-destructive fix.",
     )
