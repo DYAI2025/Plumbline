@@ -388,13 +388,22 @@ assert_eq "N1c: genuinely missing scope input keeps exit 2 (MISSING)" "2" "$SCOP
 
 MUT="$WORK/mutated-hook.sh"
 
-# CM-1: strip the checker-integrity verification from a copy of the hook.
-sed 's/^\( *\)verify_checker_integrity /\1: verify_checker_integrity /' \
-  "$HOOK" >"$MUT"
+# CM-1: neutralise the checker-integrity verification in a copy of the hook.
+# The guard is defeated at its DEFINITION, not at a call site: the only call is
+# `if verify_checker_integrity "$1"; then`, so a line-initial pattern matches
+# nothing and the "mutation" silently mutates nothing. That is how this
+# counter-mutation first went green while proving absolutely nothing -- it was
+# also inheriting the real HOME, so the machine's own install satisfied the
+# fallback and no integrity block was ever reachable. Both are fixed here.
+sed 's|^verify_checker_integrity() {.*|verify_checker_integrity() { return 0; }\
+_orig_verify_checker_integrity() {|' "$HOOK" >"$MUT"
+bash -n "$MUT" || _fail "CM-1: the mutated hook must still parse"
+assert "CM-1 precondition: the mutation actually changed the hook" \
+  "! cmp -s '$HOOK' '$MUT'"
 cm1="$(make_governed_repo trustfeat)"
 plant_violation "$cm1"
 mutate_checker_lib "$cm1"
-run_hook_file "$MUT" "$cm1"
+run_hook_file "$MUT" "$cm1" HOME="$NOHOME"
 assert_not_contains "CM-1 counter-mutation: without the guard the mutated checker is trusted again" \
   "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
 
@@ -411,6 +420,8 @@ cp "$LIB_SRC"/plumbline_cli.py "$CM2_LIB/"
 # manifest is read but never pinned.
 sed 's/^\( *\)authority_error = check_scope_authority(.*)$/\1authority_error = None/' \
   "$LIB_SRC/plumbline_scope.py" >"$CM2_LIB/plumbline_scope.py"
+assert "CM-2 precondition: the mutation actually changed the checker" \
+  "! cmp -s '$LIB_SRC/plumbline_scope.py' '$CM2_LIB/plumbline_scope.py'"
 cf="$cm2/.changed"
 printf 'secrets.txt\ndocs/scope/cmfeat.scope.json\n' >"$cf"
 CM2_OUT="$(env PATH="$SANITISED_PATH" PLUMBLINE_PYTHON_LIB_OVERRIDE=1 \
@@ -427,6 +438,8 @@ mkdir -p "$CM3_LIB"
 cp "$LIB_SRC"/plumbline_cli.py "$CM3_LIB/"
 sed 's/^\( *\)parser = PlumblineArgumentParser(/\1parser = argparse.ArgumentParser(/' \
   "$LIB_SRC/plumbline_scope.py" >"$CM3_LIB/plumbline_scope.py"
+assert "CM-3 precondition: the mutation actually changed the parser class" \
+  "! cmp -s '$LIB_SRC/plumbline_scope.py' '$CM3_LIB/plumbline_scope.py'"
 cf3="$WORK/cm3.changed"
 : >"$cf3"
 CM3_OUT="$(env PATH="$SANITISED_PATH" python3 "$CM3_LIB/plumbline_scope.py" \
