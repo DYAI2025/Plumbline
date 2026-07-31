@@ -719,8 +719,12 @@ now states its scope honestly and points at the behavioural guard.
   wrappers. `run_hook_with_env` now sanitises `PATH` (dropping only directories holding
   a Plumbline wrapper, so the `uv`/`python3` fallback cases still resolve). **This also
   closed the 4 pre-existing PLUM-7 failures** that CLAUDE.md recorded as "green on CI
-  and red for every real user": 128/128 now pass under both a clean PATH and the real
-  ambient PATH.
+  and red for every real user": 128/128 pass under the `CLEAN_PATH` documented in
+  CLAUDE.md. Under the **raw ambient PATH** the 5 PLUM-8 interpreter-fallback assertions
+  still redden — via false-RED class 1 (the `modern-python` `python3` shim), by design
+  and not a defect of this batch. An earlier version of this line claimed "128/128 under
+  both a clean PATH and the real ambient PATH"; that was measured against a PATH from
+  which the shim had already been stripped, and was wrong.
 - **F5/F6/F14** — the repoint checked only the first match (so a second stale entry
   could survive, or all entries collapse into duplicates) and replaced the whole
   command (dropping a hand-added `env` prefix or flag). It now considers every match,
@@ -740,3 +744,59 @@ unknown keys); CLI install paths; advisory-never-blocks in code; PLUM-13 wired t
 the blocking path; the `_patterns_from_canvas` tuple change; bash-3.2/BSD portability;
 CI registration of all new modules; doc tripwires; and no remaining overclaim in this
 file.
+
+## Runtime verification of the global repoint (2026-07-31)
+
+Until this section, every claim in this file rested on the test suite and on reading the
+installed state. That is *not* runtime proof: it shows what the code should do, not what
+the Claude Code runtime actually loads. This section records what was measured in a
+**freshly started, separate `claude` process** after the hooks-only repoint.
+
+### What was repointed
+
+`./config/claude/install.sh --update --no-agents --no-commands --no-skills` (CLI/lib
+layer, executed first) and then the hooks-only repoint. Backup taken beforehand at
+`~/.claude/.plumbline-hook-repoint-backup-20260731T140713Z` (settings.json + all 29
+registered hook commands). The old `plumbline_v1` checkout and its seven uncommitted
+files were not touched; the unrelated azodiac working tree stayed dirty at 47 changes.
+
+Read-after-write on `~/.claude/settings.json`: exactly **6 changed lines**, all of them
+the three Plumbline command paths; all **26 foreign hook commands byte-identical**; each
+Plumbline hook registered exactly once; valid JSON; second and third runs idempotent
+("already registered", stable file hash).
+
+### Measured in a fresh `claude -p` process
+
+| # | check | result |
+|---|---|---|
+| 1 | which enforce-hook path is actually **loaded** | `…/_TOOLZ/plumb/Plumbline/config/claude/hooks/plumbline-enforce.sh` — **0** references to `plumbline_v1` anywhere in the hook debug log |
+| 2 | which checkout/CLI executes | SHA `01ae27c`, branch `agent/plum-9-runtime-truth`, `plumbline version` = `0.23.1`; all 7 managed CLIs in `~/.claude/bin` resolve into this checkout, **0 stale**, **0** pointing at `plumbline_v1` |
+| 3 | are all four new gates active by default | **yes** — `plan-check`, `runtime-hygiene`, `remote-watch`, `provenance-check` all invoked with no gate env var set (call-site trace); resolution narrated as `source=HOME/.claude/bin` |
+| 4 | do they run advisory / non-blocking | **yes** — the run's block carried `gate=scope … PRIL_POLICY_VIOLATION` (the *blocking* gate); advisory results were appended under "PRIL advisory notices (do NOT block…)" and did not produce the decision |
+| 5 | is a targeted finding visibly reported | **yes** — `PRIL_ADVISORY hygiene PRIL_POLICY_FINDING exit=3: VIOLATION class=unignored pattern=.claude/homunculus/` and `PRIL_ADVISORY provenance PRIL_INPUT_MISSING exit=2: …` |
+| 6 | does `PLUMBLINE_GATE_<NAME>=0` disable only that gate | **yes** — `PLUMBLINE_GATE_HYGIENE=0` silenced hygiene while provenance still reported |
+| 7 | does an unarmed normal run stay silent | **yes** — empty stdout *and* empty stderr, exit 0 |
+| 8 | is the KO-1 marker-removal case still invisible | **partly** — see the ceiling below |
+
+Hook exit codes: unarmed `0`, armed `0`. That is correct and not a weakened gate — a
+Stop hook signals refusal through `decision: block` in its JSON payload, not through its
+exit status; the fresh process did block.
+
+### Evidence ceiling of this section
+
+- **KO-1 is mitigated, not closed.** Marker-absence detection is **opt-in**
+  (`PLUMBLINE_GATE_MARKER_ABSENT=1`), because marker removal cannot be distinguished
+  from the legitimate end of a run. Measured both ways: default OFF → silent no-op;
+  with the flag ON → `PRIL_MARKER_ABSENT` reported. So deleting the marker still
+  disarms the gates silently **in the default configuration**. The honest claim is
+  "detectable on request", not "no longer possible".
+- **Checks 4–8 were exercised against the registered hook file directly**, not through a
+  full `claude -p` round trip each. The fresh process established *which file the runtime
+  loads* (check 1); the behavioural checks then drove exactly that file. This is a real
+  split and is named rather than blurred: it proves the loaded artifact behaves this way,
+  and it does not re-prove per check that the runtime invoked it.
+- **One machine, one OS.** macOS 25.3.0, single user install. Nothing here is evidence
+  about a second machine, a `--copy` install, or Linux.
+- The evidence class of this section is **real-boundary-smoke**: the real runtime, the
+  real global settings, the real installed CLIs — but a synthetic fixture repository as
+  the subject, and no production-verified multi-user history.
