@@ -41,8 +41,10 @@ build_src() {
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/stop-learning-loop.sh"
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/pretool-vision-gate.sh"
   chmod +x "$r/config/claude/hooks/"*.sh
-  printf '#!/usr/bin/env bash\n# %s cli\nexit 0\n' "$m" >"$r/config/claude/bin/plumbline-scope-check"
-  chmod +x "$r/config/claude/bin/plumbline-scope-check"
+  for c in plumbline-scope-check plumbline-context-check; do
+    printf '#!/usr/bin/env bash\n# %s cli\nexit 0\n' "$m" >"$r/config/claude/bin/$c"
+    chmod +x "$r/config/claude/bin/$c"
+  done
   printf '# %s lib\n' "$m" >"$r/config/claude/lib/plumbline_scope.py"
   printf -- '---\nname: demo-command\ndescription: %s\n---\nbody\n' "$m" \
     >"$r/config/claude/commands/demo-command.md"
@@ -159,5 +161,61 @@ OUT_DR="$(cat "$WORK/install-DR.log")"
 assert_contains "dry-run predicts the refusal" "$OUT_DR" "would REFUSE"
 assert_not_contains "dry-run does not promise to symlink the refused target" \
   "$OUT_DR" "would symlink:  $HOME_F/bin/plumbline-scope-check"
+
+# 8. A layer root that ESCAPES $CLAUDE_HOME must be refused, not written through.
+#    This is not hypothetical: during review of this change a reviewer copied a real
+#    ~/.claude with `cp -a`, which preserved `skills -> <real home>/skills-unified` as
+#    an ABSOLUTE link. Installing into the copy rewrote 16 entries in the REAL shared
+#    skills directory. Nothing was lost, but nothing stopped it either.
+HOME_E="$WORK/home-escape"
+OUTSIDE="$WORK/outside-shared-skills"
+mkdir -p "$HOME_E" "$OUTSIDE"
+printf 'someone elses content\n' >"$OUTSIDE/demo-skill-marker.txt"
+ln -s "$OUTSIDE" "$HOME_E/skills"          # layer root escapes $CLAUDE_HOME
+env CLAUDE_HOME="$HOME_E" HOME="$HOME_E" bash "$B/config/claude/install.sh" --update \
+  >"$WORK/install-E.log" 2>&1
+rc_e=$?
+OUT_E="$(cat "$WORK/install-E.log")"
+assert_contains "an escaping layer root is REFUSED" "$OUT_E" "OUTSIDE \$CLAUDE_HOME"
+assert_eq "the escape makes the run non-zero" "3" "$rc_e"
+assert "the outside directory is untouched" "[ -f '$OUTSIDE/demo-skill-marker.txt' ]"
+assert "nothing was written into the outside directory" \
+  "[ ! -e '$OUTSIDE/demo-skill' ]"
+# A layer root symlinked INSIDE $CLAUDE_HOME is legitimate and must still work.
+HOME_I="$WORK/home-inside"
+mkdir -p "$HOME_I/skills-unified"
+ln -s "$HOME_I/skills-unified" "$HOME_I/skills"
+env CLAUDE_HOME="$HOME_I" HOME="$HOME_I" bash "$B/config/claude/install.sh" --update \
+  >"$WORK/install-I.log" 2>&1
+rc_i=$?
+assert_eq "a layer root symlinked INSIDE \$CLAUDE_HOME still installs" "0" "$rc_i"
+assert "the skill landed via the in-home symlink" \
+  "[ -e '$HOME_I/skills-unified/demo-skill' ]"
+
+# 9. Refusal aggregation across layers: the count must be the real total, not 1.
+#    A refactor moving the transfer loop into a subshell would zero the counter and a
+#    single-refusal assertion would not notice.
+HOME_M="$WORK/home-multi"
+mkdir -p "$HOME_M/bin" "$HOME_M/lib" "$WORK/foreign"
+printf 'x\n' >"$WORK/foreign/thing"
+ln -s "$WORK/foreign/thing" "$HOME_M/bin/plumbline-scope-check"
+ln -s "$WORK/foreign/thing" "$HOME_M/bin/plumbline-context-check"
+ln -s "$WORK/foreign/thing" "$HOME_M/lib/plumbline_scope.py"
+env CLAUDE_HOME="$HOME_M" HOME="$HOME_M" bash "$B/config/claude/install.sh" --update \
+  >"$WORK/install-M.log" 2>&1
+rc_m=$?
+OUT_M="$(cat "$WORK/install-M.log")"
+assert_eq "multiple refusals still exit 3" "3" "$rc_m"
+assert_contains "the refusal COUNT is the real total, not 1" \
+  "$OUT_M" "PLUMBLINE_INSTALL_REFUSALS=3"
+
+# 10. A dangling link is adopted, but NAMED -- never a silent takeover.
+HOME_G="$WORK/home-dangle2"
+mkdir -p "$HOME_G/bin"
+ln -s "$WORK/gone-away/plumbline-scope-check" "$HOME_G/bin/plumbline-scope-check"
+env CLAUDE_HOME="$HOME_G" HOME="$HOME_G" bash "$B/config/claude/install.sh" --update \
+  >"$WORK/install-G.log" 2>&1
+OUT_G="$(cat "$WORK/install-G.log")"
+assert_contains "adopting a dangling link is announced" "$OUT_G" "adopting dangling link"
 
 finish "test_install_all_layers"

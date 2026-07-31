@@ -126,6 +126,31 @@ fresh="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
 assert_contains "R5 a fresh settings.json gets the enforce hook registered" \
   "$fresh" "$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
 
+# --- R5b: the LEARNING-LOOP stop hook repoints too --------------------------------
+# It had no repoint branch at all: it printed a resolved "hook source" and then left any
+# existing registration in place -- including a copy at an unmanaged path that no
+# identity or provenance check ever validated. Its two siblings repointed, so a repoint
+# produced a MIXED hook runtime while the log claimed otherwise.
+home_sl="$WORK/home-stoploop"
+mkdir -p "$home_sl"
+cat >"$home_sl/settings.json" <<'EOF'
+{"hooks":{"Stop":[{"hooks":[
+  {"type":"command","command":"bash /Users/somebody/.claude/hooks/stop-learning-loop.sh","timeout":10}
+]}]}}
+EOF
+run_install "$home_sl"
+sl="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("stop-learning-loop"))) | .[0] // ""' "$home_sl/settings.json")"
+assert_contains "R5b the stop-learning-loop hook is repointed to this checkout" \
+  "$sl" "$REPO_DIR/config/claude/hooks/stop-learning-loop.sh"
+assert_not_contains "R5b the unmanaged path is gone" "$sl" "/Users/somebody/"
+assert_contains "R5b the repoint is announced" "$INSTALL_OUT" "REPOINTING stop-hook"
+sl_count="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("stop-learning-loop"))) | length' "$home_sl/settings.json")"
+assert_eq "R5b exactly one stop-learning-loop registration remains" "1" "$sl_count"
+# And re-running is a genuine no-op for it.
+run_install "$home_sl"
+assert_contains "R5b second run is idempotent for the stop hook" \
+  "$INSTALL_OUT" "skip stop-hook: already registered"
+
 # --- R6: a command with a wrapper/flags keeps them; only the PATH is substituted ----
 # Replacing the whole .command silently discarded a hand-added `env` prefix or flag.
 home3="$WORK/home3"

@@ -9,7 +9,7 @@
 #
 # Measured configuration (2026-07-31, corrected -- an earlier version of this comment
 # was WRONG): ~/.claude/agents has NO .git of its own. `git rev-parse` from inside it
-# walks UP and reports , which IS a working tree (origin DYAI2025/azodiac) whose
+# walks UP and reports $HOME, which IS a working tree (origin DYAI2025/azodiac) whose
 # .gitignore excludes .claude/*. The stale 2026-06-08 copy of plumbline-enforce.sh
 # there is therefore UNTRACKED, inside a gitignored subtree of an unrelated repo --
 # not, as first claimed, a clone of azodiac at that path.
@@ -17,7 +17,9 @@
 # The agents copy is usable ONLY when all hold:
 #   1. it lives in a git repository;
 #   2. that repository's normalized remote identity equals the install checkout's;
-#   3. the hook file there is byte-identical to the install checkout's;
+#   3. that repository root is itself a Plumbline checkout;
+#   4. the hook file is TRACKED by that repository;
+#   5. the hook file there is byte-identical to the install checkout's;
 # and the chosen source + REASON are always printed. Anything else, including
 # "identity cannot be determined", falls back to the checkout. The foreign repository
 # is never modified.
@@ -187,6 +189,26 @@ assert_contains "C4d the reason names the untracked provenance" \
   "$INSTALL_OUT" "UNTRACKED"
 assert_not_contains "C4d it must NOT claim 'same repository and byte-identical'" \
   "$INSTALL_OUT" "same repository and byte-identical"
+
+# --- C4e: same repo, tracked, byte-identical -- but the root is NOT a Plumbline
+# checkout. Measured: deleting this branch left all four install suites green (92/92),
+# so it was an unverified claim. A test that still passes with its branch removed does
+# not cover it.
+home="$WORK/h4e"; mkdir -p "$home"
+a="$home/agents"; mkdir -p "$a/config/claude/hooks"
+git -C "$a" init -q
+git -C "$a" config user.email res@example.com
+git -C "$a" config user.name "Res"
+git -C "$a" remote add origin "$ORIGIN_SELF"
+cp "$REPO_DIR/$HOOK_REL" "$a/$HOOK_REL"          # byte-identical AND committed...
+git -C "$a" add -A >/dev/null 2>&1
+git -C "$a" commit -q -m base >/dev/null 2>&1
+# ...but NO config/claude/install.sh at the root, so it is not a Plumbline checkout.
+run_install "$home"
+assert_contains "C4e non-Plumbline root: registers the checkout path" \
+  "$(registered_enforce "$home")" "$REPO_DIR/$HOOK_REL"
+assert_contains "C4e the reason names the missing checkout marker" \
+  "$INSTALL_OUT" "not a Plumbline checkout"
 
 # --- C5: identity undeterminable -> fail-safe to the checkout, never foreign --
 # An agents directory that is NOT a git repository at all.

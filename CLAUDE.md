@@ -107,11 +107,11 @@ config/claude/bin/plumbline-council-gui                # serve (live needs COUNC
 Requirements: `git`, `bash`, `python3` (+ `PyYAML` for the explorer/validators), and
 `jq` (for hook registration). CI also installs `shellcheck`.
 
-### Run `run_all.sh` in a clean environment (3 verified local false-REDs)
+### Run `run_all.sh` in a clean environment (5 verified local false-REDs)
 
 The suite is green on CI but the ambient dev environment can redden **24 of 36 stages**
-locally without a single code defect. Measured on this machine 2026-07-30 — strip these
-before believing a local RED (and never "fix" the tree to satisfy them):
+locally without a single code defect. Measured on this machine 2026-07-30/31 — strip
+these before believing a local RED (and never "fix" the tree to satisfy them):
 
 ```bash
 CLEAN_PATH="$(printf '%s' "$PATH" | tr ':' '\n' \
@@ -133,6 +133,18 @@ env -u SSL_CERT_FILE PATH="$CLEAN_PATH" bash config/claude/tests/run_all.sh
    This is a **test-isolation defect, not a runner limitation** — the assertion can only
    pass where Plumbline is *not* installed, so it is green on CI and red for every real
    user. Fix it by pinning `PATH` inside `run_hook_with_env`; do not paper over it.
+   *(Fixed 2026-07-31: `run_hook_with_env` now sanitises `PATH`, dropping only
+   directories that hold a Plumbline wrapper so the `uv`/`python3` fallback cases still
+   resolve. 128/128 pass under both a clean and the real ambient PATH.)*
+4. **`~/.local/bin/python3` is an `exec uv run python3 "$@"` shim.** Any test that points
+   `HOME` at a temp dir makes `uv` re-resolve an interpreter against an empty cache; the
+   installer then **hangs indefinitely with no output and no error** (observed blocking
+   in `write_install_anchor`, no child process; `</dev/null` does not help). The
+   `CLEAN_PATH` recipe above strips the `modern-python` shim but **not** this one.
+5. **Falling back to `/usr/bin/python3` (3.9.6) reddens ~43 update-layer assertions** —
+   `datetime.UTC` needs 3.11+, `tarfile.extractall(filter=…)` needs 3.12+. Re-running
+   with `/opt/homebrew/bin/python3` and nothing else changed goes green. "43 RED in the
+   update layer" is an interpreter artifact, not a signal.
 
 **Python interpreter contract for the PRIL wrappers** (`lib/plumbline_python.sh`, PLUM-8):
 resolution is `PLUMBLINE_PYTHON` → `uv run --no-project --no-config python3` → `python3`,
