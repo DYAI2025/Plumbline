@@ -342,6 +342,29 @@ the new baseline undetected. Start CORE; graduate to FULL when the instruments a
   not a RED product state — reconcile the matrix first, then resume. (Measured failure
   2026-07-08: PR merged+deployed with no ledger event; resume misclassified the base
   feature as undeployed.)
+  **Remote-state watch (PLUM-14) — a documented no-merge state must be enforced, not
+  only written down.** The cross-check above is a *resume-time* reconciliation; it does
+  not notice a merge that lands mid-run. Once a PR exists for the run, snapshot the
+  expected remote state and re-verify it before each further write phase:
+
+  ```bash
+  config/claude/bin/plumbline-remote-watch snapshot --repo <repo> --feature <slug> \
+    --pr <n> --base <base-branch>          # needs PLUMBLINE_REMOTE_LIVE=1 (default OFF)
+  config/claude/bin/plumbline-remote-watch verify  --repo <repo> --feature <slug>
+  ```
+
+  `verify` exits **3** with `REMOTE_STATE_CHANGED: kind=…` for an unexpected `merged`,
+  `force-push`, `base-advanced`, `base-changed`, `draft-changed` or `pr-state-changed`,
+  and names the account and mechanism the remote reports **without** inferring whether a
+  person or an automation acted. Merge and force-push come from git containment, so they
+  are caught even when the forge metadata still says OPEN. The block persists until the
+  run is re-evaluated and a fresh `snapshot` records the reviewed state; a *further*
+  change after that still blocks. With no snapshot, `verify` fails closed (exit 2) rather
+  than passing by absence — and with neither the live gate nor an injected
+  `--pr-state-file` it refuses instead of checking only the git half.
+  Optionally publish the run's merge gate as a forge check with
+  `publish-status --state pending|success|failure` (`--dry-run` prints the exact request
+  and crosses no boundary).
 - If the goal above is **empty or a placeholder**, do NOT start. Ask the user for
   (a) the feature/goal and (b) the target project directory, then stop.
 - Identify the **target repo**. If the change is non-trivial and you are on a default
@@ -538,9 +561,16 @@ user for confirmation rather than inventing product context.
 
 ### Phase 0.6 — PRIL Scope Guard setup (hard fail-closed)
 
-Before implementation begins, the confirmed Product Canvas must include an `Allowed change scope`
-section with narrow repo-relative files, directories, or glob patterns. For every implementation
-increment, produce a changed-files list and run:
+The confirmed scope is written to the **canonical manifest** `docs/scope/<feature>.scope.json`
+(schema, entry rules and migration: `docs/scope-manifest.md`). Product paths go in
+`allowed_change_scope`, the feature's own governance artifacts (canvas, PRD, vision, plan, reality
+ledger, trace matrix, `CLAUDE.md`) in `governance_paths`, and each decision carries a `provenance`
+record with `origin`, `decided_by`, `decided_at`, `reason`. The manifest is checked FIRST and is
+authoritative even when broken — it never falls back to the canvas. The legacy Canvas
+`Allowed change scope` section still works when a feature has no manifest, but it is documentation:
+unusable lines are reported with line number and cause, never silently dropped.
+
+For every implementation increment, produce a changed-files list and run:
 
 ```bash
 config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --changed-files <changed-files.txt>
@@ -548,6 +578,47 @@ config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> -
 
 Out-of-scope edits are fail-closed: stop, ask the user to expand the confirmed scope, or revert the
 out-of-scope change. Do not silently broaden scope from the PRD, tests, or agent judgement.
+
+**Runtime-state hygiene (PLUM-11) — advisory, runs automatically.** Agent tooling writes volatile
+state (`.claude-flow/`, `.swarm/`, `.claude/homunculus/`) into the product repo. Untracked **and
+unignored** state enters the enforce hook's change surface and blocks every scope check; tracked
+state puts session noise into product diffs forever. The Stop hook runs this automatically and
+**reports without blocking**; run it by hand when you want the fix applied:
+
+```bash
+config/claude/bin/plumbline-runtime-hygiene --repo <repo> [--fix-ignore]
+```
+
+`--fix-ignore` is additive — it appends a marked block to `.gitignore`, never rewrites a foreign
+rule, never deletes a file, and **never untracks anything**: an already-tracked runtime file keeps
+failing until the operator runs the printed `git rm -r --cached` (which keeps the working copy).
+
+**Generated artifacts (PLUM-15) — an allowed path can still be changed the wrong WAY.** The scope
+guard judges paths; it cannot tell a regenerated file from a hand-edited one. Where the feature owns
+a generated artifact, declare the producer relationship in the manifest and run the provenance gate
+beside the scope gate:
+
+```json
+"generated_artifacts": [
+  {"path": "pkg/openapi/v1.json", "producer": "pkg/src/openapi/**",
+   "command": "./scripts/gen.sh", "deterministic": true}
+]
+```
+
+```bash
+config/claude/bin/plumbline-provenance-check --repo <repo> --feature <slug> \
+  --changed-files <changed-files.txt> [--verify-reproducible]
+```
+
+Four classes stay **separately visible**, because they need different fixes:
+`PROVENANCE_VIOLATION` (the artifact changed but nothing matching its producer did — a hand edit of
+generated output) · `ARTIFACT_DRIFT` (the producer changed but re-running the declared command does
+not reproduce the committed file) · `NONDETERMINISTIC_OUTPUT` (the command disagrees with itself
+across two runs, so drift is unprovable) · `PRODUCER_OUT_OF_SCOPE` / `MISSING_PRODUCER` (the
+declaration contradicts the manifest, or names a producer that matches no file). `--verify-reproducible`
+**executes** the declared command, so it is opt-in; without it the report says reproducibility was not
+verified rather than implying it was. `deterministic: false` skips the byte comparison entirely and
+reports "drift NOT checked" — never a reproducibility pass.
 
 ### Safe persistence redaction gate
 
@@ -642,6 +713,30 @@ only encodes where the Vision is shown, the start signal, and the bounded autono
    test.)
 2. `planner` produces the atomic, dependency-aware task sequence (→ kanban-md tickets).
    Save the plan (`writing-plans` format) to `docs/plans/YYYY-MM-DD-<feature>.md`.
+   The plan MUST declare the files it will touch in a machine-readable fenced block
+   so the pre-coding gate is exact rather than inferred:
+
+   ````markdown
+   ```plumbline-touches
+   src/feature/api.py
+   config/claude/tests/test_feature.sh
+   ```
+   ````
+3. **Plan-vs-scope gate (hard, BEFORE any coding — PLUM-12).** A file that is
+   authorized in conversation or named in the plan but missing from the canonical
+   manifest must be caught here, not by the Stop hook after the work is done:
+
+   ```bash
+   config/claude/bin/plumbline-plan-check --repo <repo> --feature <feature-slug> \
+     --plan docs/plans/YYYY-MM-DD-<feature>.md [--require-provenance]
+   ```
+
+   Exit 3 = the plan touches unauthorized paths, or the canvas claims scope the
+   manifest does not authorize (a contradiction; the manifest decides). Resolve it by
+   confirming the addition with the user and recording it in the manifest **with its
+   provenance** — never by widening scope silently. Without a `plumbline-touches`
+   block the check still runs but reports `mode=heuristic`, so an inferred read-only
+   mention is distinguishable from a declared write target.
 
 ### Phase 2 — Subagent-driven dev/review loop (per task; ≤ MAX_DEVREVIEW_LOOPS)
 Follow `executing-plans` + `test-driven-development` (fresh subagent per task). For each task:
@@ -693,6 +788,25 @@ Run in a clean hermetic runner, not the stateful agent sandbox.
   Fake-only, mock-only, placeholder, unverified, missing, malformed, or below-minimum
   evidence is fail-closed. A Gate C/D result may not be reported as pass/done until this
   command passes or the user has explicitly confirmed a lower minimum for that feature.
+
+  **Evidence targets (PLUM-13) — bind the evidence to the boundary the AC demanded.**
+  Ranking the claimed evidence class says nothing about *what the evidence touched*: a
+  green test on its own fixtures can be credited for a defect path it never exercised.
+  For every **critical** acceptance criterion, declare the target in
+  `docs/evidence/<feature>.targets.json` — `dataset`, `boundary`, `expected_result`, plus
+  `preconditions` (`present`/`absent`), an optional per-target `min_evidence` floor and
+  optional `proof_tokens`. The matching ledger record must repeat that binding, and the
+  artifact its `evidence_ref` names must actually contain the proof token, or the gate
+  reports:
+  - `MISSING_BOUNDARY` (exit 2) — a declared target has no record, or the record carries
+    no `dataset`/`boundary`/`expected_result`;
+  - `EVIDENCE_MISMATCH` (exit 3) — the record contradicts the target, its `evidence_ref`
+    is unresolvable, the proof token is absent from the referenced artifact, the
+    preconditions differ, the per-target floor is unmet, or an `absent`-state target has
+    no resolvable present-state `control_ref` (a vacuous absence test).
+
+  A feature with no targets file is unaffected. A **present but broken** targets file is
+  `malformed` (exit 4) and never degrades to "no targets declared".
 - **Gate D — Judgment (ultrathink, ONCE/iteration):** dispatch `product-owner`; run
   `ultrathink-craftsmanship` in kurz/kurz+ mode **once** (no re-run) — "did we build the
   right thing?", bias + failure-mode, konfabulations-audit on claims that entered
