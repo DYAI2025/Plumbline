@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.23.3](https://github.com/DYAI2025/Plumbline/compare/v0.23.2...v0.23.3) (2026-07-31)
+
+
+### Bug Fixes
+
+* **install:** close the layer-root escape and the stop-hook repoint gap ([3e7d641](https://github.com/DYAI2025/Plumbline/commit/3e7d64188a2cc76d0096587ef2c929e81bf4b09a))
+* **install:** repoint ALL layers, verify hook provenance, signal partial failure ([322d873](https://github.com/DYAI2025/Plumbline/commit/322d873a1ef143242748c1f52c36f0420d129543))
+* **install:** stop the escape guard from breaking legacy and sandbox layouts ([01ae27c](https://github.com/DYAI2025/Plumbline/commit/01ae27c20136e2954c9a6d7253c49830e4a35e7b))
+* **pril:** close the three trust-boundary defects that blocked PR [#103](https://github.com/DYAI2025/Plumbline/issues/103) ([88555f9](https://github.com/DYAI2025/Plumbline/commit/88555f934519660ef639e035d8cf3c82afa7a00c))
+* **test:** make the counter-mutations actually mutate ([97e3f09](https://github.com/DYAI2025/Plumbline/commit/97e3f092435baea368909c9b51df16c05cb8e95a))
+
 ## [0.23.2](https://github.com/DYAI2025/Plumbline/compare/v0.23.1...v0.23.2) (2026-07-29)
 
 
