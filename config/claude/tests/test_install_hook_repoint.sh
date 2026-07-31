@@ -151,6 +151,29 @@ run_install "$home_sl"
 assert_contains "R5b second run is idempotent for the stop hook" \
   "$INSTALL_OUT" "skip stop-hook: already registered"
 
+# R5c/R5d/R5e: the enforce hook has R6/R7/R8 for these; the stop hook had none, so a
+# future change from path-only `sub` to whole-command replace would have passed.
+home_sl2="$WORK/home-stoploop2"
+mkdir -p "$home_sl2"
+cat >"$home_sl2/settings.json" <<'EOF'
+{"hooks":{"Stop":[
+  {"hooks":[{"type":"command","command":"bash /unrelated/other-tool.sh","timeout":9}]},
+  {"hooks":[{"type":"command","command":"env FOO=1 bash /OLD_S/config/claude/hooks/stop-learning-loop.sh --strict","timeout":10}]},
+  {"hooks":[{"type":"command","command":"bash /OLD_T/config/claude/hooks/stop-learning-loop.sh"}]}
+]}}
+EOF
+run_install "$home_sl2"
+kept_sl="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("stop-learning-loop"))) | .[0]' "$home_sl2/settings.json")"
+assert_contains "R5c the stop hook keeps its env prefix" "$kept_sl" "env FOO=1"
+assert_contains "R5c it keeps its trailing flag" "$kept_sl" "--strict"
+stale_sl="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("OLD_S|OLD_T"))) | length' "$home_sl2/settings.json")"
+assert_eq "R5d neither stale stop-hook registration survives" "0" "$stale_sl"
+count_sl="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("stop-learning-loop"))) | length' "$home_sl2/settings.json")"
+assert_eq "R5d both registrations are kept (none deleted)" "2" "$count_sl"
+foreign_sl="$(jq -r '[.hooks.Stop[]?.hooks[]?.command] | map(select(test("other-tool"))) | .[0]' "$home_sl2/settings.json")"
+assert_eq "R5e an unrelated Stop hook is preserved verbatim" \
+  "bash /unrelated/other-tool.sh" "$foreign_sl"
+
 # --- R6: a command with a wrapper/flags keeps them; only the PATH is substituted ----
 # Replacing the whole .command silently discarded a hand-added `env` prefix or flag.
 home3="$WORK/home3"

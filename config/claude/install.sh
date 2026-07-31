@@ -248,15 +248,26 @@ plumbline_managed_symlink() {
   local stop_home="" stop_claude=""
   stop_home="$(canonical_path "$HOME")" || stop_home=""
   stop_claude="$(canonical_path "$CLAUDE_HOME")" || stop_claude=""
+  # Test the marker BEFORE the ancestor stops, so a directory that is genuinely a
+  # Plumbline checkout is recognised even when $CLAUDE_HOME happens to live inside it
+  # (a dev-sandbox layout the installer documents via the CLAUDE_HOME override).
+  # Checking the stops first refused those outright: 7 refusals, 0 layers repointed --
+  # a complete inversion of the repoint this work exists to perform.
+  #
+  # $HOME itself is still never accepted: that is the stray-marker case, where one
+  # `config/claude/install.sh` at a high ancestor would otherwise mark every link
+  # beneath it as ours and disable the foreign-symlink refusal wholesale.
   root="$(dirname "$target")"
   while [ -n "$root" ] && [ "$root" != "/" ] && [ "$root" != "." ]; do
+    if [ -f "$root/config/claude/install.sh" ] && [ "$root" != "$stop_home" ]; then
+      return 0
+    fi
     if [ -n "$stop_home" ] && [ "$root" = "$stop_home" ]; then return 1; fi
     if [ -n "$stop_claude" ]; then
       case "$stop_claude/" in
         "$root"/*) return 1 ;;   # root is $CLAUDE_HOME or an ancestor of it
       esac
     fi
-    [ -f "$root/config/claude/install.sh" ] && return 0
     root="$(dirname "$root")"
   done
   return 1
@@ -308,18 +319,59 @@ TRANSFER_REFUSALS=0
 # `skills -> skills-unified` layout is legitimate and common). Only an escape is refused.
 layer_root_safe() {
   local layer="$1" real_home="" real_layer=""
-  [ -e "$layer" ] || return 0            # absent: transfer() will create it in place
+  # `-e` FOLLOWS symlinks, so a DANGLING layer root reads as "absent" and sails past
+  # every check below -- then transfer()'s `mkdir -p` fails, `set -e` kills the run at
+  # exit 1 with no REFUSING line, no count, and a partially applied home. Test for the
+  # link itself too.
+  if [ ! -e "$layer" ] && [ ! -L "$layer" ]; then
+    return 0                              # genuinely absent: transfer() creates it
+  fi
+  if [ -L "$layer" ] && [ ! -e "$layer" ]; then
+    # A dangling layer root: create what it points at (if that is inside $CLAUDE_HOME)
+    # rather than dying in mkdir. Announced, never silent -- same stance as adopting a
+    # dangling wrapper link.
+    local dangling_target=""
+    dangling_target="$(readlink "$layer" 2>/dev/null)" || dangling_target=""
+    case "$dangling_target" in
+      /*) ;;
+      *) dangling_target="$(dirname "$layer")/$dangling_target" ;;
+    esac
+    real_home="$(canonical_path "$CLAUDE_HOME")" || real_home=""
+    # The target does not exist, so canonical_path cannot resolve it directly.
+    # Canonicalize its PARENT and re-append the basename -- otherwise a /var vs
+    # /private/var mismatch makes an in-home target look like an escape (the macOS
+    # path-canonicalization class this repo has already been bitten by twice).
+    local dt_parent="" dt_canon=""
+    dt_parent="$(canonical_path "$(dirname "$dangling_target")")" || dt_parent=""
+    if [ -n "$dt_parent" ]; then
+      dt_canon="$dt_parent/$(basename "$dangling_target")"
+    else
+      dt_canon="$dangling_target"
+    fi
+    case "$dt_canon/" in
+      "$real_home"/*)
+        log_action "creating dangling layer root: $layer -> $dt_canon"
+        mkdir -p "$dt_canon" 2>/dev/null || true
+        return 0
+        ;;
+    esac
+    echo "REFUSING to write into $layer: it is a dangling symlink to $dangling_target, OUTSIDE \$CLAUDE_HOME." >&2
+    return 1
+  fi
   real_home="$(canonical_path "$CLAUDE_HOME")" || real_home=""
   real_layer="$(canonical_path "$layer")" || real_layer=""
   if [ -z "$real_home" ] || [ -z "$real_layer" ]; then
-    echo "REFUSING to write into $layer: cannot canonicalize it or \$CLAUDE_HOME" >&2
+    log_action "REFUSING to write into $layer: cannot canonicalize it or \$CLAUDE_HOME"
     return 1
   fi
   case "$real_layer/" in
     "$real_home"/*) return 0 ;;
   esac
-  echo "REFUSING to write into $layer: it resolves to $real_layer, OUTSIDE \$CLAUDE_HOME ($real_home)." >&2
-  echo "         Writing there would modify files this install was never pointed at." >&2
+  # Routed through log_action so a --dry-run preview reads "dry-run: REFUSING …" rather
+  # than claiming an action already taken. A preview that lies in either direction is
+  # worse than no preview.
+  log_action "REFUSING to write into $layer: it resolves to $real_layer, OUTSIDE \$CLAUDE_HOME ($real_home)."
+  log_action "         Writing there would modify files this install was never pointed at."
   return 1
 }
 
@@ -478,15 +530,23 @@ is_flow_coupled() {
 # (markdown with a top-level name: frontmatter key) are mounted — not the repo's docs, config,
 # metrics or explorer trees — and the flow-coupled set is omitted unless --with-flow-agents.
 install_agent_repo() {
-  if ! layer_root_safe "$CLAUDE_HOME/agents"; then
-    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
-    return 0
-  fi
   local target="$CLAUDE_HOME/agents"
-  # Back-compat: an existing whole-repo symlink (from an older install) is left untouched.
+  # Back-compat FIRST, before the escape guard. An older install created
+  # `~/.claude/agents -> $REPO_DIR` as a whole-repo symlink, and $REPO_DIR is by
+  # definition outside $CLAUDE_HOME -- so checking the guard first refused it, made this
+  # branch unreachable dead code, and turned every legacy machine's `plumbline update`
+  # into exit 3. plumbline_update.py reverts the WHOLE $CLAUDE_HOME on a non-zero exit,
+  # so that would have been an unrecoverable loop on every attempt.
+  #
+  # A link to this very checkout is not the foreign-escape class the guard exists for:
+  # it IS the install source. Recognise it, then guard everything else.
   if same_path "$REPO_DIR" "$target"; then
     log_action "skip agents: $target already points at this repo"
     return
+  fi
+  if ! layer_root_safe "$target"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
   fi
   local f rel omitted=0
   while IFS= read -r -d '' f; do
@@ -642,7 +702,6 @@ install_bin() {
   while IFS= read -r -d '' tool; do
     transfer "$tool" "$CLAUDE_HOME/bin/$(basename "$tool")"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
-  install_bin_libs
 }
 
 # Idempotently add the learning-loop Stop hook to ~/.claude/settings.json,
@@ -934,7 +993,14 @@ if [ "$INSTALL_HOOK" -eq 1 ]; then
   register_enforce_hook
   register_pretool_vision_hook
 fi
-[ "$INSTALL_BIN" -eq 1 ] && install_bin
+# bin and lib are SEPARATE layers with separate escape guards. install_bin used to call
+# install_bin_libs itself, so a refusal in `bin` returned early and silently skipped the
+# whole `lib` layer AND the install anchor -- while the machine-readable count still said
+# one target was refused. Dispatch them independently so each is evaluated and counted.
+if [ "$INSTALL_BIN" -eq 1 ]; then
+  install_bin
+  install_bin_libs
+fi
 
 # PLUM-11: volatile agent runtime state must not contaminate a product repository
 # or block its scope gates. Reporting is unconditional; WRITING an ignore rule into

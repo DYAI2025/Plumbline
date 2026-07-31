@@ -135,7 +135,12 @@ env -u SSL_CERT_FILE PATH="$CLEAN_PATH" bash config/claude/tests/run_all.sh
    user. Fix it by pinning `PATH` inside `run_hook_with_env`; do not paper over it.
    *(Fixed 2026-07-31: `run_hook_with_env` now sanitises `PATH`, dropping only
    directories that hold a Plumbline wrapper so the `uv`/`python3` fallback cases still
-   resolve. 128/128 pass under both a clean and the real ambient PATH.)*
+   resolve. **128/128 under `CLEAN_PATH`.** Under the RAW ambient PATH the 5 PLUM-8
+   interpreter-fallback assertions still redden — via class 1 above, by design: the
+   sanitiser deliberately keeps the toolchain on `PATH`, so the `modern-python` shim
+   survives it. An earlier version of this line claimed "128/128 under both"; that was
+   measured against a PATH from which the shim had already been stripped, and was
+   wrong.)*
 4. **`~/.local/bin/python3` is an `exec uv run python3 "$@"` shim.** Any test that points
    `HOME` at a temp dir makes `uv` re-resolve an interpreter against an empty cache; the
    installer then **hangs indefinitely with no output and no error** (observed blocking

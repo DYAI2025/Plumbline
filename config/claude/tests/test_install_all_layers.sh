@@ -218,4 +218,97 @@ env CLAUDE_HOME="$HOME_G" HOME="$HOME_G" bash "$B/config/claude/install.sh" --up
 OUT_G="$(cat "$WORK/install-G.log")"
 assert_contains "adopting a dangling link is announced" "$OUT_G" "adopting dangling link"
 
+# 11. M1-a: a stray `config/claude/install.sh` at a HIGH ancestor must NOT mark every
+#     link beneath it as ours. Without the $HOME stop, one marker file disables the
+#     foreign-symlink refusal wholesale. (Measured: deleting either stop left all 15
+#     install-touching suites green -- an unverified claim in the commit that added it.)
+HOME_S="$WORK/home-straymarker"
+mkdir -p "$HOME_S/.claude/bin" "$HOME_S/config/claude" "$HOME_S/othertool"
+printf '#!/usr/bin/env bash\n# stray marker\n' >"$HOME_S/config/claude/install.sh"
+printf 'foreign\n' >"$HOME_S/othertool/plumbline-scope-check"
+ln -s "$HOME_S/othertool/plumbline-scope-check" "$HOME_S/.claude/bin/plumbline-scope-check"
+env CLAUDE_HOME="$HOME_S/.claude" HOME="$HOME_S" bash "$B/config/claude/install.sh" --update \
+  >"$WORK/install-S.log" 2>&1
+rc_s=$?
+OUT_S="$(cat "$WORK/install-S.log")"
+assert_eq "a stray marker at \$HOME does NOT legitimise a foreign link" "3" "$rc_s"
+assert_contains "the foreign link is still refused" "$OUT_S" "REFUSING to replace foreign symlink"
+st="$(readlink "$HOME_S/.claude/bin/plumbline-scope-check" 2>/dev/null || echo '')"
+assert_contains "and it still points at the foreign target" "$st" "$HOME_S/othertool"
+
+# 12. M1-b: the walk must CANONICALIZE. A relative target that traverses through a
+#     Plumbline-named directory and back out resolves elsewhere, but a lexical walk
+#     matches the name and adopts the link.
+HOME_C2="$WORK/home-canon"
+mkdir -p "$HOME_C2/.claude/bin" "$HOME_C2/plumbtree/config/claude" "$HOME_C2/elsewhere"
+printf '#!/usr/bin/env bash\n' >"$HOME_C2/plumbtree/config/claude/install.sh"
+printf 'foreign\n' >"$HOME_C2/elsewhere/plumbline-scope-check"
+ln -s "../../plumbtree/../elsewhere/plumbline-scope-check" \
+  "$HOME_C2/.claude/bin/plumbline-scope-check"
+env CLAUDE_HOME="$HOME_C2/.claude" HOME="$HOME_C2" bash "$B/config/claude/install.sh" --update \
+  >"$WORK/install-C2.log" 2>&1
+rc_c2=$?
+OUT_C2="$(cat "$WORK/install-C2.log")"
+assert_eq "a path traversing OUT of a Plumbline tree is refused" "3" "$rc_c2"
+assert_contains "the traversal case is reported as foreign" \
+  "$OUT_C2" "REFUSING to replace foreign symlink"
+
+# 13. F3: $CLAUDE_HOME living INSIDE a checkout is a documented layout (the CLAUDE_HOME
+#     override). Testing the ancestor stops before the marker refused it outright --
+#     7 refusals, 0 layers repointed, the exact inversion of a repoint.
+A3="$WORK/checkout-A3"
+B3="$WORK/checkout-B3"
+build_src "$A3" "OLD3"
+build_src "$B3" "NEW3"
+env CLAUDE_HOME="$A3/.claude" HOME="$WORK/hhome" bash "$A3/config/claude/install.sh" \
+  >"$WORK/install-A3.log" 2>&1
+env CLAUDE_HOME="$A3/.claude" HOME="$WORK/hhome" bash "$B3/config/claude/install.sh" --update \
+  >"$WORK/install-B3.log" 2>&1
+rc_b3=$?
+OUT_B3="$(cat "$WORK/install-B3.log")"
+assert_eq "CLAUDE_HOME inside a checkout still repoints (no refusals)" "0" "$rc_b3"
+assert_not_contains "nothing was refused in that layout" "$OUT_B3" "REFUSING"
+b3t="$(readlink "$A3/.claude/bin/plumbline-scope-check" 2>/dev/null || echo MISSING)"
+assert_contains "and the CLI repointed to the new checkout" "$b3t" "$B3/"
+
+# 14. F1: the LEGACY whole-repo agents symlink that this installer used to create must
+#     remain installable. The escape guard ran before the back-compat branch, so
+#     `agents -> $REPO_DIR` (by definition outside $CLAUDE_HOME) was refused, exit 3 --
+#     and plumbline_update.py reverts the WHOLE $CLAUDE_HOME on a non-zero exit, making
+#     every legacy machine's update an unrecoverable loop.
+HOME_L="$WORK/home-legacy"
+mkdir -p "$HOME_L"
+ln -s "$B" "$HOME_L/agents"
+env CLAUDE_HOME="$HOME_L" HOME="$HOME_L" bash "$B/config/claude/install.sh" --update \
+  --no-commands --no-skills --no-hook --no-bin >"$WORK/install-L.log" 2>&1
+rc_l=$?
+OUT_L="$(cat "$WORK/install-L.log")"
+assert_eq "a legacy whole-repo agents symlink still installs cleanly" "0" "$rc_l"
+assert_contains "it is recognised, not refused" "$OUT_L" "already points at this repo"
+assert_not_contains "no escape refusal for the install source itself" \
+  "$OUT_L" "OUTSIDE \$CLAUDE_HOME"
+
+# 15. F5: a refusal in `bin` must not silently swallow the `lib` layer as well.
+HOME_BL="$WORK/home-binlib"
+mkdir -p "$HOME_BL/bin" "$WORK/foreign2"
+printf 'x\n' >"$WORK/foreign2/thing"
+ln -s "$WORK/foreign2/thing" "$HOME_BL/bin/plumbline-scope-check"
+env CLAUDE_HOME="$HOME_BL" HOME="$HOME_BL" bash "$B/config/claude/install.sh" --update \
+  --no-agents --no-commands --no-skills --no-hook >"$WORK/install-BL.log" 2>&1
+assert "a bin refusal does not skip the lib layer" \
+  "[ -e '$HOME_BL/lib/plumbline_scope.py' ]"
+
+# 16. F4: a DANGLING layer root must not kill the run with an unclassified exit 1.
+HOME_DL="$WORK/home-danglingroot"
+mkdir -p "$HOME_DL"
+ln -s "$HOME_DL/skills-unified" "$HOME_DL/skills"     # target does not exist yet
+env CLAUDE_HOME="$HOME_DL" HOME="$HOME_DL" bash "$B/config/claude/install.sh" --update \
+  --no-agents --no-commands --no-hook --no-bin >"$WORK/install-DL.log" 2>&1
+rc_dl=$?
+OUT_DL="$(cat "$WORK/install-DL.log")"
+assert_eq "a dangling layer root inside \$CLAUDE_HOME is handled, not fatal" "0" "$rc_dl"
+assert_contains "creating it is announced" "$OUT_DL" "creating dangling layer root"
+assert "the skill landed through the repaired root" \
+  "[ -e '$HOME_DL/skills-unified/demo-skill' ]"
+
 finish "test_install_all_layers"
