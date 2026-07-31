@@ -181,6 +181,174 @@ content_current() {
   return 1
 }
 
+# normalize_remote <url> -- comparable repository identity.
+# Reduces https://host/Owner/Repo.git and git@host:Owner/Repo.git to host/owner/repo,
+# so the SAME repository reached by different URL forms compares equal and a DIFFERENT
+# repository never does.
+normalize_remote() {
+  local url="$1"
+  [ -n "$url" ] || return 1
+  url="${url%.git}"
+  url="${url#*://}"          # strip scheme
+  url="${url#*@}"            # strip user@
+  url="$(printf '%s' "$url" | tr ':' '/' | tr '[:upper:]' '[:lower:]')"
+  printf '%s' "$url"
+}
+
+# plumbline_managed_symlink <path> -- true only for a symlink this installer owns.
+#
+# transfer() only ever writes inside $CLAUDE_HOME/{agents,commands,skills,bin,lib}, so
+# the DESTINATION is already our domain; the question is whether the entry sitting there
+# came from a previous run of this installer or from something else.
+#
+# "Ours" = a symlink whose basename matches AND whose target lies in one of the source
+# shapes this installer links from: `config/claude/...` (bin, lib, commands, skills) or
+# an `agents/` tree. A link pointing anywhere else -- e.g. another tool's binary that
+# happens to share a name -- is foreign and is never replaced.
+#
+# The first version of this only accepted config/claude/{bin,lib} and therefore refused
+# to refresh AGENT symlinks, breaking --update. Caught by the update-layer suite.
+plumbline_managed_symlink() {
+  local dst="$1" target="" root=""
+  [ -L "$dst" ] || return 1
+  target="$(readlink "$dst" 2>/dev/null)" || return 1
+  case "$target" in /*) ;; *) target="$(dirname "$dst")/$target" ;; esac
+
+  # A DANGLING link at one of our destinations is ours to repair: the checkout it
+  # pointed into was moved or deleted, which is exactly the case a repoint must be
+  # able to fix. Refusing here would dead-end every moved-checkout migration.
+  if [ ! -e "$target" ]; then
+    return 0
+  fi
+
+  # Otherwise: ours iff the link points INTO a Plumbline checkout, i.e. some ancestor
+  # of the target carries the installer itself. One uniform rule for all five layers
+  # (agents, commands, skills, bin, lib) -- an earlier version matched only
+  # config/claude/{bin,lib} and therefore classified all 61 agent, 11 command and 16
+  # skill links as foreign, refusing to repoint them while repointing the CLIs. That
+  # is precisely the mixed runtime this work exists to prevent, and it exited 0.
+  root="$(dirname "$target")"
+  while [ -n "$root" ] && [ "$root" != "/" ] && [ "$root" != "." ]; do
+    [ -f "$root/config/claude/install.sh" ] && return 0
+    root="$(dirname "$root")"
+  done
+  return 1
+}
+
+# safe_to_replace <dst> -- may transfer() overwrite this destination?
+#
+# The unguarded `rm -rf "$dst"` below would happily delete a symlink belonging to
+# another tool. That is the case worth refusing: a link at one of our destination
+# paths that points OUTSIDE any install source is somebody else's, and a name
+# collision must not become a silent takeover.
+#
+# A regular FILE is different, and an earlier stricter rule got this wrong. Control
+# only reaches here when the caller explicitly asked to write -- a plain install
+# returns early on any existing target (skip-if-exists), so a real file here means
+# --update or --force. Refusing it would make a --copy install permanently
+# un-updatable and break the documented refresh path; the update-layer suite plants
+# exactly that stale real file and requires it to be overwritten.
+#
+# Paths the installer never writes (another tool's script that merely lives in
+# $CLAUDE_HOME/bin) are never destinations, so they are never considered at all.
+safe_to_replace() {
+  local dst="$1"
+  [ -e "$dst" ] || [ -L "$dst" ] || return 0          # absent: free to write
+  if [ -L "$dst" ]; then
+    plumbline_managed_symlink "$dst" && return 0
+    echo "REFUSING to replace foreign symlink: $dst -> $(readlink "$dst")" >&2
+    return 1
+  fi
+  return 0
+}
+
+TRANSFER_REFUSALS=0
+
+# resolve_hook_script <hook-basename>
+#
+# Which copy of a hook should be REGISTERED in settings.json. The old rule was "if a
+# file of that name exists under $CLAUDE_HOME/agents, prefer it" -- which assumes that
+# directory belongs to this repo. Measured 2026-07-30 on a real machine: it did not, and
+# the installer "repointed" enforcement into a 7-week-old copy carrying none of the
+# current gates -- worse than the stale path it was fixing, and invisible because it
+# reported success.
+#
+# Corrected 2026-07-31 (the first version of this comment was wrong): `~/.claude/agents`
+# there has NO .git of its own. `git rev-parse` from inside it walks UP and reports
+# $HOME, which IS a working tree (origin DYAI2025/azodiac) whose .gitignore excludes
+# .claude/*. So the stale copy is an UNTRACKED file in a gitignored subtree of an
+# unrelated repository -- which is exactly why an ancestor's identity cannot stand in
+# for the file's provenance (see the tracked-ness check below).
+#
+# The agents copy may now be used ONLY when all of these hold:
+#   1. it lives in a git repository;
+#   2. that repository's normalized remote identity equals $REPO_DIR's;
+#   3. the hook file there is byte-identical to this checkout's;
+# and the chosen source plus the REASON is always printed. Anything else -- including
+# "identity cannot be determined" -- falls back to this checkout. Fail-safe means
+# preferring the source we can verify, never the foreign one.
+#
+# Sets HOOK_SRC_REASON. Never modifies the agents tree.
+HOOK_SRC_REASON=""
+HOOK_SRC_PATH=""
+resolve_hook_script() {
+  local name="$1"
+  local repo_hook="$REPO_DIR/config/claude/hooks/$name"
+  local agents_dir="$CLAUDE_HOME/agents"
+  local agents_hook="$agents_dir/config/claude/hooks/$name"
+
+  if [ ! -f "$agents_hook" ]; then
+    HOOK_SRC_REASON="no copy under $agents_dir"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  local agents_root=""
+  agents_root="$(git -C "$agents_dir" rev-parse --show-toplevel 2>/dev/null)" || agents_root=""
+  if [ -z "$agents_root" ]; then
+    HOOK_SRC_REASON="$agents_dir is not inside a git repository (identity unverifiable)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  # Order matters: identity first (the contract's clause 2), then provenance, then
+  # byte-identity. Checking provenance first would report "not a Plumbline checkout"
+  # for a foreign repo whose real disqualifier is that it is a DIFFERENT repository.
+  local a_remote r_remote
+  a_remote="$(normalize_remote "$(git -C "$agents_root" remote get-url origin 2>/dev/null)")" || a_remote=""
+  r_remote="$(normalize_remote "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)")" || r_remote=""
+  if [ -z "$a_remote" ] || [ -z "$r_remote" ]; then
+    HOOK_SRC_REASON="repository identity undeterminable (fail-safe: using this checkout)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+  if [ "$a_remote" != "$r_remote" ]; then
+    HOOK_SRC_REASON="$agents_dir is a DIFFERENT repository ($a_remote, not $r_remote)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  # `rev-parse --show-toplevel` walks UP: it answers "which repository CONTAINS this
+  # directory", never "is this file part of it". Measured on the real machine:
+  # ~/.claude/agents has NO .git at all, and rev-parse from inside it reports $HOME --
+  # itself a working tree (origin azodiac) whose .gitignore excludes .claude/*, so the
+  # stale hook there is UNTRACKED. A matching ancestor identity must not launder a file
+  # git knows nothing about, so require BOTH: the root looks like a Plumbline checkout,
+  # and the hook is actually tracked by it.
+  if [ ! -f "$agents_root/config/claude/install.sh" ]; then
+    HOOK_SRC_REASON="$agents_root is not a Plumbline checkout (no config/claude/install.sh)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+  if ! git -C "$agents_root" ls-files --error-unmatch -- "$agents_hook" >/dev/null 2>&1; then
+    HOOK_SRC_REASON="the agents copy of $name is UNTRACKED by $agents_root (provenance unverifiable)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  if ! cmp -s "$agents_hook" "$repo_hook"; then
+    HOOK_SRC_REASON="agents copy of $name differs from this checkout"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  HOOK_SRC_REASON="agents copy is the same repository and byte-identical"
+  HOOK_SRC_PATH="$agents_hook"; return 0
+}
+
 transfer() {
   local src="$1" dst="$2"
   if [ ! -e "$src" ]; then
@@ -200,6 +368,20 @@ transfer() {
   elif [ -e "$dst" ] && [ "$FORCE" -ne 1 ]; then
     log_action "skip (exists): $dst   [use --force to overwrite]"
     return
+  fi
+  # The refusal check runs BEFORE the dry-run preview, so the preview models what the
+  # real run will actually do. Previously --dry-run reported "would symlink" for targets
+  # the real run then refused -- a preview that lies is worse than no preview, and this
+  # one is used to decide whether to touch global settings.
+  if ! safe_to_replace "$dst"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    # NOT `[ cond ] && cmd` as the last statement: under `set -e` that returns 1 when
+    # the condition is false and kills the installer mid-run -- which it did, right
+    # after printing the first refusal.
+    if [ "$DRY_RUN" -eq 1 ]; then
+      log_action "would REFUSE:   $dst"
+    fi
+    return 0
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
     if [ "$MODE" = "copy" ]; then
@@ -384,10 +566,10 @@ install_bin() {
 # preserving any existing hooks and other settings.
 register_stop_hook() {
   local settings="$CLAUDE_HOME/settings.json"
-  local hook_script="$REPO_DIR/config/claude/hooks/stop-learning-loop.sh"
-  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/stop-learning-loop.sh" ]; then
-    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/stop-learning-loop.sh"
-  fi
+  resolve_hook_script stop-learning-loop.sh
+  local hook_script="$HOOK_SRC_PATH"
+  echo "hook source (stop-learning-loop.sh): $hook_script"
+  echo "  reason: $HOOK_SRC_REASON"
   local cmd="bash $hook_script"
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -431,10 +613,10 @@ register_stop_hook() {
 # CLIs over the real git diff (heavier than the learning-loop hook).
 register_enforce_hook() {
   local settings="$CLAUDE_HOME/settings.json"
-  local hook_script="$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
-  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/plumbline-enforce.sh" ]; then
-    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/plumbline-enforce.sh"
-  fi
+  resolve_hook_script plumbline-enforce.sh
+  local hook_script="$HOOK_SRC_PATH"
+  echo "hook source (plumbline-enforce.sh): $hook_script"
+  echo "  reason: $HOOK_SRC_REASON"
   local cmd="bash $hook_script"
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -530,10 +712,10 @@ EOF
 # inert (built-but-not-wired), so this is what actually closes REQ-A-011.
 register_pretool_vision_hook() {
   local settings="$CLAUDE_HOME/settings.json"
-  local hook_script="$REPO_DIR/config/claude/hooks/pretool-vision-gate.sh"
-  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/pretool-vision-gate.sh" ]; then
-    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/pretool-vision-gate.sh"
-  fi
+  resolve_hook_script pretool-vision-gate.sh
+  local hook_script="$HOOK_SRC_PATH"
+  echo "hook source (pretool-vision-gate.sh): $hook_script"
+  echo "  reason: $HOOK_SRC_REASON"
   local cmd="bash \"$hook_script\""
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -645,6 +827,18 @@ runtime_state_hygiene() {
   fi
 }
 runtime_state_hygiene
+
+# Partial failure must be DETECTABLE, not just visible. The refusal counter existed but
+# was never read: refusals printed one prose line to stderr, the installer exited 0, and
+# an orchestrator (or `plumbline update`, which gates its snapshot-revert on the exit
+# code) recorded success over an incoherent runtime. Emit a machine-readable count on
+# stdout and exit non-zero so a caller can roll back.
+if [ "${TRANSFER_REFUSALS:-0}" -gt 0 ]; then
+  echo "PLUMBLINE_INSTALL_REFUSALS=$TRANSFER_REFUSALS"
+  echo "INCOMPLETE: $TRANSFER_REFUSALS target(s) were refused; the runtime is NOT coherent."
+  echo "            See the REFUSING lines above. Nothing was deleted."
+  exit 3
+fi
 
 echo "done. Restart Claude Code (or reload /hooks) so agents, commands, skills, hooks, and plumbline CLI are picked up."
 

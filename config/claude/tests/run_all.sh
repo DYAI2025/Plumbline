@@ -145,6 +145,15 @@ bash config/claude/tests/test_cli_wiring.sh || mark_fail
 stage "install repoints a hook registered from another checkout"
 bash config/claude/tests/test_install_hook_repoint.sh || mark_fail
 
+stage "install hook-source resolution (identity + byte-identity contract)"
+bash config/claude/tests/test_install_hook_resolution.sh || mark_fail
+
+stage "install over a MIXED runtime (foreign agents repo + stale CLI links)"
+bash config/claude/tests/test_install_mixed_runtime.sh || mark_fail
+
+stage "install repoints ALL FIVE layers from a moved checkout"
+bash config/claude/tests/test_install_all_layers.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 
