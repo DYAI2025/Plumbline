@@ -554,6 +554,19 @@ assert_contains "foreign repository cannot authenticate its committed updater" \
 assert "foreign repository updater is never executed" \
   "test ! -e '$CLEAN_MALICIOUS_UPDATER/repository-updater-ran'"
 
+SYMLINKED_UPDATER="$WORK/symlinked-updater"
+cp -R "$HOOK_REPO" "$SYMLINKED_UPDATER"
+mkdir -p "$SYMLINKED_UPDATER/config/claude/bin"
+ln -sf /bin/true \
+  "$SYMLINKED_UPDATER/config/claude/bin/plumbline-scope-update"
+SYMLINKED_UPDATER_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINKED_UPDATER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "repository-owned updater symlink cannot launder external authority" \
+  "$SYMLINKED_UPDATER_DENY" '"decision":"deny"'
+
 ALTERNATE_UPDATER="$WORK/alternate-updater"
 cp -R "$BASE" "$ALTERNATE_UPDATER"
 mkdir -p "$ALTERNATE_UPDATER/tools"
@@ -845,6 +858,19 @@ EOF
 )"
 assert_contains "foreign repository committed checker is skipped for installed authority" \
   "$CLEAN_MALICIOUS_CHECKER_DENY" '"decision":"deny"'
+
+SYMLINKED_CHECKER="$WORK/symlinked-checker"
+cp -R "$HOOK_REPO" "$SYMLINKED_CHECKER"
+mkdir -p "$SYMLINKED_CHECKER/config/claude/bin"
+ln -sf /bin/true \
+  "$SYMLINKED_CHECKER/config/claude/bin/plumbline-scope-check"
+SYMLINKED_CHECKER_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINKED_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "repository-owned checker symlink cannot launder external authority" \
+  "$SYMLINKED_CHECKER_DENY" '"decision":"deny"'
 
 ALTERNATE_CHECKER="$WORK/alternate-checker"
 cp -R "$MISSING" "$ALTERNATE_CHECKER"

@@ -198,6 +198,12 @@ path_inside_repo() { # path_inside_repo <canonical-path>
   esac
 }
 
+candidate_entry_path() { # candidate_entry_path <path>, preserve final symlink
+  local candidate="$1" dir=""
+  dir="$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$dir" "$(basename "$candidate")"
+}
+
 # One file is verifiable iff git tracks it AND it matches HEAD exactly.
 file_matches_head() { # file_matches_head <canonical-path>
   local rel=""
@@ -274,7 +280,16 @@ refused_cli_reason=""
 # Accept a candidate only after it survives the integrity test. A refused
 # candidate does not end resolution: the search continues, so an immutable
 # checker installed outside the repo still takes over and enforcement is kept.
-accept_candidate() { # accept_candidate <canonical-path> <source-label>
+accept_candidate() { # accept_candidate <canonical-path> <source-label> <entry-path>
+  local entry=""
+  entry="$(candidate_entry_path "$3" 2>/dev/null)" || entry=""
+  if [ -n "$entry" ] && path_inside_repo "$entry" && [ "$entry" != "$1" ]; then
+    checker_integrity_reason="repository-owned executable entry ${entry#"$repo_physical"/} resolves to $1"
+    refused_cli_reason="$checker_integrity_reason (candidate $3, source=$2)"
+    printf 'PRIL CHECKER_INTEGRITY_UNVERIFIED: refusing %s -- %s\n' \
+      "$3" "$checker_integrity_reason" >&2
+    return 1
+  fi
   if verify_checker_integrity "$1"; then
     resolved_cli_path="$1"
     resolved_cli_source="$2"
@@ -296,7 +311,7 @@ resolve_cli() {
     candidate="$PLUMBLINE_BIN_DIR/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "PLUMBLINE_BIN_DIR" || :
+      accept_candidate "$found" "PLUMBLINE_BIN_DIR" "$candidate" || :
     fi
   fi
 
@@ -304,7 +319,7 @@ resolve_cli() {
     candidate="$repo/config/claude/bin/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "project-local" || :
+      accept_candidate "$found" "project-local" "$candidate" || :
     fi
   fi
 
@@ -315,23 +330,25 @@ resolve_cli() {
       found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     fi
     if [ -n "$found" ]; then
-      accept_candidate "$found" "PATH" || :
+      accept_candidate "$found" "PATH" "$candidate" || :
     fi
   fi
 
   if [ -z "$resolved_cli_path" ] && [ -n "${CLAUDE_HOME:-}" ]; then
     user_bin="$CLAUDE_HOME/bin"
-    found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    candidate="$user_bin/$name"
+    found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "CLAUDE_HOME/bin" || :
+      accept_candidate "$found" "CLAUDE_HOME/bin" "$candidate" || :
     fi
   fi
 
   if [ -z "$resolved_cli_path" ] && [ -n "${HOME:-}" ]; then
     user_bin="$HOME/.claude/bin"
-    found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    candidate="$user_bin/$name"
+    found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "HOME/.claude/bin" || :
+      accept_candidate "$found" "HOME/.claude/bin" "$candidate" || :
     fi
   fi
 

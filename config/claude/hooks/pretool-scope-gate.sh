@@ -83,7 +83,21 @@ from pathlib import Path
 command = sys.argv[1]
 project = Path(sys.argv[2]).resolve()
 feature = sys.argv[3]
-trusted = {Path(path).resolve() for path in sys.argv[4:]}
+trusted = set()
+for path in sys.argv[4:]:
+    entry = Path(path)
+    if not entry.is_absolute():
+        entry = project / entry
+    # Resolve the containing directory, but retain the final entry point so a
+    # repository-owned symlink cannot launder an external executable.
+    entry = entry.parent.resolve() / entry.name
+    try:
+        entry.relative_to(project)
+    except ValueError:
+        try:
+            trusted.add(entry.resolve(strict=True))
+        except OSError:
+            pass
 if (
     not command
     or any(char in command for char in ("\n", "\r", chr(96), "$", "{", "}", "*", "?", "[", "]", "~"))
@@ -107,6 +121,13 @@ if "/" not in tokens[0]:
     executable = Path(resolved)
 elif not executable.is_absolute():
     executable = project / executable
+entrypoint = executable.parent.resolve() / executable.name
+try:
+    entrypoint.relative_to(project)
+except ValueError:
+    pass
+else:
+    raise SystemExit(1)
 try:
     executable = executable.resolve(strict=True)
 except OSError:
@@ -116,16 +137,6 @@ if (
     or "--confirmed" not in tokens[1:]
     or any(token and set(token) <= operators for token in tokens[1:])
 ):
-    raise SystemExit(1)
-try:
-    executable.relative_to(project)
-except ValueError:
-    pass
-else:
-    # A governed repository cannot authenticate its own repair authority: a
-    # malicious checker/updater committed in that repository is still code from
-    # the boundary being judged. Only an independently installed updater may
-    # receive the tightly validated repair exemption.
     raise SystemExit(1)
 allowed_options = {
     "--repo", "--feature", "--product-path", "--governance-path", "--canvas",
@@ -227,6 +238,23 @@ for candidate in \
   "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/bin/plumbline-scope-check"
 do
   if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    candidate_entry="$(
+      python3 - "$candidate" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+if not path.is_absolute():
+    path = Path.cwd() / path
+print(path.parent.resolve() / path.name)
+PY
+    )" || candidate_entry=""
+    case "$candidate_entry" in
+      "$project_physical"/*)
+        # Reject by entry-point provenance before following the final symlink.
+        # Repository-owned links cannot launder an external executable.
+        continue
+        ;;
+    esac
     resolved_candidate="$(
       python3 - "$candidate" <<'PY' 2>/dev/null
 import sys

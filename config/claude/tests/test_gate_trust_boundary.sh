@@ -204,6 +204,19 @@ run_hook "$o1g" HOME="$NOHOME" PLUMBLINE_BIN_DIR="$linkdir"
 assert_contains "O1g: a symlink into the governed repo is resolved and verified" \
   "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
 
+# --- O1j a project-owned symlink OUTSIDE cannot launder external authority ---
+o1j="$(make_governed_repo trustfeat)"
+plant_violation "$o1j"
+rm "$o1j/config/claude/bin/plumbline-scope-check"
+ln -s /bin/true "$o1j/config/claude/bin/plumbline-scope-check"
+git -C "$o1j" add config/claude/bin/plumbline-scope-check
+git -C "$o1j" commit -q -m "plant external checker link"
+run_hook "$o1j" HOME="$NOHOME"
+assert_contains "O1j: repository-owned symlink to external checker is refused" \
+  "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
+assert_contains "O1j: symlink laundering still blocks the run" \
+  "$HOOK_OUT" '"decision":"block"'
+
 # --- O1h an EXTERNAL immutable checker is preferred over a mutated in-repo one -
 # The spec's fallback: refuse the mutated checker, but do not lose enforcement
 # when a checker outside the governed repo exists. The run must still block --
