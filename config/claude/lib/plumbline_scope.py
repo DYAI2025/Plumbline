@@ -1044,7 +1044,7 @@ def validate_manifest_artifacts(
             return EXIT_VIOLATION
         reserved = {
             manifest_rel,
-            str(manifest["artifacts"]["plan"]),
+            plan.relative_to(repo).as_posix(),
             "docs/context/.active-feature",
             "config/claude/bin/plumbline-scope-check",
             "config/claude/bin/plumbline-scope-update",
@@ -1072,7 +1072,7 @@ def validate_manifest_artifacts(
             return EXIT_VIOLATION
         reserved = {
             manifest_rel,
-            str(manifest["artifacts"]["plan"]),
+            plan.relative_to(repo).as_posix(),
             "docs/context/.active-feature",
             "config/claude/bin/plumbline-scope-check",
             "config/claude/bin/plumbline-scope-update",

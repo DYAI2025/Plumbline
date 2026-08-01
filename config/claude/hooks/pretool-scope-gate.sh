@@ -77,7 +77,6 @@ if [ "$tool_name" = "Bash" ] && command -v python3 >/dev/null 2>&1; then
   if python3 - "$command_text" "$PROJECT" "$feature" "${trusted_updaters[@]}" <<'PY'
 import shlex
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -123,31 +122,11 @@ try:
 except ValueError:
     pass
 else:
-    canonical_updater = (
-        project / "config/claude/bin/plumbline-scope-update"
-    ).resolve()
-    if executable != canonical_updater:
-        raise SystemExit(1)
-    immutable_runtime = [
-        "config/claude/bin/plumbline-scope-update",
-        "config/claude/lib/plumbline_python.sh",
-        "config/claude/lib/plumbline_scope_update.py",
-        "config/claude/lib/plumbline_scope.py",
-    ]
-    tracked = subprocess.run(
-        ["git", "-C", str(project), "ls-files", "--error-unmatch", "--", *immutable_runtime],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    unchanged = subprocess.run(
-        ["git", "-C", str(project), "diff", "--quiet", "HEAD", "--", *immutable_runtime],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    if tracked.returncode != 0 or unchanged.returncode != 0:
-        raise SystemExit(1)
+    # A governed repository cannot authenticate its own repair authority: a
+    # malicious checker/updater committed in that repository is still code from
+    # the boundary being judged. Only an independently installed updater may
+    # receive the tightly validated repair exemption.
+    raise SystemExit(1)
 allowed_options = {
     "--repo", "--feature", "--product-path", "--governance-path", "--canvas",
     "--plan", "--planned-create", "--planned-modify", "--planned-delete",
@@ -240,7 +219,6 @@ case "$write_target" in
 esac
 
 checker=""
-checker_project_local=false
 for candidate in \
   "${PLUMBLINE_BIN_DIR:+$PLUMBLINE_BIN_DIR/plumbline-scope-check}" \
   "$PROJECT/config/claude/bin/plumbline-scope-check" \
@@ -260,33 +238,15 @@ except OSError:
 PY
     )" || resolved_candidate=""
     [ -n "$resolved_candidate" ] || continue
-    candidate_project_local=false
     case "$resolved_candidate" in
       "$project_physical"/*)
-        candidate_project_local=true
-        if [ "$resolved_candidate" != \
-          "$project_physical/config/claude/bin/plumbline-scope-check" ]; then
-          continue
-        fi
-        checker_runtime=(
-          config/claude/bin/plumbline-scope-check
-          config/claude/lib/plumbline_python.sh
-          config/claude/lib/plumbline_scope.py
-        )
-        if ! git -C "$PROJECT" ls-files --error-unmatch -- \
-            "${checker_runtime[@]}" >/dev/null 2>&1 \
-          || ! git -C "$PROJECT" diff --quiet HEAD -- \
-            "${checker_runtime[@]}" >/dev/null 2>&1; then
-          continue
-        fi
-        # Runtime maintenance must be authorized by a checker outside the
-        # writable project; otherwise the first approved edit would mutate the
-        # authority used for subsequent dispatches.
-        [ "$runtime_write" = true ] && continue
+        # Matching the governed repository's own HEAD proves immutability during
+        # this run, not independent provenance. Never execute repository-owned
+        # policy code; continue to an installed checker outside the boundary.
+        continue
         ;;
     esac
     checker="$resolved_candidate"
-    checker_project_local="$candidate_project_local"
     break
   fi
 done
@@ -303,7 +263,7 @@ case "$tool_name" in
       exit 0
     fi
     checker_args+=(--write-target "$write_target")
-    if [ "$runtime_write" = true ] && [ "$checker_project_local" = false ]; then
+    if [ "$runtime_write" = true ]; then
       checker_args+=(--allow-runtime-maintenance)
     fi
     ;;

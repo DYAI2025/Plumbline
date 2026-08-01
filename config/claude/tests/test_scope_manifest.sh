@@ -514,6 +514,26 @@ EOF
 assert_contains "mutable repository updater runtime cannot receive repair exemption" \
   "$MUTABLE_UPDATER_DENY" '"decision":"deny"'
 
+CLEAN_MALICIOUS_UPDATER="$WORK/clean-malicious-updater"
+cp -R "$MISSING" "$CLEAN_MALICIOUS_UPDATER"
+mkdir -p "$CLEAN_MALICIOUS_UPDATER/config/claude/bin"
+printf '%s\n' '#!/usr/bin/env bash' 'touch repository-updater-ran' 'exit 0' \
+  >"$CLEAN_MALICIOUS_UPDATER/config/claude/bin/plumbline-scope-update"
+chmod +x "$CLEAN_MALICIOUS_UPDATER/config/claude/bin/plumbline-scope-update"
+git -C "$CLEAN_MALICIOUS_UPDATER" init -q
+git -C "$CLEAN_MALICIOUS_UPDATER" add .
+git -C "$CLEAN_MALICIOUS_UPDATER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+CLEAN_MALICIOUS_UPDATER_DENY="$(
+  CLAUDE_PROJECT_DIR="$CLEAN_MALICIOUS_UPDATER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "foreign repository cannot authenticate its committed updater" \
+  "$CLEAN_MALICIOUS_UPDATER_DENY" '"decision":"deny"'
+assert "foreign repository updater is never executed" \
+  "test ! -e '$CLEAN_MALICIOUS_UPDATER/repository-updater-ran'"
+
 ALTERNATE_UPDATER="$WORK/alternate-updater"
 cp -R "$BASE" "$ALTERNATE_UPDATER"
 mkdir -p "$ALTERNATE_UPDATER/tools"
@@ -641,6 +661,30 @@ EOF
 assert_contains "direct active-plan writes are reserved for confirmed updater" \
   "$PLAN_WRITE_DENY" '"decision":"deny"'
 
+NORMALIZED_PLAN_CONTROL="$WORK/normalized-plan-control"
+cp -R "$BASE" "$NORMALIZED_PLAN_CONTROL"
+python3 - "$NORMALIZED_PLAN_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["artifacts"]["plan"] = "docs/plans/./2026-07-29-demo.md"
+data["scope"]["governance"] = [
+    "docs/plans/**" if item == "docs/plans/2026-07-29-demo.md" else item
+    for item in data["scope"]["governance"]
+]
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+NORMALIZED_PLAN_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$NORMALIZED_PLAN_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/plans/2026-07-29-demo.md"}}
+EOF
+)"
+assert_contains "normalized active-plan spelling remains a reserved control path" \
+  "$NORMALIZED_PLAN_WRITE_DENY" '"decision":"deny"'
+
 CONTROL_DELETE="$WORK/control-delete"
 cp -R "$BASE" "$CONTROL_DELETE"
 printf '%s\n' \
@@ -722,6 +766,29 @@ EOF
 )"
 assert_contains "modified project checker is skipped and immutable checker catches drift" \
   "$MUTABLE_CHECKER_DENY" '"decision":"deny"'
+
+CLEAN_MALICIOUS_CHECKER="$WORK/clean-malicious-checker"
+cp -R "$MISSING" "$CLEAN_MALICIOUS_CHECKER"
+mkdir -p "$CLEAN_MALICIOUS_CHECKER/config/claude/bin" \
+  "$CLEAN_MALICIOUS_CHECKER/config/claude/lib"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$CLEAN_MALICIOUS_CHECKER/config/claude/bin/plumbline-scope-check"
+printf '%s\n' '# foreign controlled runtime' \
+  >"$CLEAN_MALICIOUS_CHECKER/config/claude/lib/plumbline_scope.py"
+printf '%s\n' '# foreign controlled launcher' \
+  >"$CLEAN_MALICIOUS_CHECKER/config/claude/lib/plumbline_python.sh"
+chmod +x "$CLEAN_MALICIOUS_CHECKER/config/claude/bin/plumbline-scope-check"
+git -C "$CLEAN_MALICIOUS_CHECKER" init -q
+git -C "$CLEAN_MALICIOUS_CHECKER" add .
+git -C "$CLEAN_MALICIOUS_CHECKER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+CLEAN_MALICIOUS_CHECKER_DENY="$(
+  CLAUDE_PROJECT_DIR="$CLEAN_MALICIOUS_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "foreign repository committed checker is skipped for installed authority" \
+  "$CLEAN_MALICIOUS_CHECKER_DENY" '"decision":"deny"'
 
 ALTERNATE_CHECKER="$WORK/alternate-checker"
 cp -R "$MISSING" "$ALTERNATE_CHECKER"
