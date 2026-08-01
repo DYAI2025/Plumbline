@@ -570,14 +570,27 @@ authoritative even when broken — it never falls back to the canvas. The legacy
 `Allowed change scope` section still works when a feature has no manifest, but it is documentation:
 unusable lines are reported with line number and cause, never silently dropped.
 
-For every implementation increment, produce a changed-files list and run:
+For a versioned manifest, separate product and governance paths, bind each revision to
+confirmed, digest-checked provenance, and name the Canvas and implementation plan under
+`artifacts`. The Canvas references the manifest instead of copying its paths. The plan
+declares each planned file on a backtick-wrapped `Create:`, `Modify:`, or `Delete:` line.
+Apply a confirmed decision atomically and run the plan/Canvas preflight **before the first
+implementation write**. For every increment, also produce a changed-files list and run:
 
 ```bash
+config/claude/bin/plumbline-scope-update --repo <repo> --feature <feature-slug> \
+  --product-path <path-or-glob> --governance-path <path-or-glob> \
+  --canvas docs/canvas/<feature-slug>.canvas.md --plan docs/plans/<plan>.md \
+  --origin <source> --decision-maker <who> --decided-at <ISO-8601-with-timezone> \
+  --rationale <why> --confirmed
+config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --preflight
 config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --changed-files <changed-files.txt>
 ```
 
-Out-of-scope edits are fail-closed: stop, ask the user to expand the confirmed scope, or revert the
-out-of-scope change. Do not silently broaden scope from the PRD, tests, or agent judgement.
+The installed PreToolUse scope gate repeats the preflight for write-capable tools and
+implementation agents. Missing, extra, contradictory, unprovenanced, or out-of-scope
+paths are fail-closed. Stop, obtain a confirmed scope revision, or revert the
+out-of-scope change; never broaden scope from the PRD, tests, or agent judgment.
 
 **Runtime-state hygiene (PLUM-11) — advisory, runs automatically.** Agent tooling writes volatile
 state (`.claude-flow/`, `.swarm/`, `.claude/homunculus/`) into the product repo. Untracked **and

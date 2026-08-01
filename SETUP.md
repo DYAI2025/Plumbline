@@ -29,8 +29,9 @@ cd plumbline
 `install.sh` makes the repository available as `~/.claude/agents`, transfers every
 vendored command (`/agileteam`, `/agileteam-bench`, `/reflect`, `/reflect-skills`) into
 `~/.claude/commands/`, installs every vendored skill from `config/claude/skills/` into
-`~/.claude/skills/`, and registers the learning-loop and fail-closed PRIL Stop hooks in
-`~/.claude/settings.json`. Open `/hooks` once (or restart Claude Code) afterwards.
+`~/.claude/skills/`, and registers the learning-loop, fail-closed PRIL Stop hooks, and
+the canonical-scope PreToolUse preflight in `~/.claude/settings.json`. Open `/hooks`
+once (or restart Claude Code) afterwards.
 
 ## 2. Required toolchain
 
@@ -91,6 +92,39 @@ PLUMBLINE_STACK_BASE=feature/parent claude
 An unknown or unrelated baseline blocks with a classified error. The hook never
 substitutes `HEAD...HEAD`, because that would turn an unresolved baseline into an empty,
 false-green committed-change surface.
+
+### Canonical scope decisions
+
+Versioned features use `docs/scope/<feature>.scope.json` as their only executable
+scope truth. The manifest separates `scope.product` from `scope.governance`, names
+its Canvas and plan, and retains every confirmed revision with source, decision-maker,
+timestamp, rationale, scope snapshot, and digest.
+
+The Canvas contains only:
+
+```text
+Scope manifest: `docs/scope/<feature>.scope.json`
+```
+
+Plans declare files using backtick-wrapped `Create:`, `Modify:`, or `Delete:` lines.
+Before coding, validate the Canvas reference and every planned file:
+
+```bash
+plumbline-scope-check --repo . --feature <feature> --preflight
+```
+
+Record confirmed changes with `plumbline-scope-update ... --confirmed`. Add
+`--planned-create`, `--planned-modify`, `--planned-delete`, or `--planned-test`
+when the same
+confirmed decision revises the active plan; the updater validates the proposed
+plan and manifest together before replacing either artifact. Add
+`--replace-plan-declarations` for a confirmed replacement or narrowing instead
+of retaining superseded declarations. The updater
+validates the proposed manifest and its referenced artifacts before replacing the
+manifest atomically. The installed `pretool-scope-gate.sh` repeats this preflight
+before write-capable tool calls. Canvas-only scopes remain readable for backward
+compatibility until their explicit migration; once a versioned manifest exists, it
+always takes precedence.
 
 ## 3. Expected skills
 

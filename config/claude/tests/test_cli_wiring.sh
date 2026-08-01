@@ -67,6 +67,7 @@ plumbline-provenance-check
 "
 WORKFLOW_CLIS="
 plumbline-run-ledger
+plumbline-scope-update
 "
 STANDALONE_CLIS="
 plumbline

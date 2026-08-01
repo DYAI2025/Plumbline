@@ -40,6 +40,7 @@ build_src() {
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/plumbline-enforce.sh"
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/stop-learning-loop.sh"
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/pretool-vision-gate.sh"
+  printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/pretool-scope-gate.sh"
   chmod +x "$r/config/claude/hooks/"*.sh
   for c in plumbline-scope-check plumbline-context-check; do
     printf '#!/usr/bin/env bash\n# %s cli\nexit 0\n' "$m" >"$r/config/claude/bin/$c"
@@ -67,14 +68,20 @@ env CLAUDE_HOME="$HOME_DIR" HOME="$HOME_DIR" bash "$A/config/claude/install.sh" 
 rc_a=$?
 assert_eq "install from checkout A succeeds" "0" "$rc_a"
 
-# Precondition: every layer really is a symlink INTO checkout A.
+# Precondition: live content layers are symlinks into checkout A; the scope
+# authority is deliberately copied outside the governed checkout.
 pre_stale=0
-for p in agents/core/demo-agent.md commands/demo-command.md skills/demo-skill \
-         bin/plumbline-scope-check lib/plumbline_scope.py; do
+for p in agents/core/demo-agent.md commands/demo-command.md skills/demo-skill; do
   t="$(readlink "$HOME_DIR/$p" 2>/dev/null || echo '')"
   case "$t" in "$A"/*) ;; *) pre_stale=$((pre_stale + 1)); printf '    not linked into A: %s -> %s\n' "$p" "$t" ;; esac
 done
-assert_eq "precondition: all five layers are symlinks into checkout A" "0" "$pre_stale"
+assert_eq "precondition: live content layers are symlinks into checkout A" "0" "$pre_stale"
+assert "precondition: scope checker is independent copied authority" \
+  "test -f '$HOME_DIR/bin/plumbline-scope-check' && test ! -L '$HOME_DIR/bin/plumbline-scope-check'"
+assert "precondition: context checker is independent copied authority" \
+  "test -f '$HOME_DIR/bin/plumbline-context-check' && test ! -L '$HOME_DIR/bin/plumbline-context-check'"
+assert "precondition: scope library is independent copied authority" \
+  "test -f '$HOME_DIR/lib/plumbline_scope.py' && test ! -L '$HOME_DIR/lib/plumbline_scope.py'"
 
 # 2. --update from checkout B: the moved-checkout repoint.
 env CLAUDE_HOME="$HOME_DIR" HOME="$HOME_DIR" bash "$B/config/claude/install.sh" --update \
@@ -82,18 +89,24 @@ env CLAUDE_HOME="$HOME_DIR" HOME="$HOME_DIR" bash "$B/config/claude/install.sh" 
 rc_b=$?
 OUT_B="$(cat "$WORK/install-B.log")"
 
-# 3. EVERY layer must now resolve to checkout B. This is the assertion that was missing.
+# 3. Every live layer must now resolve to checkout B; copied authority must be
+# refreshed to B's content without becoming a symlink back into B.
 stale=0
 for p in agents/core/demo-agent.md agents/agileteam/demo-team.md \
-         commands/demo-command.md skills/demo-skill \
-         bin/plumbline-scope-check lib/plumbline_scope.py; do
+         commands/demo-command.md skills/demo-skill; do
   t="$(readlink "$HOME_DIR/$p" 2>/dev/null || echo MISSING)"
   case "$t" in
     "$B"/*) ;;
     *) stale=$((stale + 1)); printf '    STALE: %-34s -> %s\n' "$p" "$t" ;;
   esac
 done
-assert_eq "ALL FIVE layers repoint to checkout B (no mixed runtime)" "0" "$stale"
+assert_eq "all live layers repoint to checkout B (no mixed runtime)" "0" "$stale"
+assert "scope checker stays copied and refreshes to checkout B content" \
+  "test ! -L '$HOME_DIR/bin/plumbline-scope-check' && grep -q NEW '$HOME_DIR/bin/plumbline-scope-check'"
+assert "context checker stays copied and refreshes to checkout B content" \
+  "test ! -L '$HOME_DIR/bin/plumbline-context-check' && grep -q NEW '$HOME_DIR/bin/plumbline-context-check'"
+assert "scope library stays copied and refreshes to checkout B content" \
+  "test ! -L '$HOME_DIR/lib/plumbline_scope.py' && grep -q NEW '$HOME_DIR/lib/plumbline_scope.py'"
 assert_eq "the update reports success" "0" "$rc_b"
 assert_not_contains "no target was refused" "$OUT_B" "REFUSING"
 assert_not_contains "no partial-failure signal" "$OUT_B" "PLUMBLINE_INSTALL_REFUSALS"
@@ -268,8 +281,8 @@ rc_b3=$?
 OUT_B3="$(cat "$WORK/install-B3.log")"
 assert_eq "CLAUDE_HOME inside a checkout still repoints (no refusals)" "0" "$rc_b3"
 assert_not_contains "nothing was refused in that layout" "$OUT_B3" "REFUSING"
-b3t="$(readlink "$A3/.claude/bin/plumbline-scope-check" 2>/dev/null || echo MISSING)"
-assert_contains "and the CLI repointed to the new checkout" "$b3t" "$B3/"
+assert "and the copied scope authority refreshed to the new checkout content" \
+  "test ! -L '$A3/.claude/bin/plumbline-scope-check' && grep -q NEW3 '$A3/.claude/bin/plumbline-scope-check'"
 
 # 14. F1: the LEGACY whole-repo agents symlink that this installer used to create must
 #     remain installable. The escape guard ran before the back-compat branch, so
