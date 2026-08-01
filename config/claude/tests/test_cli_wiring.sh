@@ -69,6 +69,7 @@ WORKFLOW_CLIS="
 plumbline-run-ledger
 "
 STANDALONE_CLIS="
+plumbline-ref-probe
 plumbline
 plumbline-council-gui
 plumbline-rule-ledger

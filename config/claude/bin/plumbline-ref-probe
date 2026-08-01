@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/plumbline_python.sh
+. "$SCRIPT_DIR/../lib/plumbline_python.sh"
+plumbline_python_main \
+  "plumbline-ref-probe" "$SCRIPT_DIR/../lib/plumbline_ref_probe.py" "3 4 5" "$@"
+exit $?
