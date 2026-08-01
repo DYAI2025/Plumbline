@@ -78,6 +78,8 @@ done
 assert_eq "precondition: live content layers are symlinks into checkout A" "0" "$pre_stale"
 assert "precondition: scope checker is independent copied authority" \
   "test -f '$HOME_DIR/bin/plumbline-scope-check' && test ! -L '$HOME_DIR/bin/plumbline-scope-check'"
+assert "precondition: context checker is independent copied authority" \
+  "test -f '$HOME_DIR/bin/plumbline-context-check' && test ! -L '$HOME_DIR/bin/plumbline-context-check'"
 assert "precondition: scope library is independent copied authority" \
   "test -f '$HOME_DIR/lib/plumbline_scope.py' && test ! -L '$HOME_DIR/lib/plumbline_scope.py'"
 
@@ -101,6 +103,8 @@ done
 assert_eq "all live layers repoint to checkout B (no mixed runtime)" "0" "$stale"
 assert "scope checker stays copied and refreshes to checkout B content" \
   "test ! -L '$HOME_DIR/bin/plumbline-scope-check' && grep -q NEW '$HOME_DIR/bin/plumbline-scope-check'"
+assert "context checker stays copied and refreshes to checkout B content" \
+  "test ! -L '$HOME_DIR/bin/plumbline-context-check' && grep -q NEW '$HOME_DIR/bin/plumbline-context-check'"
 assert "scope library stays copied and refreshes to checkout B content" \
   "test ! -L '$HOME_DIR/lib/plumbline_scope.py' && grep -q NEW '$HOME_DIR/lib/plumbline_scope.py'"
 assert_eq "the update reports success" "0" "$rc_b"

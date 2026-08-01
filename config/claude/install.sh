@@ -691,11 +691,12 @@ install_bin_libs() {
     name="$(basename "$lib")"
     transfer_mode="$MODE"
     case "$name" in
-      plumbline_cli.py|plumbline_python.sh|plumbline_scope.py|plumbline_scope_update.py)
-        # These files form the executable scope authority. A symlink back into
-        # the governed checkout would let that checkout authenticate itself and
-        # would also strand confirmed replanning once project-local authority is
-        # correctly rejected. Keep an independent install-time snapshot.
+      plumbline_cli.py|plumbline_python.sh|plumbline_scope.py|plumbline_scope_update.py|plumbline_context.py|plumbline_reality.py)
+        # These files form the executable scope/context/reality authority. A
+        # symlink back into the governed checkout would let that checkout
+        # authenticate itself and would also strand confirmed replanning once
+        # project-local authority is correctly rejected. Keep an independent
+        # install-time snapshot for every blocking checker and its runtime.
         transfer_mode="copy"
         ;;
     esac
@@ -716,8 +717,8 @@ install_bin() {
     name="$(basename "$tool")"
     transfer_mode="$MODE"
     case "$name" in
-      plumbline-scope-check|plumbline-scope-update)
-        # Scope authorization and its sole confirmed repair path must resolve
+      plumbline-scope-check|plumbline-scope-update|plumbline-context-check|plumbline-reality-check)
+        # Blocking PRIL authorization and the scope repair path must resolve
         # outside the repository whose writes they judge, even in the default
         # live/symlink install mode.
         transfer_mode="copy"
