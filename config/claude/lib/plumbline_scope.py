@@ -1131,7 +1131,8 @@ def validate_manifest_artifacts(
             return EXIT_VIOLATION
     product = manifest["scope"]["product"]
     governance = manifest["scope"]["governance"]
-    for path in planned:
+    normalized_planned = set().union(*declared_actions.values())
+    for path in sorted(normalized_planned):
         product_match = any(_matches(path, pattern) for pattern in product)
         governance_match = any(_matches(path, pattern) for pattern in governance)
         if product_match and governance_match:
@@ -1148,7 +1149,7 @@ def validate_manifest_artifacts(
             return EXIT_VIOLATION
     print(
         f"PRIL scope preflight passed for feature '{feature}' "
-        f"({len(planned)} planned files)"
+        f"({len(normalized_planned)} planned files)"
     )
     return EXIT_PASS
 

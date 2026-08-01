@@ -182,6 +182,16 @@ assert_output_contains "one normalized path cannot carry conflicting plan action
   "conflicting actions Modify and Delete: src/demo/app.py" \
   "$SCOPE_CHECK" --repo "$CONFLICTING_ACTIONS" --feature demo --preflight
 
+SYMLINK_SCOPE_ESCAPE="$WORK/symlink-scope-escape"
+cp -R "$BASE" "$SYMLINK_SCOPE_ESCAPE"
+printf 'outside scope\n' >"$SYMLINK_SCOPE_ESCAPE/secret.py"
+ln -s ../../secret.py "$SYMLINK_SCOPE_ESCAPE/src/demo/link.py"
+printf '%s\n' "- Modify: \`src/demo/link.py\`" \
+  >"$SYMLINK_SCOPE_ESCAPE/docs/plans/2026-07-29-demo.md"
+assert_output_contains "resolved planned symlink target must remain inside canonical scope" \
+  "planned file outside canonical scope: secret.py" \
+  "$SCOPE_CHECK" --repo "$SYMLINK_SCOPE_ESCAPE" --feature demo --preflight
+
 # Extra: Canvas must only reference the manifest. A copied scope bullet is a
 # second truth source and therefore deliberate drift, even if the path is valid.
 EXTRA="$WORK/extra"
