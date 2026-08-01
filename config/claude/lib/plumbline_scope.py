@@ -970,11 +970,13 @@ def validate_manifest_artifacts(
     canvas = _safe_artifact(repo, canvas_rel)
     plan = _safe_artifact(repo, plan_rel)
     marker = _safe_artifact(repo, "docs/context/.active-feature")
-    if canvas is None or plan is None or marker is None:
+    stop_hook = _safe_artifact(repo, "config/claude/hooks/plumbline-enforce.sh")
+    if canvas is None or plan is None or marker is None or stop_hook is None:
         print("ERROR: scope artifact resolves outside repository", file=sys.stderr)
         return EXIT_MALFORMED
     canvas_control_rel = canvas.relative_to(repo).as_posix()
     marker_control_rel = marker.relative_to(repo).as_posix()
+    stop_hook_control_rel = stop_hook.relative_to(repo).as_posix()
 
     canvas_status, canvas_lines = _canvas_scope_lines(canvas)
     if canvas_status != EXIT_PASS:
@@ -1052,6 +1054,14 @@ def validate_manifest_artifacts(
             file=sys.stderr,
         )
         return EXIT_VIOLATION
+    if test_command is not None:
+        print(
+            "ERROR: project Test commands cannot execute while scope enforcement is armed; "
+            "same-user test code could rewrite the independently installed gate authority. "
+            "Disarm the active feature marker, then run the test command.",
+            file=sys.stderr,
+        )
+        return EXIT_VIOLATION
     if delete_target is not None:
         delete_paths = declared_actions["Delete"]
         delete_path = Path(delete_target)
@@ -1077,6 +1087,7 @@ def validate_manifest_artifacts(
             manifest_control_rel,
             plan.relative_to(repo).as_posix(),
             marker_control_rel,
+            stop_hook_control_rel,
             "config/claude/bin/plumbline-scope-check",
             "config/claude/bin/plumbline-scope-update",
             "config/claude/lib/plumbline_python.sh",
@@ -1106,6 +1117,7 @@ def validate_manifest_artifacts(
             manifest_control_rel,
             plan.relative_to(repo).as_posix(),
             marker_control_rel,
+            stop_hook_control_rel,
             "config/claude/bin/plumbline-scope-check",
             "config/claude/bin/plumbline-scope-update",
             "config/claude/lib/plumbline_python.sh",
@@ -1377,7 +1389,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--write-target",
         help="Concrete Write/Edit target, which must be declared exactly in the implementation plan",
     )
-    parser.add_argument("--test-command", help="Bash test command, requiring an exact `Test:` plan declaration")
+    parser.add_argument(
+        "--test-command",
+        help="Validate a declared Bash Test command (execution remains blocked while the feature is armed)",
+    )
     parser.add_argument("--delete-target", help="Deletion target, requiring an exact `Delete:` plan declaration")
     parser.add_argument(
         "--allow-runtime-maintenance",

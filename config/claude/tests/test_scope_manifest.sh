@@ -418,15 +418,26 @@ assert_contains "Bash denial explains exact target proof requirement" \
   "$ALIGNED_BASH_DENY" "not declared as a confirmed Test"
 
 mkdir -p "$BASE/config/claude/tests"
-printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$BASE/config/claude/tests/test_demo.sh"
+TEST_AUTHORITY_HOME="$WORK/test-authority-home"
+mkdir -p "$TEST_AUTHORITY_HOME/hooks"
+printf '%s\n' 'trusted authority' \
+  >"$TEST_AUTHORITY_HOME/hooks/pretool-scope-gate.sh"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'printf compromised > "$CLAUDE_HOME/hooks/pretool-scope-gate.sh"' \
+  >"$BASE/config/claude/tests/test_demo.sh"
 chmod +x "$BASE/config/claude/tests/test_demo.sh"
-TRACKED_TEST_PASS="$(
-  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+TRACKED_TEST_DENY="$(
+  CLAUDE_HOME="$TEST_AUTHORITY_HOME" CLAUDE_PROJECT_DIR="$BASE" \
+    "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"bash config/claude/tests/test_demo.sh"}}
 EOF
 )"
-assert_eq "confirmed project-native Test command passes after preflight" \
-  "" "$TRACKED_TEST_PASS"
+assert_contains "project Test command cannot execute against same-user gate authority" \
+  "$TRACKED_TEST_DENY" '"decision":"deny"'
+assert_contains "Test denial explains the required disarm boundary" \
+  "$TRACKED_TEST_DENY" "Disarm the active feature marker"
+assert "denied project Test never rewrites installed gate authority" \
+  "grep -Fxq 'trusted authority' '$TEST_AUTHORITY_HOME/hooks/pretool-scope-gate.sh'"
 
 MARKER_CLEANUP_PASS="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
@@ -874,6 +885,62 @@ EOF
 )"
 assert_contains "active Canvas is reserved from deletion" \
   "$CANVAS_DELETE_DENY" '"decision":"deny"'
+
+STOP_HOOK_CONTROL="$WORK/stop-hook-control"
+cp -R "$BASE" "$STOP_HOOK_CONTROL"
+mkdir -p "$STOP_HOOK_CONTROL/config/claude/hooks"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$STOP_HOOK_CONTROL/config/claude/hooks/plumbline-enforce.sh"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`config/claude/hooks/plumbline-enforce.sh\`" \
+  >"$STOP_HOOK_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$STOP_HOOK_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("config/claude/hooks/plumbline-enforce.sh")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+STOP_HOOK_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$STOP_HOOK_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"config/claude/hooks/plumbline-enforce.sh"}}
+EOF
+)"
+assert_contains "registered Stop hook source is reserved from planned writes" \
+  "$STOP_HOOK_WRITE_DENY" '"decision":"deny"'
+
+SYMLINK_STOP_HOOK_CONTROL="$WORK/symlink-stop-hook-control"
+cp -R "$BASE" "$SYMLINK_STOP_HOOK_CONTROL"
+mkdir -p "$SYMLINK_STOP_HOOK_CONTROL/config/claude/hooks"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$SYMLINK_STOP_HOOK_CONTROL/config/claude/hooks/active-enforce.sh"
+ln -s active-enforce.sh \
+  "$SYMLINK_STOP_HOOK_CONTROL/config/claude/hooks/plumbline-enforce.sh"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`config/claude/hooks/active-enforce.sh\`" \
+  >"$SYMLINK_STOP_HOOK_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$SYMLINK_STOP_HOOK_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("config/claude/hooks/active-enforce.sh")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+SYMLINK_STOP_HOOK_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_STOP_HOOK_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"config/claude/hooks/plumbline-enforce.sh"}}
+EOF
+)"
+assert_contains "resolved registered Stop hook target remains reserved" \
+  "$SYMLINK_STOP_HOOK_WRITE_DENY" '"decision":"deny"'
 
 MUTABLE_CHECKER="$WORK/mutable-checker"
 cp -R "$MISSING" "$MUTABLE_CHECKER"
