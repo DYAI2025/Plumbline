@@ -977,6 +977,11 @@ def validate_manifest_artifacts(
     if canvas_status != EXIT_PASS:
         return canvas_status
     manifest_rel = f"docs/scope/{feature}.scope.json"
+    manifest_path = _safe_artifact(repo, manifest_rel)
+    if manifest_path is None:
+        print("ERROR: canonical scope manifest resolves outside repository", file=sys.stderr)
+        return EXIT_MALFORMED
+    manifest_control_rel = manifest_path.relative_to(repo).as_posix()
     expected_reference = f"Scope manifest: `{manifest_rel}`"
     if not any(line.strip() == expected_reference for line in canvas_lines):
         print(
@@ -1004,6 +1009,35 @@ def validate_manifest_artifacts(
     plan_status, planned = _planned_paths(plan, text_override=plan_text_override)
     if plan_status != EXIT_PASS:
         return plan_status
+    declared_actions: dict[str, set[str]] = {}
+    for action in ("Create", "Modify", "Delete"):
+        action_status, action_paths = _declared_values(
+            plan, action, text_override=plan_text_override
+        )
+        if action_status != EXIT_PASS:
+            return action_status
+        try:
+            declared_actions[action] = {
+                (repo / path).resolve().relative_to(repo).as_posix()
+                for path in action_paths
+            }
+        except (OSError, ValueError):
+            print(
+                f"ERROR: planned {action} target resolves outside repository",
+                file=sys.stderr,
+            )
+            return EXIT_MALFORMED
+    action_names = tuple(declared_actions)
+    for index, left in enumerate(action_names):
+        for right in action_names[index + 1 :]:
+            conflicts = declared_actions[left] & declared_actions[right]
+            if conflicts:
+                conflict = sorted(conflicts)[0]
+                print(
+                    f"ERROR: planned path has conflicting actions {left} and {right}: {conflict}",
+                    file=sys.stderr,
+                )
+                return EXIT_MALFORMED
     test_status, test_commands = _declared_values(
         plan, "Test", text_override=plan_text_override
     )
@@ -1016,20 +1050,13 @@ def validate_manifest_artifacts(
         )
         return EXIT_VIOLATION
     if delete_target is not None:
-        delete_status, delete_paths = _declared_values(
-            plan, "Delete", text_override=plan_text_override
-        )
-        if delete_status != EXIT_PASS:
-            return delete_status
+        delete_paths = declared_actions["Delete"]
         delete_path = Path(delete_target)
         if not delete_path.is_absolute():
             delete_path = repo / delete_path
         try:
             delete_rel = delete_path.resolve().relative_to(repo).as_posix()
-            normalized_deletes = {
-                (repo / path).resolve().relative_to(repo).as_posix()
-                for path in delete_paths
-            }
+            normalized_deletes = delete_paths
         except (OSError, ValueError):
             print(
                 f"ERROR: deletion target resolves outside repository: {delete_target}",
@@ -1043,7 +1070,7 @@ def validate_manifest_artifacts(
             )
             return EXIT_VIOLATION
         reserved = {
-            manifest_rel,
+            manifest_control_rel,
             plan.relative_to(repo).as_posix(),
             "docs/context/.active-feature",
             "config/claude/bin/plumbline-scope-check",
@@ -1071,7 +1098,7 @@ def validate_manifest_artifacts(
             )
             return EXIT_VIOLATION
         reserved = {
-            manifest_rel,
+            manifest_control_rel,
             plan.relative_to(repo).as_posix(),
             "docs/context/.active-feature",
             "config/claude/bin/plumbline-scope-check",
@@ -1095,22 +1122,7 @@ def validate_manifest_artifacts(
                 file=sys.stderr,
             )
             return EXIT_VIOLATION
-        create_status, create_paths = _declared_values(
-            plan, "Create", text_override=plan_text_override
-        )
-        modify_status, modify_paths = _declared_values(
-            plan, "Modify", text_override=plan_text_override
-        )
-        if create_status != EXIT_PASS or modify_status != EXIT_PASS:
-            return EXIT_MALFORMED
-        try:
-            writable_paths = {
-                (repo / path).resolve().relative_to(repo).as_posix()
-                for path in create_paths + modify_paths
-            }
-        except (OSError, ValueError):
-            print("ERROR: planned write target resolves outside repository", file=sys.stderr)
-            return EXIT_MALFORMED
+        writable_paths = declared_actions["Create"] | declared_actions["Modify"]
         if target_rel not in writable_paths:
             print(
                 f"ERROR: write target is not declared with Create or Modify in implementation plan: {target_rel}",

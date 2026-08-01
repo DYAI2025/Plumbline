@@ -172,6 +172,16 @@ assert_output_contains "partially unquoted plan declaration is rejected" \
   "outside backtick-wrapped paths" \
   "$SCOPE_CHECK" --repo "$PARTIAL_QUOTE" --feature demo --preflight
 
+CONFLICTING_ACTIONS="$WORK/conflicting-actions"
+cp -R "$BASE" "$CONFLICTING_ACTIONS"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`src/demo/./app.py\`" \
+  >"$CONFLICTING_ACTIONS/docs/plans/2026-07-29-demo.md"
+assert_output_contains "one normalized path cannot carry conflicting plan actions" \
+  "conflicting actions Modify and Delete: src/demo/app.py" \
+  "$SCOPE_CHECK" --repo "$CONFLICTING_ACTIONS" --feature demo --preflight
+
 # Extra: Canvas must only reference the manifest. A copied scope bullet is a
 # second truth source and therefore deliberate drift, even if the path is valid.
 EXTRA="$WORK/extra"
@@ -712,6 +722,42 @@ EOF
 )"
 assert_contains "normalized manifest spelling cannot bypass deletion reservation" \
   "$NORMALIZED_CONTROL_DELETE_DENY" '"decision":"deny"'
+
+SYMLINK_MANIFEST_WRITE="$WORK/symlink-manifest-write"
+cp -R "$BASE" "$SYMLINK_MANIFEST_WRITE"
+mv "$SYMLINK_MANIFEST_WRITE/docs/scope/demo.scope.json" \
+  "$SYMLINK_MANIFEST_WRITE/docs/scope/resolved-demo.scope.json"
+ln -s resolved-demo.scope.json \
+  "$SYMLINK_MANIFEST_WRITE/docs/scope/demo.scope.json"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`docs/scope/demo.scope.json\`" \
+  >"$SYMLINK_MANIFEST_WRITE/docs/plans/2026-07-29-demo.md"
+SYMLINK_MANIFEST_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_MANIFEST_WRITE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "resolved symlink manifest remains a reserved write target" \
+  "$SYMLINK_MANIFEST_WRITE_DENY" '"decision":"deny"'
+
+SYMLINK_MANIFEST_DELETE="$WORK/symlink-manifest-delete"
+cp -R "$BASE" "$SYMLINK_MANIFEST_DELETE"
+mv "$SYMLINK_MANIFEST_DELETE/docs/scope/demo.scope.json" \
+  "$SYMLINK_MANIFEST_DELETE/docs/scope/resolved-demo.scope.json"
+ln -s resolved-demo.scope.json \
+  "$SYMLINK_MANIFEST_DELETE/docs/scope/demo.scope.json"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/scope/demo.scope.json\`" \
+  >"$SYMLINK_MANIFEST_DELETE/docs/plans/2026-07-29-demo.md"
+SYMLINK_MANIFEST_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_MANIFEST_DELETE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "resolved symlink manifest remains a reserved deletion target" \
+  "$SYMLINK_MANIFEST_DELETE_DENY" '"decision":"deny"'
 
 DELETE_ONLY_WRITE_DENY="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
