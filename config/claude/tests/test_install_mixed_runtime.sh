@@ -130,7 +130,7 @@ assert_contains "the resolution reason is reported" "$INSTALL_OUT" "DIFFERENT re
 
 # --- 3. NO MIXED RUNTIME: every managed CLI/lib points at one checkout -----------
 mixed=0
-for c in plumbline-scope-check plumbline-context-check plumbline-reality-check \
+for c in plumbline-context-check plumbline-reality-check \
          plumbline-plan-check plumbline-runtime-hygiene plumbline-remote-watch \
          plumbline-provenance-check; do
   t="$(readlink "$HOME_DIR/bin/$c" 2>/dev/null || echo MISSING)"
@@ -140,8 +140,10 @@ for c in plumbline-scope-check plumbline-context-check plumbline-reality-check \
   esac
 done
 assert_eq "no managed CLI still points at the OLD checkout" "0" "$mixed"
-lib_t="$(readlink "$HOME_DIR/lib/plumbline_scope.py" 2>/dev/null || echo MISSING)"
-assert_contains "the managed library is repointed too" "$lib_t" "$REPO_DIR/config/claude/lib/"
+assert "the scope checker is refreshed as independent copied authority" \
+  "test -f '$HOME_DIR/bin/plumbline-scope-check' && test ! -L '$HOME_DIR/bin/plumbline-scope-check'"
+assert "the managed scope library is refreshed as independent copied authority" \
+  "test -f '$HOME_DIR/lib/plumbline_scope.py' && test ! -L '$HOME_DIR/lib/plumbline_scope.py'"
 
 # --- 4. foreign files and real files survive ------------------------------------
 assert_eq "an unrelated tool in ~/.claude/bin is untouched" \

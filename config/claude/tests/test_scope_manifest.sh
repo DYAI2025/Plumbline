@@ -901,6 +901,29 @@ CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
 assert_eq "scope preflight registration is idempotent" "1" \
   "$(jq '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
     "$INSTALL_HOME/settings.json")"
+
+# Default installs keep most files live through symlinks, but the scope
+# checker/updater and their loaded runtime are independent copied authority.
+AUTH_HOME="$WORK/authority-home"
+CLAUDE_HOME="$AUTH_HOME" bash "$REPO_DIR/config/claude/install.sh" \
+  --no-agents --no-commands --no-skills --no-hook >/dev/null
+for authority_path in \
+  bin/plumbline-scope-check \
+  bin/plumbline-scope-update \
+  lib/plumbline_python.sh \
+  lib/plumbline_scope.py \
+  lib/plumbline_scope_update.py
+do
+  assert "default install materializes independent scope authority: $authority_path" \
+    "test -f '$AUTH_HOME/$authority_path' && test ! -L '$AUTH_HOME/$authority_path'"
+done
+INSTALLED_REPAIR_PASS="$(
+  CLAUDE_HOME="$AUTH_HOME" CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$AUTH_HOME/bin/plumbline-scope-update --repo $BASE --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "default installed updater remains an authenticated repair path" \
+  "" "$INSTALLED_REPAIR_PASS"
 rm -rf "$WORK"
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
 

@@ -465,7 +465,7 @@ resolve_hook_script() {
 }
 
 transfer() {
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" effective_mode="${3:-$MODE}"
   if [ ! -e "$src" ]; then
     echo "missing source: $src" >&2
     exit 1
@@ -499,7 +499,7 @@ transfer() {
     return 0
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
-    if [ "$MODE" = "copy" ]; then
+    if [ "$effective_mode" = "copy" ]; then
       log_action "would copy:     $src -> $dst"
     else
       log_action "would symlink:  $dst -> $src"
@@ -508,7 +508,7 @@ transfer() {
   fi
   mkdir -p "$(dirname "$dst")"
   rm -rf "$dst"
-  if [ "$MODE" = "copy" ]; then
+  if [ "$effective_mode" = "copy" ]; then
     cp -R "$src" "$dst"
     echo "copied:   $dst"
   else
@@ -685,9 +685,21 @@ install_bin_libs() {
     return 0
   fi
   local src_dir="$REPO_DIR/config/claude/lib"
+  local name transfer_mode
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' lib; do
-    transfer "$lib" "$CLAUDE_HOME/lib/$(basename "$lib")"
+    name="$(basename "$lib")"
+    transfer_mode="$MODE"
+    case "$name" in
+      plumbline_python.sh|plumbline_scope.py|plumbline_scope_update.py)
+        # These files form the executable scope authority. A symlink back into
+        # the governed checkout would let that checkout authenticate itself and
+        # would also strand confirmed replanning once project-local authority is
+        # correctly rejected. Keep an independent install-time snapshot.
+        transfer_mode="copy"
+        ;;
+    esac
+    transfer "$lib" "$CLAUDE_HOME/lib/$name" "$transfer_mode"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
   write_install_anchor
 }
@@ -698,9 +710,20 @@ install_bin() {
     return 0
   fi
   local src_dir="$REPO_DIR/config/claude/bin"
+  local name transfer_mode
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' tool; do
-    transfer "$tool" "$CLAUDE_HOME/bin/$(basename "$tool")"
+    name="$(basename "$tool")"
+    transfer_mode="$MODE"
+    case "$name" in
+      plumbline-scope-check|plumbline-scope-update)
+        # Scope authorization and its sole confirmed repair path must resolve
+        # outside the repository whose writes they judge, even in the default
+        # live/symlink install mode.
+        transfer_mode="copy"
+        ;;
+    esac
+    transfer "$tool" "$CLAUDE_HOME/bin/$name" "$transfer_mode"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
 }
 
