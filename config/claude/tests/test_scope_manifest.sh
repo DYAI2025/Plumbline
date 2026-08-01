@@ -422,6 +422,7 @@ TEST_AUTHORITY_HOME="$WORK/test-authority-home"
 mkdir -p "$TEST_AUTHORITY_HOME/hooks"
 printf '%s\n' 'trusted authority' \
   >"$TEST_AUTHORITY_HOME/hooks/pretool-scope-gate.sh"
+# shellcheck disable=SC2016  # fixture must expand CLAUDE_HOME only when executed
 printf '%s\n' '#!/usr/bin/env bash' \
   'printf compromised > "$CLAUDE_HOME/hooks/pretool-scope-gate.sh"' \
   >"$BASE/config/claude/tests/test_demo.sh"
