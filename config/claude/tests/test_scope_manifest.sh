@@ -567,6 +567,25 @@ EOF
 assert_contains "repository-owned updater symlink cannot launder external authority" \
   "$SYMLINKED_UPDATER_DENY" '"decision":"deny"'
 
+OUTSIDE_UPDATER_TARGET="$WORK/outside-updater-target"
+cp -R "$MISSING" "$OUTSIDE_UPDATER_TARGET"
+mkdir -p "$OUTSIDE_UPDATER_TARGET/config/claude/bin" "$WORK/outside-updater-bin"
+printf '%s\n' '#!/usr/bin/env bash' 'touch updater-ran' 'exit 0' \
+  >"$OUTSIDE_UPDATER_TARGET/config/claude/bin/plumbline-scope-update"
+chmod +x "$OUTSIDE_UPDATER_TARGET/config/claude/bin/plumbline-scope-update"
+ln -s "$OUTSIDE_UPDATER_TARGET/config/claude/bin/plumbline-scope-update" \
+  "$WORK/outside-updater-bin/plumbline-scope-update"
+OUTSIDE_UPDATER_TARGET_DENY="$(
+  PLUMBLINE_BIN_DIR="$WORK/outside-updater-bin" \
+    CLAUDE_PROJECT_DIR="$OUTSIDE_UPDATER_TARGET" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$WORK/outside-updater-bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "outside updater symlink into governed repository is not trusted" \
+  "$OUTSIDE_UPDATER_TARGET_DENY" '"decision":"deny"'
+assert "outside updater symlink target is never executed" \
+  "test ! -e '$OUTSIDE_UPDATER_TARGET/updater-ran'"
+
 ALTERNATE_UPDATER="$WORK/alternate-updater"
 cp -R "$BASE" "$ALTERNATE_UPDATER"
 mkdir -p "$ALTERNATE_UPDATER/tools"
@@ -813,6 +832,48 @@ EOF
 )"
 assert_contains "active-feature marker is reserved from direct writes" \
   "$MARKER_WRITE_DENY" '"decision":"deny"'
+
+SYMLINK_MARKER_CONTROL="$WORK/symlink-marker-control"
+cp -R "$BASE" "$SYMLINK_MARKER_CONTROL"
+mv "$SYMLINK_MARKER_CONTROL/docs/context/.active-feature" \
+  "$SYMLINK_MARKER_CONTROL/docs/context/active-feature-target"
+ln -s active-feature-target \
+  "$SYMLINK_MARKER_CONTROL/docs/context/.active-feature"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`docs/context/active-feature-target\`" \
+  >"$SYMLINK_MARKER_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$SYMLINK_MARKER_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("docs/context/active-feature-target")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+SYMLINK_MARKER_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_MARKER_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/context/.active-feature"}}
+EOF
+)"
+assert_contains "resolved active-feature marker target remains reserved" \
+  "$SYMLINK_MARKER_WRITE_DENY" '"decision":"deny"'
+
+CANVAS_DELETE_CONTROL="$WORK/canvas-delete-control"
+cp -R "$BASE" "$CANVAS_DELETE_CONTROL"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/canvas/demo.canvas.md\`" \
+  >"$CANVAS_DELETE_CONTROL/docs/plans/2026-07-29-demo.md"
+CANVAS_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$CANVAS_DELETE_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/canvas/demo.canvas.md"}}
+EOF
+)"
+assert_contains "active Canvas is reserved from deletion" \
+  "$CANVAS_DELETE_DENY" '"decision":"deny"'
 
 MUTABLE_CHECKER="$WORK/mutable-checker"
 cp -R "$MISSING" "$MUTABLE_CHECKER"

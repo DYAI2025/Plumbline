@@ -969,9 +969,12 @@ def validate_manifest_artifacts(
 
     canvas = _safe_artifact(repo, canvas_rel)
     plan = _safe_artifact(repo, plan_rel)
-    if canvas is None or plan is None:
+    marker = _safe_artifact(repo, "docs/context/.active-feature")
+    if canvas is None or plan is None or marker is None:
         print("ERROR: scope artifact resolves outside repository", file=sys.stderr)
         return EXIT_MALFORMED
+    canvas_control_rel = canvas.relative_to(repo).as_posix()
+    marker_control_rel = marker.relative_to(repo).as_posix()
 
     canvas_status, canvas_lines = _canvas_scope_lines(canvas)
     if canvas_status != EXIT_PASS:
@@ -1070,9 +1073,10 @@ def validate_manifest_artifacts(
             )
             return EXIT_VIOLATION
         reserved = {
+            canvas_control_rel,
             manifest_control_rel,
             plan.relative_to(repo).as_posix(),
-            "docs/context/.active-feature",
+            marker_control_rel,
             "config/claude/bin/plumbline-scope-check",
             "config/claude/bin/plumbline-scope-update",
             "config/claude/lib/plumbline_python.sh",
@@ -1098,9 +1102,10 @@ def validate_manifest_artifacts(
             )
             return EXIT_VIOLATION
         reserved = {
+            canvas_control_rel,
             manifest_control_rel,
             plan.relative_to(repo).as_posix(),
-            "docs/context/.active-feature",
+            marker_control_rel,
             "config/claude/bin/plumbline-scope-check",
             "config/claude/bin/plumbline-scope-update",
             "config/claude/lib/plumbline_python.sh",

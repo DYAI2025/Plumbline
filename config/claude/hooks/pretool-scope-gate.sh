@@ -95,9 +95,14 @@ for path in sys.argv[4:]:
         entry.relative_to(project)
     except ValueError:
         try:
-            trusted.add(entry.resolve(strict=True))
+            target = entry.resolve(strict=True)
         except OSError:
             pass
+        else:
+            try:
+                target.relative_to(project)
+            except ValueError:
+                trusted.add(target)
 if (
     not command
     or any(char in command for char in ("\n", "\r", chr(96), "$", "{", "}", "*", "?", "[", "]", "~"))
@@ -131,6 +136,12 @@ else:
 try:
     executable = executable.resolve(strict=True)
 except OSError:
+    raise SystemExit(1)
+try:
+    executable.relative_to(project)
+except ValueError:
+    pass
+else:
     raise SystemExit(1)
 if (
     executable not in trusted

@@ -283,8 +283,8 @@ refused_cli_reason=""
 accept_candidate() { # accept_candidate <canonical-path> <source-label> <entry-path>
   local entry=""
   entry="$(candidate_entry_path "$3" 2>/dev/null)" || entry=""
-  if [ -n "$entry" ] && path_inside_repo "$entry" && [ "$entry" != "$1" ]; then
-    checker_integrity_reason="repository-owned executable entry ${entry#"$repo_physical"/} resolves to $1"
+  if { [ -n "$entry" ] && path_inside_repo "$entry"; } || path_inside_repo "$1"; then
+    checker_integrity_reason="repository-owned executable cannot be an independent enforcement authority"
     refused_cli_reason="$checker_integrity_reason (candidate $3, source=$2)"
     printf 'PRIL CHECKER_INTEGRITY_UNVERIFIED: refusing %s -- %s\n' \
       "$3" "$checker_integrity_reason" >&2
@@ -385,7 +385,7 @@ done
 # Integrity is decided BEFORE any checker result is interpreted: a checker that
 # cannot be proven unmodified never runs, so there is no verdict to weigh.
 if [ -n "$unverified_clis" ]; then
-  emit_block "PRIL_CHECKER_INTEGRITY_UNVERIFIED: a scope/context/reality checker resolved INSIDE the governed repository but is not the reviewed artifact --$unverified_clis A checker the repository under judgement could have rewritten is never executed, and no immutable checker was found elsewhere on the resolution chain. Commit the checker change (so it is tracked and identical to HEAD), or install Plumbline outside this repository, then re-run."
+  emit_block "PRIL_CHECKER_INTEGRITY_UNVERIFIED: a scope/context/reality checker resolved INSIDE the governed repository and cannot be an independent authority --$unverified_clis A checker the repository under judgement could have rewritten is never executed, and no immutable checker was found elsewhere on the resolution chain. Install Plumbline outside this repository, then re-run."
   exit 0
 fi
 

@@ -77,7 +77,8 @@ run_hook_with_env() {
   # python3, git) MUST survive -- the PLUM-8 interpreter-fallback cases need it, and a
   # blanket pin to /usr/bin:/bin silently converts those into 120/121 tool errors.
   # Caller-supplied env in "$@" still wins, since it is applied after.
-  env PATH="$SANITISED_PATH" "$@" CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
+  env PATH="$SANITISED_PATH" PLUMBLINE_BIN_DIR="$BIN_SRC" "$@" \
+    CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
     >"$outf" 2>"$errf" <<<"$stdin_payload"
   HOOK_RC=$?
   HOOK_OUT="$(cat "$outf")"
@@ -462,35 +463,30 @@ assert_not_contains "alternate project checker is rejected despite explicit over
   "$HOOK_ERR" "plumbline-scope-check source=PLUMBLINE_BIN_DIR"
 
 # Every CLI is resolved independently in the documented order. Deliberately
-# distribute the three executables across explicit-dir, repo-local, and PATH;
+# distribute the three executables across explicit-dir, PATH, and HOME;
 # resolving one shared bin directory would fail this case.
 split_repo="$(make_feature_repo splitfeat main no-vendor)"
 printf 'splitfeat' >"$split_repo/docs/context/.active-feature"
 split_explicit="$WORK/split-explicit"
 split_path="$WORK/split-path"
-mkdir -p "$split_explicit" "$split_path" "$split_repo/config/claude/bin"
+split_home="$WORK/split-home"
+mkdir -p "$split_explicit" "$split_path" "$split_home/.claude/bin"
 printf '#!/usr/bin/env bash\nexit 0\n' >"$split_explicit/plumbline-scope-check"
-printf '#!/usr/bin/env bash\nexit 0\n' >"$split_repo/config/claude/bin/plumbline-context-check"
-printf '#!/usr/bin/env bash\nexit 0\n' >"$split_path/plumbline-reality-check"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$split_path/plumbline-context-check"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$split_home/.claude/bin/plumbline-reality-check"
 chmod +x "$split_explicit/plumbline-scope-check" \
-  "$split_repo/config/claude/bin/plumbline-context-check" \
-  "$split_path/plumbline-reality-check"
-# OPEN-1: an in-repo checker is only executed when it is tracked AND identical to
-# HEAD. This case is about RESOLUTION ORDER, so the repo-local stub is committed --
-# leaving it untracked would make the hook refuse it (correctly) and fall through
-# to whatever checker the developer machine happens to have installed, which is how
-# this assertion silently stopped testing resolution order at all.
-git -C "$split_repo" add config/claude/bin/plumbline-context-check
-git -C "$split_repo" commit -q -m "vendored context checker for the resolution-order case"
+  "$split_path/plumbline-context-check" \
+  "$split_home/.claude/bin/plumbline-reality-check"
 run_hook_with_env "$split_repo" '{}' \
-  "PLUMBLINE_BIN_DIR=$split_explicit" "PATH=$split_path:$PATH"
+  "PLUMBLINE_BIN_DIR=$split_explicit" "PATH=$split_path:$SANITISED_PATH" \
+  "HOME=$split_home"
 assert_eq "PLUM-7 per-CLI resolution: distributed executables pass" "" "$HOOK_OUT"
 assert_contains "PLUM-7 order: scope uses explicit dir" "$HOOK_ERR" \
   "plumbline-scope-check source=PLUMBLINE_BIN_DIR"
-assert_contains "PLUM-7 order: context uses repo-local" "$HOOK_ERR" \
-  "plumbline-context-check source=project-local"
-assert_contains "PLUM-7 order: reality uses PATH" "$HOOK_ERR" \
-  "plumbline-reality-check source=PATH"
+assert_contains "PLUM-7 order: context uses PATH" "$HOOK_ERR" \
+  "plumbline-context-check source=PATH"
+assert_contains "PLUM-7 order: reality uses HOME" "$HOOK_ERR" \
+  "plumbline-reality-check source=HOME/.claude/bin"
 
 # Final fallback: the conventional per-user install. The directory contains a
 # space so quoting/canonicalization is exercised on both Linux and macOS CI.
@@ -502,7 +498,7 @@ for cli in plumbline-scope-check plumbline-context-check plumbline-reality-check
   printf '#!/usr/bin/env bash\nexit 0\n' >"$fake_home/.claude/bin/$cli"
   chmod +x "$fake_home/.claude/bin/$cli"
 done
-run_hook_with_env "$home_repo" '{}' "HOME=$fake_home"
+run_hook_with_env "$home_repo" '{}' "PLUMBLINE_BIN_DIR=" "HOME=$fake_home"
 assert_eq "PLUM-7 HOME fallback: quoted portable path passes" "" "$HOOK_OUT"
 assert_contains "PLUM-7 HOME fallback: source is audited" "$HOOK_ERR" \
   "source=HOME/.claude/bin"
