@@ -901,6 +901,12 @@ CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
 assert_eq "scope preflight registration is idempotent" "1" \
   "$(jq '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
     "$INSTALL_HOME/settings.json")"
+assert "installer materializes the scope gate outside the governed checkout" \
+  "test -f '$INSTALL_HOME/hooks/pretool-scope-gate.sh' && test ! -L '$INSTALL_HOME/hooks/pretool-scope-gate.sh'"
+assert_contains "settings execute the independent installed scope gate" \
+  "$(jq -r '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))][0]' \
+    "$INSTALL_HOME/settings.json")" \
+  "$INSTALL_HOME/hooks/pretool-scope-gate.sh"
 
 # Default installs keep most files live through symlinks, but the scope
 # checker/updater and their loaded runtime are independent copied authority.
@@ -910,6 +916,7 @@ CLAUDE_HOME="$AUTH_HOME" bash "$REPO_DIR/config/claude/install.sh" \
 for authority_path in \
   bin/plumbline-scope-check \
   bin/plumbline-scope-update \
+  lib/plumbline_cli.py \
   lib/plumbline_python.sh \
   lib/plumbline_scope.py \
   lib/plumbline_scope_update.py
@@ -917,6 +924,8 @@ do
   assert "default install materializes independent scope authority: $authority_path" \
     "test -f '$AUTH_HOME/$authority_path' && test ! -L '$AUTH_HOME/$authority_path'"
 done
+assert_exit "installed copied checker loads only the materialized scope runtime" 0 \
+  "$AUTH_HOME/bin/plumbline-scope-check" --help
 INSTALLED_REPAIR_PASS="$(
   CLAUDE_HOME="$AUTH_HOME" CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
 {"tool_name":"Bash","tool_input":{"command":"$AUTH_HOME/bin/plumbline-scope-update --repo $BASE --feature demo --confirmed"}}
@@ -924,6 +933,34 @@ EOF
 )"
 assert_eq "default installed updater remains an authenticated repair path" \
   "" "$INSTALLED_REPAIR_PASS"
+
+# An --update must convert authority symlinks created by older versions even
+# when the global/default install mode remains symlink.
+UPGRADE_HOME="$WORK/upgrade-home"
+mkdir -p "$UPGRADE_HOME/bin" "$UPGRADE_HOME/lib"
+for authority_path in \
+  bin/plumbline-scope-check \
+  bin/plumbline-scope-update \
+  lib/plumbline_cli.py \
+  lib/plumbline_python.sh \
+  lib/plumbline_scope.py \
+  lib/plumbline_scope_update.py
+do
+  ln -s "$REPO_DIR/config/claude/${authority_path}" "$UPGRADE_HOME/$authority_path"
+done
+CLAUDE_HOME="$UPGRADE_HOME" bash "$REPO_DIR/config/claude/install.sh" --update \
+  --no-agents --no-commands --no-skills --no-hook >/dev/null
+for authority_path in \
+  bin/plumbline-scope-check \
+  bin/plumbline-scope-update \
+  lib/plumbline_cli.py \
+  lib/plumbline_python.sh \
+  lib/plumbline_scope.py \
+  lib/plumbline_scope_update.py
+do
+  assert "update converts legacy authority symlink to copy: $authority_path" \
+    "test -f '$UPGRADE_HOME/$authority_path' && test ! -L '$UPGRADE_HOME/$authority_path'"
+done
 rm -rf "$WORK"
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
 

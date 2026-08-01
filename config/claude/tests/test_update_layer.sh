@@ -56,6 +56,8 @@ assert "default install copies the scope checker authority" \
   "test ! -L '$SYMLINK_HOME/bin/plumbline-scope-check'"
 assert "default install copies the scope updater authority" \
   "test ! -L '$SYMLINK_HOME/bin/plumbline-scope-update'"
+assert "default install copies the scope parser dependency" \
+  "test ! -L '$SYMLINK_HOME/lib/plumbline_cli.py'"
 assert_eq "installed symlink wrapper resolves library" "$REPO_VERSION" "$("$SYMLINK_HOME/bin/plumbline" --root "$REPO_DIR" version)"
 for pril_cli in plumbline-context-check plumbline-reality-check plumbline-redact plumbline-scope-check; do
   assert "installed symlink $pril_cli resolves shared runtime" \

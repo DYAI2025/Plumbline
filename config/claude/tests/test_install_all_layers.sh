@@ -40,6 +40,7 @@ build_src() {
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/plumbline-enforce.sh"
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/stop-learning-loop.sh"
   printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/pretool-vision-gate.sh"
+  printf '#!/usr/bin/env bash\n# %s hook\nexit 0\n' "$m" >"$r/config/claude/hooks/pretool-scope-gate.sh"
   chmod +x "$r/config/claude/hooks/"*.sh
   for c in plumbline-scope-check plumbline-context-check; do
     printf '#!/usr/bin/env bash\n# %s cli\nexit 0\n' "$m" >"$r/config/claude/bin/$c"
