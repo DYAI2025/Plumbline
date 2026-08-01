@@ -416,6 +416,7 @@ MUT="$WORK/mutated-hook.sh"
 # CM-1: neutralise the independent-authority boundary in a copy of the hook.
 # A clean, committed checker is attacker-controlled in a foreign repository,
 # even though the older tracked+HEAD check considers it internally consistent.
+# shellcheck disable=SC2016  # the sed expression must match literal shell variables
 sed 's/^  if { \[ -n "\$entry" \] && path_inside_repo "\$entry"; } || path_inside_repo "\$1"; then$/  if false; then/' \
   "$HOOK" >"$MUT"
 bash -n "$MUT" || _fail "CM-1: the mutated hook must still parse"
