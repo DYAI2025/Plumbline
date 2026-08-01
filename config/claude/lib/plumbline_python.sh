@@ -13,6 +13,10 @@
 
 PLUMBLINE_EXIT_TOOL_UNAVAILABLE=120
 PLUMBLINE_EXIT_TOOL_BROKEN=121
+# NEW-1: a usage/argument error is a TOOL fault, not a policy result. argparse's
+# default exit 2 collided with the contract's MISSING, so a mis-invoked checker
+# read as "nothing to check". 122 keeps it in the reserved tool family.
+PLUMBLINE_EXIT_TOOL_INVOCATION=122
 
 plumbline_runtime_emit() {
   local code="$1"
@@ -202,6 +206,15 @@ plumbline_python_main() {
     plumbline_runtime_emit \
       "PRIL_OK" "none" "$cli" "$PLUMBLINE_PYTHON_INTERPRETER" 0 0
     return 0
+  fi
+
+  # A tool-invocation error is reported before the policy table is consulted, so
+  # it can never be mistaken for one of the checker's own policy codes.
+  if [ "$checker_rc" -eq "$PLUMBLINE_EXIT_TOOL_INVOCATION" ]; then
+    plumbline_runtime_emit \
+      "PRIL_TOOL_INVOCATION_ERROR" "tool_invocation_error" "$cli" \
+      "$PLUMBLINE_PYTHON_INTERPRETER" "$checker_rc" 1
+    return "$PLUMBLINE_EXIT_TOOL_INVOCATION"
   fi
 
   for expected in $policy_exit_codes; do

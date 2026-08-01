@@ -25,10 +25,11 @@ INSTALL_HOOK=1
 INSTALL_BIN=1
 WITH_FLOW=0
 DRY_RUN=0
+IGNORE_RUNTIME_STATE=0
 
 usage() {
   cat <<USAGE
-Usage: $0 [--copy] [--force] [--update] [--dry-run] [--with-flow-agents] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
+Usage: $0 [--copy] [--force] [--update] [--dry-run] [--with-flow-agents] [--ignore-runtime-state] [--no-agents] [--no-commands] [--no-skills] [--no-hook] [--no-bin]
 
 Installs the repo for Claude Code by:
   - installing the MCP-free agents into \$CLAUDE_HOME/agents (default; the ~35 claude-flow /
@@ -39,6 +40,13 @@ Installs the repo for Claude Code by:
   - registering the sentinel-gated learning-loop Stop hook,
   - registering the fail-closed PRIL enforcement Stop hook,
   - installing the plumbline CLI into $CLAUDE_HOME/bin/ with its runtime libraries in $CLAUDE_HOME/lib/.
+
+--ignore-runtime-state additionally makes THIS repository ignore volatile agent
+runtime state (.claude-flow/, .swarm/, .claude/homunculus/, ...) by appending a
+marked block to its .gitignore. Purely additive: no existing rule is rewritten, no
+file is deleted, and an already-tracked runtime file is never untracked for you --
+the check prints the removal command instead (git rm -r --cached, which keeps the
+working copy). Without the flag the installer only reports what it would do.
 
 --update refreshes an existing \$CLAUDE_HOME install in place: a CHANGED existing
 target is overwritten (content-compared) and new files are added, in both symlink
@@ -61,6 +69,7 @@ for arg in "$@"; do
     --no-hook) INSTALL_HOOK=0 ;;
     --no-bin) INSTALL_BIN=0 ;;
     --with-flow-agents) WITH_FLOW=1 ;;
+    --ignore-runtime-state) IGNORE_RUNTIME_STATE=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -172,6 +181,289 @@ content_current() {
   return 1
 }
 
+# normalize_remote <url> -- comparable repository identity.
+# Reduces https://host/Owner/Repo.git and git@host:Owner/Repo.git to host/owner/repo,
+# so the SAME repository reached by different URL forms compares equal and a DIFFERENT
+# repository never does.
+normalize_remote() {
+  local url="$1"
+  [ -n "$url" ] || return 1
+  url="${url%.git}"
+  url="${url#*://}"          # strip scheme
+  url="${url#*@}"            # strip user@
+  url="$(printf '%s' "$url" | tr ':' '/' | tr '[:upper:]' '[:lower:]')"
+  printf '%s' "$url"
+}
+
+# plumbline_managed_symlink <path> -- true only for a symlink this installer owns.
+#
+# transfer() only ever writes inside $CLAUDE_HOME/{agents,commands,skills,bin,lib}, so
+# the DESTINATION is already our domain; the question is whether the entry sitting there
+# came from a previous run of this installer or from something else.
+#
+# "Ours" = a symlink whose basename matches AND whose target lies in one of the source
+# shapes this installer links from: `config/claude/...` (bin, lib, commands, skills) or
+# an `agents/` tree. A link pointing anywhere else -- e.g. another tool's binary that
+# happens to share a name -- is foreign and is never replaced.
+#
+# The first version of this only accepted config/claude/{bin,lib} and therefore refused
+# to refresh AGENT symlinks, breaking --update. Caught by the update-layer suite.
+plumbline_managed_symlink() {
+  local dst="$1" target="" root=""
+  [ -L "$dst" ] || return 1
+  target="$(readlink "$dst" 2>/dev/null)" || return 1
+  case "$target" in /*) ;; *) target="$(dirname "$dst")/$target" ;; esac
+
+  # A DANGLING link at one of our destinations is ours to repair: the checkout it
+  # pointed into was moved or deleted, which is exactly the case a repoint must be
+  # able to fix. Refusing here would dead-end every moved-checkout migration.
+  #
+  # But adoption must be a NAMED decision, not a silent one. A foreign link that is
+  # merely broken right now -- unmounted volume, tool mid-upgrade, target moved -- is
+  # adopted by this rule, and the contract a few lines below is "a name collision must
+  # not become a silent takeover". Nothing is destroyed either way (removing a symlink
+  # never touches its target), so the honest fix is to say so, not to refuse.
+  if [ ! -e "$target" ]; then
+    log_action "adopting dangling link: $dst -> $target (previous target is gone)"
+    return 0
+  fi
+
+  # Canonicalize before walking. The walk is otherwise purely lexical, so a relative
+  # target like ../../plumbtree/../elsewhere/x matches "plumbtree" and is accepted even
+  # though it resolves outside any Plumbline tree.
+  local canon=""
+  canon="$(canonical_path "$target")" || canon=""
+  [ -n "$canon" ] && target="$canon"
+
+  # Otherwise: ours iff the link points INTO a Plumbline checkout, i.e. some ancestor
+  # of the target carries the installer itself. One uniform rule for all five layers
+  # (agents, commands, skills, bin, lib) -- an earlier version matched only
+  # config/claude/{bin,lib} and therefore classified all 61 agent, 11 command and 16
+  # skill links as foreign, refusing to repoint them while repointing the CLIs. That
+  # is precisely the mixed runtime this work exists to prevent, and it exited 0.
+  # Bound the walk. A single stray `config/claude/install.sh` at a HIGH ancestor --
+  # $HOME being the obvious one -- would otherwise mark every link under it as ours and
+  # disable the foreign-symlink refusal wholesale. A Plumbline checkout is never $HOME
+  # and never an ancestor of $CLAUDE_HOME, so those are hard stops.
+  local stop_home="" stop_claude=""
+  stop_home="$(canonical_path "$HOME")" || stop_home=""
+  stop_claude="$(canonical_path "$CLAUDE_HOME")" || stop_claude=""
+  # Test the marker BEFORE the ancestor stops, so a directory that is genuinely a
+  # Plumbline checkout is recognised even when $CLAUDE_HOME happens to live inside it
+  # (a dev-sandbox layout the installer documents via the CLAUDE_HOME override).
+  # Checking the stops first refused those outright: 7 refusals, 0 layers repointed --
+  # a complete inversion of the repoint this work exists to perform.
+  #
+  # $HOME itself is still never accepted: that is the stray-marker case, where one
+  # `config/claude/install.sh` at a high ancestor would otherwise mark every link
+  # beneath it as ours and disable the foreign-symlink refusal wholesale.
+  root="$(dirname "$target")"
+  while [ -n "$root" ] && [ "$root" != "/" ] && [ "$root" != "." ]; do
+    if [ -f "$root/config/claude/install.sh" ] && [ "$root" != "$stop_home" ]; then
+      return 0
+    fi
+    if [ -n "$stop_home" ] && [ "$root" = "$stop_home" ]; then return 1; fi
+    if [ -n "$stop_claude" ]; then
+      case "$stop_claude/" in
+        "$root"/*) return 1 ;;   # root is $CLAUDE_HOME or an ancestor of it
+      esac
+    fi
+    root="$(dirname "$root")"
+  done
+  return 1
+}
+
+# safe_to_replace <dst> -- may transfer() overwrite this destination?
+#
+# The unguarded `rm -rf "$dst"` below would happily delete a symlink belonging to
+# another tool. That is the case worth refusing: a link at one of our destination
+# paths that points OUTSIDE any install source is somebody else's, and a name
+# collision must not become a silent takeover.
+#
+# A regular FILE is different, and an earlier stricter rule got this wrong. Control
+# only reaches here when the caller explicitly asked to write -- a plain install
+# returns early on any existing target (skip-if-exists), so a real file here means
+# --update or --force. Refusing it would make a --copy install permanently
+# un-updatable and break the documented refresh path; the update-layer suite plants
+# exactly that stale real file and requires it to be overwritten.
+#
+# Paths the installer never writes (another tool's script that merely lives in
+# $CLAUDE_HOME/bin) are never destinations, so they are never considered at all.
+safe_to_replace() {
+  local dst="$1"
+  [ -e "$dst" ] || [ -L "$dst" ] || return 0          # absent: free to write
+  if [ -L "$dst" ]; then
+    plumbline_managed_symlink "$dst" && return 0
+    echo "REFUSING to replace foreign symlink: $dst -> $(readlink "$dst")" >&2
+    return 1
+  fi
+  return 0
+}
+
+TRANSFER_REFUSALS=0
+
+# layer_root_safe <layer-dir> -- may we write into this install layer at all?
+#
+# $CLAUDE_HOME/{agents,commands,skills,bin,lib} can each be a SYMLINK. If one resolves
+# OUTSIDE $CLAUDE_HOME, every transfer() into it writes through the link and lands
+# somewhere we were never asked to touch -- and `rm -rf "$dst"` then deletes whatever
+# shares a name there.
+#
+# This is not hypothetical: it happened during review of this very change. A reviewer
+# copied ~/.claude with `cp -a`, which preserved `skills -> ~/.claude/skills-unified` as
+# an ABSOLUTE link back into the real home; installing into the copy rewrote 16 entries
+# in the user's actual shared skills directory. Nothing was lost, but nothing stopped it
+# either.
+#
+# A layer root that resolves INSIDE $CLAUDE_HOME is fine (that same
+# `skills -> skills-unified` layout is legitimate and common). Only an escape is refused.
+layer_root_safe() {
+  local layer="$1" real_home="" real_layer=""
+  # `-e` FOLLOWS symlinks, so a DANGLING layer root reads as "absent" and sails past
+  # every check below -- then transfer()'s `mkdir -p` fails, `set -e` kills the run at
+  # exit 1 with no REFUSING line, no count, and a partially applied home. Test for the
+  # link itself too.
+  if [ ! -e "$layer" ] && [ ! -L "$layer" ]; then
+    return 0                              # genuinely absent: transfer() creates it
+  fi
+  if [ -L "$layer" ] && [ ! -e "$layer" ]; then
+    # A dangling layer root: create what it points at (if that is inside $CLAUDE_HOME)
+    # rather than dying in mkdir. Announced, never silent -- same stance as adopting a
+    # dangling wrapper link.
+    local dangling_target=""
+    dangling_target="$(readlink "$layer" 2>/dev/null)" || dangling_target=""
+    case "$dangling_target" in
+      /*) ;;
+      *) dangling_target="$(dirname "$layer")/$dangling_target" ;;
+    esac
+    real_home="$(canonical_path "$CLAUDE_HOME")" || real_home=""
+    # The target does not exist, so canonical_path cannot resolve it directly.
+    # Canonicalize its PARENT and re-append the basename -- otherwise a /var vs
+    # /private/var mismatch makes an in-home target look like an escape (the macOS
+    # path-canonicalization class this repo has already been bitten by twice).
+    local dt_parent="" dt_canon=""
+    dt_parent="$(canonical_path "$(dirname "$dangling_target")")" || dt_parent=""
+    if [ -n "$dt_parent" ]; then
+      dt_canon="$dt_parent/$(basename "$dangling_target")"
+    else
+      dt_canon="$dangling_target"
+    fi
+    case "$dt_canon/" in
+      "$real_home"/*)
+        log_action "creating dangling layer root: $layer -> $dt_canon"
+        mkdir -p "$dt_canon" 2>/dev/null || true
+        return 0
+        ;;
+    esac
+    echo "REFUSING to write into $layer: it is a dangling symlink to $dangling_target, OUTSIDE \$CLAUDE_HOME." >&2
+    return 1
+  fi
+  real_home="$(canonical_path "$CLAUDE_HOME")" || real_home=""
+  real_layer="$(canonical_path "$layer")" || real_layer=""
+  if [ -z "$real_home" ] || [ -z "$real_layer" ]; then
+    log_action "REFUSING to write into $layer: cannot canonicalize it or \$CLAUDE_HOME"
+    return 1
+  fi
+  case "$real_layer/" in
+    "$real_home"/*) return 0 ;;
+  esac
+  # Routed through log_action so a --dry-run preview reads "dry-run: REFUSING …" rather
+  # than claiming an action already taken. A preview that lies in either direction is
+  # worse than no preview.
+  log_action "REFUSING to write into $layer: it resolves to $real_layer, OUTSIDE \$CLAUDE_HOME ($real_home)."
+  log_action "         Writing there would modify files this install was never pointed at."
+  return 1
+}
+
+# resolve_hook_script <hook-basename>
+#
+# Which copy of a hook should be REGISTERED in settings.json. The old rule was "if a
+# file of that name exists under $CLAUDE_HOME/agents, prefer it" -- which assumes that
+# directory belongs to this repo. Measured 2026-07-30 on a real machine: it did not, and
+# the installer "repointed" enforcement into a 7-week-old copy carrying none of the
+# current gates -- worse than the stale path it was fixing, and invisible because it
+# reported success.
+#
+# Corrected 2026-07-31 (the first version of this comment was wrong): `~/.claude/agents`
+# there has NO .git of its own. `git rev-parse` from inside it walks UP and reports
+# $HOME, which IS a working tree (origin DYAI2025/azodiac) whose .gitignore excludes
+# .claude/*. So the stale copy is an UNTRACKED file in a gitignored subtree of an
+# unrelated repository -- which is exactly why an ancestor's identity cannot stand in
+# for the file's provenance (see the tracked-ness check below).
+#
+# The agents copy may now be used ONLY when all of these hold:
+#   1. it lives in a git repository;
+#   2. that repository's normalized remote identity equals $REPO_DIR's;
+#   3. that repository root is itself a Plumbline checkout (carries
+#      config/claude/install.sh);
+#   4. the hook file is TRACKED by that repository (an ancestor's identity says
+#      nothing about an untracked file sitting under it);
+#   5. the hook file there is byte-identical to this checkout's;
+# and the chosen source plus the REASON is always printed. Anything else -- including
+# "identity cannot be determined" -- falls back to this checkout. Fail-safe means
+# preferring the source we can verify, never the foreign one.
+#
+# Sets HOOK_SRC_REASON. Never modifies the agents tree.
+HOOK_SRC_REASON=""
+HOOK_SRC_PATH=""
+resolve_hook_script() {
+  local name="$1"
+  local repo_hook="$REPO_DIR/config/claude/hooks/$name"
+  local agents_dir="$CLAUDE_HOME/agents"
+  local agents_hook="$agents_dir/config/claude/hooks/$name"
+
+  if [ ! -f "$agents_hook" ]; then
+    HOOK_SRC_REASON="no copy under $agents_dir"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  local agents_root=""
+  agents_root="$(git -C "$agents_dir" rev-parse --show-toplevel 2>/dev/null)" || agents_root=""
+  if [ -z "$agents_root" ]; then
+    HOOK_SRC_REASON="$agents_dir is not inside a git repository (identity unverifiable)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  # Order matters: identity first (the contract's clause 2), then provenance, then
+  # byte-identity. Checking provenance first would report "not a Plumbline checkout"
+  # for a foreign repo whose real disqualifier is that it is a DIFFERENT repository.
+  local a_remote r_remote
+  a_remote="$(normalize_remote "$(git -C "$agents_root" remote get-url origin 2>/dev/null)")" || a_remote=""
+  r_remote="$(normalize_remote "$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null)")" || r_remote=""
+  if [ -z "$a_remote" ] || [ -z "$r_remote" ]; then
+    HOOK_SRC_REASON="repository identity undeterminable (fail-safe: using this checkout)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+  if [ "$a_remote" != "$r_remote" ]; then
+    HOOK_SRC_REASON="$agents_dir is a DIFFERENT repository ($a_remote, not $r_remote)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  # `rev-parse --show-toplevel` walks UP: it answers "which repository CONTAINS this
+  # directory", never "is this file part of it". Measured on the real machine:
+  # ~/.claude/agents has NO .git at all, and rev-parse from inside it reports $HOME --
+  # itself a working tree (origin azodiac) whose .gitignore excludes .claude/*, so the
+  # stale hook there is UNTRACKED. A matching ancestor identity must not launder a file
+  # git knows nothing about, so require BOTH: the root looks like a Plumbline checkout,
+  # and the hook is actually tracked by it.
+  if [ ! -f "$agents_root/config/claude/install.sh" ]; then
+    HOOK_SRC_REASON="$agents_root is not a Plumbline checkout (no config/claude/install.sh)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+  if ! git -C "$agents_root" ls-files --error-unmatch -- "$agents_hook" >/dev/null 2>&1; then
+    HOOK_SRC_REASON="the agents copy of $name is UNTRACKED by $agents_root (provenance unverifiable)"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  if ! cmp -s "$agents_hook" "$repo_hook"; then
+    HOOK_SRC_REASON="agents copy of $name differs from this checkout"
+    HOOK_SRC_PATH="$repo_hook"; return 0
+  fi
+
+  HOOK_SRC_REASON="agents copy is the same repository and byte-identical"
+  HOOK_SRC_PATH="$agents_hook"; return 0
+}
+
 transfer() {
   local src="$1" dst="$2"
   if [ ! -e "$src" ]; then
@@ -191,6 +483,20 @@ transfer() {
   elif [ -e "$dst" ] && [ "$FORCE" -ne 1 ]; then
     log_action "skip (exists): $dst   [use --force to overwrite]"
     return
+  fi
+  # The refusal check runs BEFORE the dry-run preview, so the preview models what the
+  # real run will actually do. Previously --dry-run reported "would symlink" for targets
+  # the real run then refused -- a preview that lies is worse than no preview, and this
+  # one is used to decide whether to touch global settings.
+  if ! safe_to_replace "$dst"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    # NOT `[ cond ] && cmd` as the last statement: under `set -e` that returns 1 when
+    # the condition is false and kills the installer mid-run -- which it did, right
+    # after printing the first refusal.
+    if [ "$DRY_RUN" -eq 1 ]; then
+      log_action "would REFUSE:   $dst"
+    fi
+    return 0
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
     if [ "$MODE" = "copy" ]; then
@@ -225,10 +531,22 @@ is_flow_coupled() {
 # metrics or explorer trees — and the flow-coupled set is omitted unless --with-flow-agents.
 install_agent_repo() {
   local target="$CLAUDE_HOME/agents"
-  # Back-compat: an existing whole-repo symlink (from an older install) is left untouched.
+  # Back-compat FIRST, before the escape guard. An older install created
+  # `~/.claude/agents -> $REPO_DIR` as a whole-repo symlink, and $REPO_DIR is by
+  # definition outside $CLAUDE_HOME -- so checking the guard first refused it, made this
+  # branch unreachable dead code, and turned every legacy machine's `plumbline update`
+  # into exit 3. plumbline_update.py reverts the WHOLE $CLAUDE_HOME on a non-zero exit,
+  # so that would have been an unrecoverable loop on every attempt.
+  #
+  # A link to this very checkout is not the foreign-escape class the guard exists for:
+  # it IS the install source. Recognise it, then guard everything else.
   if same_path "$REPO_DIR" "$target"; then
     log_action "skip agents: $target already points at this repo"
     return
+  fi
+  if ! layer_root_safe "$target"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
   fi
   local f rel omitted=0
   while IFS= read -r -d '' f; do
@@ -259,6 +577,10 @@ install_agent_repo() {
 }
 
 install_commands() {
+  if ! layer_root_safe "$CLAUDE_HOME/commands"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
+  fi
   local src_dir="$REPO_DIR/config/claude/commands"
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' cmd; do
@@ -270,6 +592,10 @@ install_commands() {
 }
 
 install_skills() {
+  if ! layer_root_safe "$CLAUDE_HOME/skills"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
+  fi
   local src_dir="$REPO_DIR/config/claude/skills"
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' skill; do
@@ -354,6 +680,10 @@ print(json.dumps(dict(zip(keys, sys.argv[1:])), indent=2))' \
 }
 
 install_bin_libs() {
+  if ! layer_root_safe "$CLAUDE_HOME/lib"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
+  fi
   local src_dir="$REPO_DIR/config/claude/lib"
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' lib; do
@@ -363,22 +693,25 @@ install_bin_libs() {
 }
 
 install_bin() {
+  if ! layer_root_safe "$CLAUDE_HOME/bin"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
+  fi
   local src_dir="$REPO_DIR/config/claude/bin"
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' tool; do
     transfer "$tool" "$CLAUDE_HOME/bin/$(basename "$tool")"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
-  install_bin_libs
 }
 
 # Idempotently add the learning-loop Stop hook to ~/.claude/settings.json,
 # preserving any existing hooks and other settings.
 register_stop_hook() {
   local settings="$CLAUDE_HOME/settings.json"
-  local hook_script="$REPO_DIR/config/claude/hooks/stop-learning-loop.sh"
-  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/stop-learning-loop.sh" ]; then
-    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/stop-learning-loop.sh"
-  fi
+  resolve_hook_script stop-learning-loop.sh
+  local hook_script="$HOOK_SRC_PATH"
+  echo "hook source (stop-learning-loop.sh): $hook_script"
+  echo "  reason: $HOOK_SRC_REASON"
   local cmd="bash $hook_script"
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -395,9 +728,54 @@ register_stop_hook() {
     echo "skip stop-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  if jq -e '[.hooks.Stop[]?.hooks[]? | .command? // ""] | any(test("stop-learning-loop\\.sh"))' \
-       "$settings" >/dev/null 2>&1; then
-    echo "skip stop-hook: already registered in $settings"
+  # Same repoint contract as the enforce and vision hooks. Without it this function
+  # printed a resolved "hook source" and then did NOT use it: any existing registration
+  # -- including a copy at an unmanaged path that no identity or provenance check ever
+  # validated -- was left in place, while its two siblings repointed. That is a mixed
+  # HOOK runtime, and the log actively misreported which source had been chosen.
+  local matches=""
+  matches="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+    | map(select(test("stop-learning-loop\\.sh"))) | .[]' "$settings" 2>/dev/null)"
+  if [ -n "$matches" ]; then
+    local n_match stale=0
+    n_match="$(printf '%s\n' "$matches" | grep -c .)"
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      case "$m" in
+        *"$hook_script"*) ;;
+        *) stale=1; echo "  stale: $m" ;;
+      esac
+    done <<EOF
+$matches
+EOF
+    if [ "$n_match" -gt 1 ]; then
+      echo "NOTE: stop-hook is registered $n_match times in $settings."
+      echo "      All are repointed; remove the extra entr(ies) by hand if unwanted."
+    fi
+    if [ "$stale" -eq 0 ]; then
+      echo "skip stop-hook: already registered in $settings"
+      return
+    fi
+    echo "REPOINTING stop-hook in $settings -> $hook_script"
+    local rtmp; rtmp="$(mktemp)"
+    if jq --arg p "$hook_script" '
+      .hooks.Stop = [ .hooks.Stop[]? |
+        if has("hooks") and (.hooks | type == "array") then
+          .hooks = [ .hooks[]? |
+            if (.command? // "" | test("stop-learning-loop\\.sh"))
+            then .command = (.command | sub("[^ \"]*stop-learning-loop\\.sh"; $p))
+            else . end ]
+        else . end ]
+    ' "$settings" > "$rtmp"; then
+      mv "$rtmp" "$settings"
+      jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+        | map(select(test("stop-learning-loop\\.sh"))) | .[]' "$settings" 2>/dev/null \
+        | sed 's/^/  now: /'
+      echo "repointed stop-hook to this checkout"
+    else
+      rm -f "$rtmp"
+      echo "skip stop-hook: jq failed to repoint $settings" >&2
+    fi
     return
   fi
   local tmp; tmp="$(mktemp)"
@@ -422,10 +800,10 @@ register_stop_hook() {
 # CLIs over the real git diff (heavier than the learning-loop hook).
 register_enforce_hook() {
   local settings="$CLAUDE_HOME/settings.json"
-  local hook_script="$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
-  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/plumbline-enforce.sh" ]; then
-    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/plumbline-enforce.sh"
-  fi
+  resolve_hook_script plumbline-enforce.sh
+  local hook_script="$HOOK_SRC_PATH"
+  echo "hook source (plumbline-enforce.sh): $hook_script"
+  echo "  reason: $HOOK_SRC_REASON"
   local cmd="bash $hook_script"
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -442,9 +820,61 @@ register_enforce_hook() {
     echo "skip enforce-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  if jq -e '[.hooks.Stop[]?.hooks[]? | .command? // ""] | any(test("plumbline-enforce\\.sh"))' \
-       "$settings" >/dev/null 2>&1; then
-    echo "skip enforce-hook: already registered in $settings"
+  # Idempotence must not become blindness. Registering by "is ANY plumbline-enforce.sh
+  # present?" meant a hook registered from an OLD checkout survived every re-install:
+  # the installer reported "already registered" while the path pointed at a different,
+  # stale tree that lacked the current gates entirely. Measured on this machine
+  # 2026-07-30: the registered Stop hook pointed at a checkout 2 days and 4 CLIs behind.
+  # So: same path -> genuinely idempotent; DIFFERENT path -> repoint, loudly.
+  # ALL matches are considered, not just the first: with two registrations, checking
+  # only [0] either declared success while a second stale entry survived, or rewrote
+  # every entry to an identical command and produced duplicates.
+  # Only the PATH is substituted, never the whole command, so a hand-added env prefix
+  # or flag (`env FOO=1 bash /old/... --strict`) survives the repoint.
+  local matches=""
+  matches="$(jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+    | map(select(test("plumbline-enforce\\.sh"))) | .[]' "$settings" 2>/dev/null)"
+  if [ -n "$matches" ]; then
+    local n_match stale=0
+    n_match="$(printf '%s\n' "$matches" | grep -c .)"
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      case "$m" in
+        *"$hook_script"*) ;;
+        *) stale=1; echo "  stale: $m" ;;
+      esac
+    done <<EOF
+$matches
+EOF
+    if [ "$n_match" -gt 1 ]; then
+      echo "NOTE: enforce-hook is registered $n_match times in $settings."
+      echo "      All are repointed; remove the extra entr(ies) by hand if unwanted."
+      echo "      (Registrations are never deleted for you.)"
+    fi
+    if [ "$stale" -eq 0 ]; then
+      echo "skip enforce-hook: already registered in $settings"
+      return
+    fi
+    echo "REPOINTING enforce-hook in $settings -> $hook_script"
+    local rtmp; rtmp="$(mktemp)"
+    if jq --arg p "$hook_script" '
+      .hooks.Stop = [ .hooks.Stop[]? |
+        if has("hooks") and (.hooks | type == "array") then
+          .hooks = [ .hooks[]? |
+            if (.command? // "" | test("plumbline-enforce\\.sh"))
+            then .command = (.command | sub("[^ \"]*plumbline-enforce\\.sh"; $p))
+            else . end ]
+        else . end ]
+    ' "$settings" > "$rtmp"; then
+      mv "$rtmp" "$settings"
+      jq -r '[.hooks.Stop[]?.hooks[]? | .command? // ""]
+        | map(select(test("plumbline-enforce\\.sh"))) | .[]' "$settings" 2>/dev/null \
+        | sed 's/^/  now: /'
+      echo "repointed enforce-hook to this checkout"
+    else
+      rm -f "$rtmp"
+      echo "skip enforce-hook: jq failed to repoint $settings" >&2
+    fi
     return
   fi
   local tmp; tmp="$(mktemp)"
@@ -469,10 +899,10 @@ register_enforce_hook() {
 # inert (built-but-not-wired), so this is what actually closes REQ-A-011.
 register_pretool_vision_hook() {
   local settings="$CLAUDE_HOME/settings.json"
-  local hook_script="$REPO_DIR/config/claude/hooks/pretool-vision-gate.sh"
-  if [ -f "$CLAUDE_HOME/agents/config/claude/hooks/pretool-vision-gate.sh" ]; then
-    hook_script="$CLAUDE_HOME/agents/config/claude/hooks/pretool-vision-gate.sh"
-  fi
+  resolve_hook_script pretool-vision-gate.sh
+  local hook_script="$HOOK_SRC_PATH"
+  echo "hook source (pretool-vision-gate.sh): $hook_script"
+  echo "  reason: $HOOK_SRC_REASON"
   local cmd="bash \"$hook_script\""
 
   if ! command -v jq >/dev/null 2>&1; then
@@ -489,9 +919,51 @@ register_pretool_vision_hook() {
     echo "skip pretool-vision-hook: $settings is not valid JSON — fix it first"
     return
   fi
-  if jq -e '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""] | any(test("pretool-vision-gate\\.sh"))' \
-       "$settings" >/dev/null 2>&1; then
-    echo "skip pretool-vision-hook: already registered in $settings"
+  # Same stale-path blindness, same treatment: all matches, path-only substitution,
+  # groups without a `.hooks` array left alone.
+  local matches=""
+  matches="$(jq -r '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""]
+    | map(select(test("pretool-vision-gate\\.sh"))) | .[]' "$settings" 2>/dev/null)"
+  if [ -n "$matches" ]; then
+    local n_match stale=0
+    n_match="$(printf '%s\n' "$matches" | grep -c .)"
+    while IFS= read -r m; do
+      [ -n "$m" ] || continue
+      case "$m" in
+        *"$hook_script"*) ;;
+        *) stale=1; echo "  stale: $m" ;;
+      esac
+    done <<EOF
+$matches
+EOF
+    if [ "$n_match" -gt 1 ]; then
+      echo "NOTE: pretool-vision-hook is registered $n_match times in $settings."
+      echo "      All are repointed; remove the extra entr(ies) by hand if unwanted."
+    fi
+    if [ "$stale" -eq 0 ]; then
+      echo "skip pretool-vision-hook: already registered in $settings"
+      return
+    fi
+    echo "REPOINTING pretool-vision-hook in $settings -> $hook_script"
+    local rtmp; rtmp="$(mktemp)"
+    if jq --arg p "$hook_script" '
+      .hooks.PreToolUse = [ .hooks.PreToolUse[]? |
+        if has("hooks") and (.hooks | type == "array") then
+          .hooks = [ .hooks[]? |
+            if (.command? // "" | test("pretool-vision-gate\\.sh"))
+            then .command = (.command | sub("[^ \"]*pretool-vision-gate\\.sh"; $p))
+            else . end ]
+        else . end ]
+    ' "$settings" > "$rtmp"; then
+      mv "$rtmp" "$settings"
+      jq -r '[.hooks.PreToolUse[]?.hooks[]? | .command? // ""]
+        | map(select(test("pretool-vision-gate\\.sh"))) | .[]' "$settings" 2>/dev/null \
+        | sed 's/^/  now: /'
+      echo "repointed pretool-vision-hook to this checkout"
+    else
+      rm -f "$rtmp"
+      echo "skip pretool-vision-hook: jq failed to repoint $settings" >&2
+    fi
     return
   fi
   local tmp; tmp="$(mktemp)"
@@ -576,7 +1048,46 @@ if [ "$INSTALL_HOOK" -eq 1 ]; then
   register_pretool_vision_hook
   register_pretool_scope_hook
 fi
-[ "$INSTALL_BIN" -eq 1 ] && install_bin
+# bin and lib are SEPARATE layers with separate escape guards. install_bin used to call
+# install_bin_libs itself, so a refusal in `bin` returned early and silently skipped the
+# whole `lib` layer AND the install anchor -- while the machine-readable count still said
+# one target was refused. Dispatch them independently so each is evaluated and counted.
+if [ "$INSTALL_BIN" -eq 1 ]; then
+  install_bin
+  install_bin_libs
+fi
+
+# PLUM-11: volatile agent runtime state must not contaminate a product repository
+# or block its scope gates. Reporting is unconditional; WRITING an ignore rule into
+# somebody else's repository is opt-in, and nothing is ever deleted or untracked.
+runtime_state_hygiene() {
+  local hyg="$REPO_DIR/config/claude/bin/plumbline-runtime-hygiene"
+  [ -x "$hyg" ] || return 0
+  git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "would check agent runtime-state hygiene for $REPO_DIR"
+    return 0
+  fi
+  if [ "$IGNORE_RUNTIME_STATE" -eq 1 ]; then
+    "$hyg" --repo "$REPO_DIR" --fix-ignore || true
+  else
+    "$hyg" --repo "$REPO_DIR" || \
+      echo "hint: re-run with --ignore-runtime-state to append the missing ignore rules (additive; deletes nothing)"
+  fi
+}
+runtime_state_hygiene
+
+# Partial failure must be DETECTABLE, not just visible. The refusal counter existed but
+# was never read: refusals printed one prose line to stderr, the installer exited 0, and
+# an orchestrator (or `plumbline update`, which gates its snapshot-revert on the exit
+# code) recorded success over an incoherent runtime. Emit a machine-readable count on
+# stdout and exit non-zero so a caller can roll back.
+if [ "${TRANSFER_REFUSALS:-0}" -gt 0 ]; then
+  echo "PLUMBLINE_INSTALL_REFUSALS=$TRANSFER_REFUSALS"
+  echo "INCOMPLETE: $TRANSFER_REFUSALS target(s) were refused; the runtime is NOT coherent."
+  echo "            See the REFUSING lines above. Nothing was deleted."
+  exit 3
+fi
 
 echo "done. Restart Claude Code (or reload /hooks) so agents, commands, skills, hooks, and plumbline CLI are picked up."
 

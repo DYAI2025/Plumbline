@@ -121,6 +121,39 @@ bash config/claude/tests/test_agileteam_start_gate.sh || mark_fail
 stage "scope shift notice tests"
 bash config/claude/tests/test_scope_shift_notice.sh || mark_fail
 
+stage "canonical scope manifest tests (PLUM-10)"
+bash config/claude/tests/test_scope_manifest.sh || mark_fail
+
+stage "plan/canvas vs scope drift tests (PLUM-12)"
+bash config/claude/tests/test_plan_scope_drift.sh || mark_fail
+
+stage "agent runtime-state hygiene tests (PLUM-11)"
+bash config/claude/tests/test_runtime_hygiene.sh || mark_fail
+
+stage "evidence-target binding tests (PLUM-13)"
+bash config/claude/tests/test_evidence_target.sh || mark_fail
+
+stage "remote-state watcher tests (PLUM-14)"
+bash config/claude/tests/test_remote_state_watch.sh || mark_fail
+
+stage "generated-artifact provenance tests (PLUM-15)"
+bash config/claude/tests/test_artifact_provenance.sh || mark_fail
+
+stage "CLI reachability contract (every wrapper is invoked by something)"
+bash config/claude/tests/test_cli_wiring.sh || mark_fail
+
+stage "install repoints a hook registered from another checkout"
+bash config/claude/tests/test_install_hook_repoint.sh || mark_fail
+
+stage "install hook-source resolution (identity + byte-identity contract)"
+bash config/claude/tests/test_install_hook_resolution.sh || mark_fail
+
+stage "install over a MIXED runtime (foreign agents repo + stale CLI links)"
+bash config/claude/tests/test_install_mixed_runtime.sh || mark_fail
+
+stage "install repoints ALL FIVE layers from a moved checkout"
+bash config/claude/tests/test_install_all_layers.sh || mark_fail
+
 stage "openrouter council backend acceptance contract"
 bash config/claude/tests/test_council_backend.sh || mark_fail
 
@@ -154,6 +187,9 @@ bash config/claude/tests/test_scope_manifest.sh || mark_fail
 
 stage "PRIL enforce hook tests"
 bash config/claude/tests/test_pril_enforce_hook.sh || mark_fail
+
+stage "gate trust boundary (checker integrity, scope authority, invocation errors)"
+bash config/claude/tests/test_gate_trust_boundary.sh || mark_fail
 
 stage "pretool vision-gate hook tests"
 bash config/claude/tests/test_pretool_vision_gate_hook.sh || mark_fail
@@ -204,8 +240,12 @@ if command -v shellcheck >/dev/null 2>&1; then
   stage "shellcheck (hooks + install + tests)"
   if shellcheck -x -P SCRIPTDIR \
     config/claude/bin/plumbline-context-check \
+    config/claude/bin/plumbline-plan-check \
+    config/claude/bin/plumbline-provenance-check \
     config/claude/bin/plumbline-reality-check \
     config/claude/bin/plumbline-redact \
+    config/claude/bin/plumbline-remote-watch \
+    config/claude/bin/plumbline-runtime-hygiene \
     config/claude/bin/plumbline-scope-check \
     config/claude/bin/plumbline-scope-update \
     config/claude/hooks/*.sh \

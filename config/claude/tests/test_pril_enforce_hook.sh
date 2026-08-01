@@ -30,6 +30,25 @@ CMD="$REPO_DIR/config/claude/commands/agileteam.md"
 BIN_SRC="$REPO_DIR/config/claude/bin"
 LIB_SRC="$REPO_DIR/config/claude/lib"
 
+# PATH with every Plumbline-wrapper directory removed (see run_hook_with_env). Built
+# once: drop any entry that actually contains an installed wrapper, keep the rest so
+# uv/python3/git stay resolvable.
+SANITISED_PATH=""
+_old_ifs="$IFS"
+IFS=':'
+for _p in $PATH; do
+  [ -n "$_p" ] || continue
+  [ -e "$_p/plumbline-scope-check" ] && continue
+  [ -e "$_p/plumbline-reality-check" ] && continue
+  if [ -n "$SANITISED_PATH" ]; then
+    SANITISED_PATH="$SANITISED_PATH:$_p"
+  else
+    SANITISED_PATH="$_p"
+  fi
+done
+IFS="$_old_ifs"
+export SANITISED_PATH
+
 # Workspace for all temp git repos; cleaned on exit.
 WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
@@ -46,7 +65,19 @@ run_hook_with_env() {
   local outf errf
   outf="$(mktemp -p "$WORK")"
   errf="$(mktemp -p "$WORK")"
-  env "$@" CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
+  # PATH is SANITISED, not inherited wholesale. resolve_cli's step 3 is `command -v`,
+  # so an inherited PATH containing ~/.claude/bin lets the REAL installed CLIs satisfy
+  # lookups these cases intend to reach via HOME/PLUMBLINE_BIN_DIR. That made 4 PLUM-7
+  # assertions pass only where Plumbline is NOT installed -- green on CI, red for every
+  # real user. CLAUDE.md names the class and says to pin PATH here rather than paper
+  # over it; the new advisory assertions would have been the fifth instance the moment
+  # ~/.claude/bin gained the four new wrappers.
+  #
+  # Only directories holding a Plumbline wrapper are removed. The toolchain (uv,
+  # python3, git) MUST survive -- the PLUM-8 interpreter-fallback cases need it, and a
+  # blanket pin to /usr/bin:/bin silently converts those into 120/121 tool errors.
+  # Caller-supplied env in "$@" still wins, since it is applied after.
+  env PATH="$SANITISED_PATH" "$@" CLAUDE_PROJECT_DIR="$project" bash "$HOOK" \
     >"$outf" 2>"$errf" <<<"$stdin_payload"
   HOOK_RC=$?
   HOOK_OUT="$(cat "$outf")"
@@ -74,6 +105,7 @@ make_feature_repo() {
        "$BIN_SRC"/plumbline-scope-check "$repo/config/claude/bin/"
     cp "$LIB_SRC"/plumbline_context.py "$LIB_SRC"/plumbline_reality.py \
        "$LIB_SRC"/plumbline_scope.py "$LIB_SRC"/plumbline_python.sh \
+       "$LIB_SRC"/plumbline_cli.py \
        "$repo/config/claude/lib/"
     chmod +x "$repo/config/claude/bin/"*
   fi
@@ -443,6 +475,13 @@ printf '#!/usr/bin/env bash\nexit 0\n' >"$split_path/plumbline-reality-check"
 chmod +x "$split_explicit/plumbline-scope-check" \
   "$split_repo/config/claude/bin/plumbline-context-check" \
   "$split_path/plumbline-reality-check"
+# OPEN-1: an in-repo checker is only executed when it is tracked AND identical to
+# HEAD. This case is about RESOLUTION ORDER, so the repo-local stub is committed --
+# leaving it untracked would make the hook refuse it (correctly) and fall through
+# to whatever checker the developer machine happens to have installed, which is how
+# this assertion silently stopped testing resolution order at all.
+git -C "$split_repo" add config/claude/bin/plumbline-context-check
+git -C "$split_repo" commit -q -m "vendored context checker for the resolution-order case"
 run_hook_with_env "$split_repo" '{}' \
   "PLUMBLINE_BIN_DIR=$split_explicit" "PATH=$split_path:$PATH"
 assert_eq "PLUM-7 per-CLI resolution: distributed executables pass" "" "$HOOK_OUT"
@@ -488,6 +527,110 @@ assert_contains "PLUM-7 missing CLI: blocks with stable class" "$HOOK_OUT" \
   "PRIL_CLI_UNAVAILABLE"
 assert_contains "PLUM-7 missing CLI: names exact executable" "$HOOK_OUT" \
   "plumbline-reality-check"
+
+# --- 12b. KO-1: a DELETED arming marker must not silently disarm everything. ---
+# The marker is gitignored, so removing it leaves no git trace, and the C4 rule
+# exempts gitignored+untracked paths so no other gate sees it either. A BLANK marker
+# already blocked; a DELETED one silently no-opped -- same threat, opposite handling.
+# (Council finding, 2026-07-30.)
+ko1_repo="$(make_feature_repo ko1feat)"
+printf 'ko1feat' >"$ko1_repo/docs/context/.active-feature"
+printf 'x = 1\n' >"$ko1_repo/src/feature/work.py"
+
+# Baseline: armed + in-scope work passes, so the block below is attributable to the
+# deletion and nothing else.
+run_hook "$ko1_repo" '{}'
+assert_eq "KO-1 baseline: armed marker + in-scope work passes" "" "$HOOK_OUT"
+
+# Now disarm by DELETING the marker, leaving the canvas and the dirty tree in place.
+rm -f "$ko1_repo/docs/context/.active-feature"
+
+# DEFAULT (flag off): silent no-op. This is the assertion that matters most, because
+# the first version of this fix blocked here -- and "absent marker + canvases + dirty
+# tree" is the NORMAL state of any repo that has ever run /agileteam and is being
+# worked in. It blocked ordinary sessions in this repo and five others.
+run_hook "$ko1_repo" '{}'
+assert_eq "KO-1 default: absent marker is a SILENT no-op (no false block)" \
+  "" "$HOOK_OUT"
+assert_eq "KO-1 default: exit 0" "0" "$HOOK_RC"
+
+# OPT-IN: the stricter reading is available to an operator who wants it.
+run_hook_with_env "$ko1_repo" '{}' "PLUMBLINE_GATE_MARKER_ABSENT=1"
+assert_eq "KO-1 opt-in: hook still exits 0" "0" "$HOOK_RC"
+assert_contains "KO-1 opt-in: deleted marker blocks with a stable class" \
+  "$HOOK_OUT" "PRIL_MARKER_ABSENT"
+assert_contains "KO-1 opt-in: names the gitignored disarm risk" \
+  "$HOOK_OUT" "gitignored"
+
+# Negative control: even WITH the opt-in on, a clean tree is not the disarm shape.
+git -C "$ko1_repo" add -A
+git -C "$ko1_repo" commit -q -m "commit the work; no feature run active"
+run_hook_with_env "$ko1_repo" '{}' "PLUMBLINE_GATE_MARKER_ABSENT=1"
+assert_eq "KO-1 control: opt-in + clean tree is still a silent no-op" "" "$HOOK_OUT"
+assert_eq "KO-1 control: exit 0" "0" "$HOOK_RC"
+
+# Negative control: a repo with NO canvases at all is never a feature run.
+nocanvas_repo="$(mktemp -d -p "$WORK")"
+git -C "$nocanvas_repo" init -q
+printf 'x\n' >"$nocanvas_repo/loose.txt"
+run_hook "$nocanvas_repo" '{}'
+assert_eq "KO-1 control: no canvas dir at all is a silent no-op" "" "$HOOK_OUT"
+
+# --- 12c. Advisory gates are wired, run by DEFAULT, and never block. -----------
+# The four PLUM-11/12/14/15 checkers shipped invoked by NOTHING. These assertions
+# fail if the wiring is reverted, and equally if an advisory gate is ever allowed to
+# turn a passing run into a block.
+adv_repo="$(make_feature_repo advfeat main no-vendor)"
+printf 'advfeat' >"$adv_repo/docs/context/.active-feature"
+printf 'x = 1\n' >"$adv_repo/src/feature/work.py"
+# Runtime droppings that are untracked AND unignored: the hygiene gate's own case.
+# They are added to the ALLOWED SCOPE so the blocking scope gate passes -- otherwise
+# the run blocks for an unrelated reason and proves nothing about advisory behaviour.
+# (Unignored-ness is what hygiene reports; it is independent of scope membership.)
+printf -- '- .claude-flow/**\n' >>"$adv_repo/docs/canvas/advfeat.canvas.md"
+mkdir -p "$adv_repo/.claude-flow"
+printf '{"session": 1}\n' >"$adv_repo/.claude-flow/state.json"
+
+run_hook_with_env "$adv_repo" '{}' "PLUMBLINE_BIN_DIR=$BIN_SRC"
+assert_eq "advisory: a hygiene finding does NOT block" "" "$HOOK_OUT"
+assert_eq "advisory: hook still exits 0" "0" "$HOOK_RC"
+assert_contains "advisory: the hygiene finding IS reported on stderr" \
+  "$HOOK_ERR" "PRIL_ADVISORY"
+assert_contains "advisory: notices are labelled non-blocking" \
+  "$HOOK_ERR" "ADVISORY"
+assert_contains "advisory: the runtime-hygiene CLI was actually resolved" \
+  "$HOOK_ERR" "plumbline-runtime-hygiene"
+
+# Default-ON is the contract: the gate must fire without anyone opting in. This is
+# the assertion that reddens if the default is ever flipped back to opt-in.
+assert_not_contains "advisory: nothing had to be opted into" \
+  "$HOOK_ERR" "PLUMBLINE_GATE_HYGIENE=1"
+
+# Opt-out silences exactly one gate and leaves the others running.
+run_hook_with_env "$adv_repo" '{}' \
+  "PLUMBLINE_BIN_DIR=$BIN_SRC" "PLUMBLINE_GATE_HYGIENE=0"
+assert_not_contains "advisory: PLUMBLINE_GATE_HYGIENE=0 silences the hygiene gate" \
+  "$HOOK_ERR" "plumbline-runtime-hygiene"
+assert_contains "advisory: an unrelated gate still resolves after the opt-out" \
+  "$HOOK_ERR" "plumbline-provenance-check"
+
+# An advisory gate whose CLI is missing must be REPORTED, never silently skipped:
+# a missing checker must not read as a clean check.
+adv_bin="$WORK/adv-partial-bin"
+mkdir -p "$adv_bin"
+for cli in plumbline-scope-check plumbline-context-check plumbline-reality-check; do
+  cp "$BIN_SRC/$cli" "$adv_bin/$cli"
+done
+cp -R "$LIB_SRC" "$WORK/adv-partial-lib"
+rm -rf "$adv_bin/../lib"
+mkdir -p "$WORK/adv-partial-root/bin" "$WORK/adv-partial-root/lib"
+cp "$adv_bin"/* "$WORK/adv-partial-root/bin/"
+cp "$LIB_SRC"/* "$WORK/adv-partial-root/lib/"
+run_hook_with_env "$adv_repo" '{}' \
+  "PLUMBLINE_BIN_DIR=$WORK/adv-partial-root/bin" "HOME=$WORK/adv-partial-home"
+assert_eq "advisory: a missing advisory CLI does not block" "0" "$HOOK_RC"
+assert_contains "advisory: a missing advisory CLI is reported, not skipped" \
+  "$HOOK_ERR" "PRIL_ADVISORY_UNAVAILABLE"
 
 # --- 13. PLUM-9: resolve a real, auditable Git baseline; never HEAD fallback. --
 # Local master is a supported default fallback (foreign_repo above also proves
@@ -574,6 +717,34 @@ git -C "$committed_bad_repo" add src/billing/committed.py
 git -C "$committed_bad_repo" commit -q -m "committed scope violation"
 run_hook "$committed_bad_repo" '{}'
 assert_contains "PLUM-9 committed foreign file blocks" "$HOOK_OUT" "scope"
+
+# AC-5 at the OUTCOME level, not just via the audit line. On a repo whose only
+# default branch is `master` (no `main`, no remote) a COMMITTED foreign file must
+# still be detected. This is the pilot's actual harm: with the defect the base
+# degrades to HEAD...HEAD, the committed surface is empty, the work tree is clean,
+# and the hook returns a FALSE GREEN. The `source=`/`ref=` assertions above cannot
+# catch that, because they only inspect the audit string of an already-passing run.
+# Measured 2026-07-30: defect reintroduced -> "false green, no block"; canonical ->
+# blocks with PRIL_POLICY_VIOLATION gate=scope.
+master_committed_repo="$(make_feature_repo mastercommitted master)"
+printf 'mastercommitted' >"$master_committed_repo/docs/context/.active-feature"
+mkdir -p "$master_committed_repo/src/billing"
+printf 'committed violation\n' \
+  >"$master_committed_repo/src/billing/committed.py"
+git -C "$master_committed_repo" add src/billing/committed.py
+git -C "$master_committed_repo" commit -q -m "committed scope violation"
+master_base_sha="$(git -C "$master_committed_repo" rev-parse master)"
+# Precondition: the violation lives ONLY in history — it is absent from the
+# working/staged/untracked surface, so detecting it REQUIRES a real committed
+# range. (The repo does carry an untracked docs/context/ marker, but `docs/` is
+# in scope and can never produce this block.)
+assert_eq "PLUM-9 master default: violation is committed-only, not in the work tree" \
+  "" "$(git -C "$master_committed_repo" status --porcelain -- src/billing)"
+run_hook "$master_committed_repo" '{}'
+assert_contains "PLUM-9 master default: committed foreign file blocks" \
+  "$HOOK_OUT" "scope"
+assert_contains "PLUM-9 master default: base is the real master, never HEAD" \
+  "$HOOK_ERR" "merge-base=$master_base_sha"
 
 # No known base: classify and block. The old implementation silently replaced
 # this with HEAD and evaluated the vacuous HEAD...HEAD range.
