@@ -121,7 +121,7 @@ bash config/claude/tests/test_agileteam_start_gate.sh || mark_fail
 stage "scope shift notice tests"
 bash config/claude/tests/test_scope_shift_notice.sh || mark_fail
 
-stage "canonical scope manifest tests (PLUM-10)"
+stage "canonical scope manifest and pre-write drift gate tests (PLUM-10/PLUM-12)"
 bash config/claude/tests/test_scope_manifest.sh || mark_fail
 
 stage "plan/canvas vs scope drift tests (PLUM-12)"
@@ -182,17 +182,14 @@ bash config/claude/tests/test_gui_security.sh || mark_fail
 stage "runtime integrity layer tests"
 bash config/claude/tests/test_runtime_integrity_layer.sh || mark_fail
 
-stage "canonical scope manifest and pre-write drift gate tests"
-bash config/claude/tests/test_scope_manifest.sh || mark_fail
-
 stage "PRIL enforce hook tests"
 bash config/claude/tests/test_pril_enforce_hook.sh || mark_fail
 
 stage "gate trust boundary (checker integrity, scope authority, invocation errors)"
 bash config/claude/tests/test_gate_trust_boundary.sh || mark_fail
 
-stage "interpreter trust boundary (governed repo must not supply the interpreter)"
-bash config/claude/tests/test_interpreter_trust_boundary.sh || mark_fail
+stage "bootstrap trust boundary (governed repo must not supply the gate's own tools)"
+bash config/claude/tests/test_bootstrap_trust_boundary.sh || mark_fail
 
 stage "pretool vision-gate hook tests"
 bash config/claude/tests/test_pretool_vision_gate_hook.sh || mark_fail

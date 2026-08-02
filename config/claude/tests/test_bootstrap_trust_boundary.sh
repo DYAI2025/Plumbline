@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
-# PLUM-12 (TDD, RED): the governed repository must not supply the interpreter
-# that executes its own governance.
+# PLUM-12 (TDD, RED): the governed repository must not supply ANY program the
+# gate runs before independent authority is selected -- not the interpreter, and
+# not the bootstrap tools that decide whether the gate engages at all.
+#
+# The bootstrap surface is wider than the interpreter. Before any authority
+# exists, pretool-scope-gate.sh executes PATH-resolved `cat` (:10), `jq` (:17)
+# or `sed`+`head` (:25-41), and `tr` (:59) -- and every one of them feeds a
+# fail-OPEN branch:
+#     :11  [ -n "$PAYLOAD" ]  || exit 0     <- repo-owned `cat` prints nothing
+#     :53  case "$tool_name" in *) exit 0   <- repo-owned `jq` prints nothing
+#     :60  [ -n "$feature" ]  || exit 0     <- repo-owned `tr` prints nothing
+# The Stop hook is worse: `git` IS its ground truth, and `file_matches_head`
+# (:207-212) -- the checker-integrity test itself -- is a pair of git calls.
+#
+# So a repository-owned parser sets the hook fail-open exactly like the Python
+# shim does, and a pure interpreter resolver cannot close it.
 #
 # Measured defect (pretool-scope-gate.sh @ 42320c3):
 #   line  77  python3 - "$command_text" ...      (Bash arm)
@@ -37,7 +51,7 @@ REPO_DIR="$(cd "$HERE/../../.." && pwd)"
 # shellcheck source=lib.sh
 . "$HERE/lib.sh"
 
-echo "test_interpreter_trust_boundary (PLUM-12, RED)"
+echo "test_bootstrap_trust_boundary (PLUM-12, RED)"
 
 PRETOOL="$REPO_DIR/config/claude/hooks/pretool-scope-gate.sh"
 STOP_HOOK="$REPO_DIR/config/claude/hooks/plumbline-enforce.sh"
@@ -387,6 +401,109 @@ else
   _fail "N6 no independent interpreter: expected deny + unchanged file (got $GATE_DECISION)"
 fi
 
+# ======================================================================= B ===
+# B. Bootstrap tools: everything the gate runs BEFORE authority exists.
+echo "-- B: bootstrap tools owned by the governed repository"
+
+# Plant an arbitrary repository-owned PATH program that records it ran, drains
+# stdin, prints NOTHING and exits 0 -- the shape every fail-open branch above
+# rewards. One helper for all of them: the class is the tool-agnostic point.
+#   $1 repo  $2 relative dir  $3 tool name  $4 marker file
+plant_tool_shim() {
+  pt_repo="$1"; pt_dir="$2"; pt_tool="$3"; pt_marker="$4"
+  mkdir -p "$pt_repo/$pt_dir"
+  {
+    printf '#!/bin/sh\n'
+    printf 'printf "PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED %s\\n" >>"%s"\n' "$pt_tool" "$pt_marker"
+    printf 'cat >/dev/null 2>&1 || true\n'
+    printf 'exit 0\n'
+  } >"$pt_repo/$pt_dir/$pt_tool"
+  chmod +x "$pt_repo/$pt_dir/$pt_tool"
+}
+
+# A PATH with no jq, so the hook's SECOND parser (sed + head, :25-41) is really
+# reached. Without this the sed case is a vacuous pass: real jq wins at :17 and
+# the fallback branch never executes.
+NOJQ_PATH=""
+_old_ifs="$IFS"
+IFS=':'
+for _p in $CLEAN_PATH; do
+  [ -n "$_p" ] || continue
+  [ -e "$_p/jq" ] && continue
+  if [ -n "$NOJQ_PATH" ]; then NOJQ_PATH="$NOJQ_PATH:$_p"; else NOJQ_PATH="$_p"; fi
+done
+IFS="$_old_ifs"
+
+# bootstrap_case <label> <tool> <path-suffix> [<extra env NAME=value> ...]
+# Plants a repo-owned <tool> first on PATH, sends the unplanned Write, performs
+# the write if the gate did not deny, and proves all THREE properties
+# separately: not-executed, deny, bytes unchanged.
+bootstrap_case() {
+  bc_label="$1"; bc_tool="$2"; bc_suffix="$3"
+  shift 3
+  bc_slug="$(printf '%s' "$bc_label" | tr -cd 'A-Za-z0-9')"
+  bc_repo="$WORK/$bc_slug"
+  rm -rf "$bc_repo"; mkdir -p "$bc_repo"
+  make_repo "$bc_repo"
+  bc_marker="$WORK/marker-$bc_slug"
+  : >"$bc_marker"
+  plant_tool_shim "$bc_repo" "tools/bin" "$bc_tool" "$bc_marker"
+
+  bc_before="$(digest "$bc_repo/$TARGET")"
+  run_pretool "$bc_repo" "$UNPLANNED" "$bc_repo/tools/bin:$bc_suffix" "$@"
+  if [ "$GATE_DECISION" != "deny" ]; then
+    printf '# the permitted action executed\n' >>"$bc_repo/$TARGET"
+  fi
+  bc_after="$(digest "$bc_repo/$TARGET")"
+
+  if grep -Fq PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED "$bc_marker" 2>/dev/null; then
+    bc_ran="PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED"
+  else
+    bc_ran="repo-owned $bc_tool never ran"
+  fi
+  printf '     evidence: %s | PRETOOL_%s | target %s\n' \
+    "$bc_ran" \
+    "$(if [ "$GATE_DECISION" = "deny" ]; then printf 'DENIED'; else printf 'ALLOWED'; fi)" \
+    "$(if [ "$bc_before" = "$bc_after" ]; then printf 'UNCHANGED'; else printf 'UNPLANNED_WRITE_EXECUTED'; fi)"
+
+  if grep -Fq PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED "$bc_marker" 2>/dev/null; then
+    _fail "$bc_label: the governed repository's $bc_tool was EXECUTED"
+  else
+    _pass "$bc_label: repo-owned $bc_tool was not executed"
+  fi
+  if [ "$GATE_DECISION" = "deny" ]; then
+    _pass "$bc_label: decision=deny"
+  else
+    _fail "$bc_label: expected deny, got allow (rc=$GATE_RC out=$GATE_OUT)"
+  fi
+  if [ "$bc_before" = "$bc_after" ]; then
+    _pass "$bc_label: $TARGET is byte-identical"
+  else
+    _fail "$bc_label: $TARGET CHANGED -- the unplanned write executed"
+  fi
+}
+
+# N7 -- repo-owned jq: empty answers make tool_name empty -> `*) exit 0`.
+bootstrap_case "N7 repo-owned jq returns empty for every query" jq "$CLEAN_PATH"
+
+# N8 -- repo-owned payload reader: an empty PAYLOAD short-circuits at line 11.
+bootstrap_case "N8 repo-owned cat delivers an empty payload" cat "$CLEAN_PATH"
+
+# N8b -- the jq-less fallback is a SECOND parser. Run it with no jq on PATH, or
+# the case proves nothing: real jq would win at :17 and sed would never execute.
+if [ -n "$NOJQ_PATH" ]; then
+  bootstrap_case "N8b repo-owned sed drives the jq-less payload parser" sed "$NOJQ_PATH"
+else
+  _fail "N8b could not build a jq-free PATH; the fallback parser stayed untested"
+fi
+
+# N10 -- repo-owned tr: the marker reader. An empty feature slug exits 0.
+bootstrap_case "N10 repo-owned tr blanks the active-feature slug" tr "$CLEAN_PATH"
+
+# N9 -- repo-owned uv. plumbline_python.sh prefers uv (rank 2) over python3
+# (rank 3), so a repository-owned uv is chosen to RUN the authority itself.
+bootstrap_case "N9 repo-owned uv is preferred over python3 by the runtime" uv "$CLEAN_PATH"
+
 # ======================================================================= S ===
 echo "-- S: the same attack against the Stop hook"
 
@@ -408,6 +525,37 @@ if grep -Fq PROJECT_OWNED_PYTHON_EXECUTED "$s1_marker" 2>/dev/null; then
   _fail "S1 the governed repository's python3 was EXECUTED by the Stop hook"
 else
   _pass "S1 the Stop hook executed no repository-owned interpreter"
+fi
+
+# S2 -- a NON-Python bootstrap candidate against the Stop hook. `git` is not a
+# helper there, it IS the ground truth: the changed-file surface is computed with
+# it (:533-558) and file_matches_head (:207-212) -- the checker-integrity test
+# itself -- is two git calls. A repository-owned git therefore decides both what
+# changed and whether the checker may be trusted.
+s2_repo="$WORK/s2"; mkdir -p "$s2_repo"; make_repo "$s2_repo"
+mkdir -p "$s2_repo/tools"
+printf 'pwned\n' >"$s2_repo/tools/hack.sh"
+git -C "$s2_repo" add -A >/dev/null 2>&1
+git -C "$s2_repo" commit -q -m "out-of-scope change" >/dev/null 2>&1
+s2_marker="$WORK/marker-s2"; : >"$s2_marker"
+plant_tool_shim "$s2_repo" "tools/bin" "git" "$s2_marker"
+run_stop "$s2_repo" "$s2_repo/tools/bin:$CLEAN_PATH" "PLUMBLINE_BIN_DIR=$BIN_SRC"
+if grep -Fq PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED "$s2_marker" 2>/dev/null; then
+  s2_ran="PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED"
+else
+  s2_ran="repo-owned git never ran"
+fi
+printf '     evidence: %s | STOP_%s\n' "$s2_ran" \
+  "$(if [ "$GATE_DECISION" = "deny" ]; then printf 'BLOCKED'; else printf 'ALLOWED'; fi)"
+if grep -Fq PROJECT_OWNED_BOOTSTRAP_TOOL_EXECUTED "$s2_marker" 2>/dev/null; then
+  _fail "S2 the governed repository's git was EXECUTED by the Stop hook"
+else
+  _pass "S2 the Stop hook executed no repository-owned git"
+fi
+if [ "$GATE_DECISION" = "deny" ]; then
+  _pass "S2 Stop hook still blocks the out-of-scope change with a repo-owned git on PATH"
+else
+  _fail "S2 Stop hook: expected block, got allow -- the repo's git decided (out=$GATE_OUT)"
 fi
 
 # ======================================================================= P ===
