@@ -121,7 +121,7 @@ bash config/claude/tests/test_agileteam_start_gate.sh || mark_fail
 stage "scope shift notice tests"
 bash config/claude/tests/test_scope_shift_notice.sh || mark_fail
 
-stage "canonical scope manifest tests (PLUM-10)"
+stage "canonical scope manifest and pre-write drift gate tests (PLUM-10/PLUM-12)"
 bash config/claude/tests/test_scope_manifest.sh || mark_fail
 
 stage "plan/canvas vs scope drift tests (PLUM-12)"
@@ -181,9 +181,6 @@ bash config/claude/tests/test_gui_security.sh || mark_fail
 
 stage "runtime integrity layer tests"
 bash config/claude/tests/test_runtime_integrity_layer.sh || mark_fail
-
-stage "canonical scope manifest and pre-write drift gate tests"
-bash config/claude/tests/test_scope_manifest.sh || mark_fail
 
 stage "PRIL enforce hook tests"
 bash config/claude/tests/test_pril_enforce_hook.sh || mark_fail
