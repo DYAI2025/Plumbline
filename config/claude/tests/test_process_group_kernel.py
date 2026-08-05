@@ -3,15 +3,16 @@
 UNMAPPED_CHANGE: hermetic test and interpreter runtime contract
 (no confirmed Jira key exists for this work; none was guessed)
 
-    <absolute-python> -I config/claude/tests/test_process_group_kernel.py
+    python3 config/claude/tests/test_process_group_kernel.py
 
-MANUAL_FOCUSED_TEST_ONLY
-NOT_REGISTERED_IN_CANONICAL_SUITE
-CI_NOT_EXECUTED
+REGISTERED_IN_CANONICAL_SUITE -- run_all.sh, stage "safe process-group signaling kernel".
+CI therefore executes this file on both legs of the matrix, ubuntu-latest and macos-latest.
 
-This file is deliberately not wired into run_all.sh: registration belongs to a separate
-integration slice. Every coverage statement below therefore holds for a manual run and
-for nothing else.
+The three labels this file used to carry -- MANUAL_FOCUSED_TEST_ONLY,
+NOT_REGISTERED_IN_CANONICAL_SUITE, CI_NOT_EXECUTED -- are gone because they became false
+the moment the stage was added, not because the risk they described disappeared. What
+registration changed: Linux is now EXERCISED rather than MISSING, and the exact Linux
+evidence is whatever the CI run reports -- read it, do not assume it.
 
 PRODUCT BOUNDARY:
     PROCESS_GROUP_SUPERVISION_ONLY
@@ -36,6 +37,7 @@ two branches is therefore fault-injected, not real-boundary, and is reported as 
 """
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -51,7 +53,13 @@ import lib_process_group as K  # noqa: E402
 
 RUN = 0
 FAILED = 0
+SKIPPED = 0
 CLEANUP = []
+
+# Resolved, not hardcoded: /bin/ps is right on macOS, but on a Linux image ps may live
+# only in /usr/bin, or be absent entirely (procps is not always installed). An absent ps
+# is reported, never silently treated as "no group members".
+PS = shutil.which("ps") or "/bin/ps"
 
 
 def _ok(m):
@@ -81,6 +89,17 @@ def eq(desc, expected, actual):
     return False
 
 
+def skip(desc, why):
+    """A tallied, LOUD skip for something this HOST cannot produce.
+
+    Reserved for an environment property that is probed directly -- never for an
+    assertion outcome. A reachable-but-wrong answer stays a hard failure everywhere.
+    """
+    global SKIPPED
+    SKIPPED += 1
+    print("  PGK_SKIP %s -- %s" % (desc, why))
+
+
 def pre(desc, cond, detail=""):
     global RUN
     RUN += 1
@@ -101,8 +120,22 @@ def alive(pid):
         return True
 
 
+def zombie(pid):
+    """True when the pid exists only as an unreaped wait status.
+
+    kill(pid, 0) succeeds for a zombie, so "did we leave anything RUNNING" cannot be
+    answered with liveness alone. This matters wherever nothing outside reaps for us: as
+    PID 1 in a container, an orphan reparents to THIS process, and a SIGKILLed orphan we
+    never waited on stays visible forever. A zombie holds no resources but its pid slot;
+    a still-running leftover is a real failure and still fails.
+    """
+    out = subprocess.run([PS, "-o", "stat=", "-p", str(pid)],
+                         capture_output=True, text=True, check=False).stdout.strip()
+    return out.startswith("Z")
+
+
 def members(pgid):
-    out = subprocess.run(["/bin/ps", "-o", "pid=,pgid=", "-A"],
+    out = subprocess.run([PS, "-o", "pid=,pgid=", "-A"],
                          capture_output=True, text=True, check=False).stdout
     return [int(l.split()[0]) for l in out.splitlines()
             if len(l.split()) == 2 and l.split()[1].isdigit() and int(l.split()[1]) == pgid]
@@ -162,7 +195,7 @@ def field_of(outcome, name):
 
 print("\n--- safe process-group signaling kernel ---")
 print("--- PROCESS_GROUP_SUPERVISION_ONLY / PROCESS_TREE_CONTAINMENT_NOT_PROVIDED ---")
-print("--- MANUAL_FOCUSED_TEST_ONLY / NOT_REGISTERED_IN_CANONICAL_SUITE / CI_NOT_EXECUTED ---")
+print("--- REGISTERED_IN_CANONICAL_SUITE (run_all.sh) ---")
 
 KSRC = open(os.path.join(HERE, "lib_process_group.py"), encoding="utf-8").read()
 # Non-vacuous: the phrases must be absent AND the scanned file must really be the
@@ -183,6 +216,10 @@ check("the binding is immutable",
 check("live os.getpgrp() is consulted", "os.getpgrp()" in KSRC)
 check("the residual pid/pgid recycling race is documented",
       "reused once released" in KSRC and "NOT eliminated" in KSRC)
+# Group membership is observed through ps. If ps is missing, several preconditions would
+# silently degrade into "the group looks empty", so prove the instrument works first.
+check("ps is available and can observe group membership at all",
+      os.path.exists(PS) and os.getpid() in members(os.getpgrp()))
 
 # ---------------------------------------------------------------------------
 # 0. an unstartable target is a STATE, never a traceback
@@ -289,18 +326,33 @@ print("\n[2 forged binding names the CURRENT supervisor group]")
 # Become our own group leader if we are not already one. A SESSION leader already is
 # (pgid == pid) and setpgid would fail with EPERM -- an earlier revision called it
 # unconditionally and simply died there, which made the whole module unobservable.
-if os.getpgrp() != os.getpid():
-    try:
-        os.setpgid(0, 0)
-    except PermissionError:
-        pass
-me, mypg = os.getpid(), os.getpgrp()
-pre("this process now leads its own group", me == mypg, "(pid=%s pgrp=%s)" % (me, mypg))
-v = K.validate_bound_group(K.Binding(target_pid=me, initial_pgid=mypg))
-eq("a binding naming our live group is refused", "SIGNAL_TARGET_UNVERIFIED", v.state)
-check("the refusal names the LIVE self group", "live group" in (v.reason or ""))
 eq("no stored supervisor/parent field exists that a forger could set",
    ("_target_pid", "_initial_pgid"), K.Binding.__slots__)
+# PID 1 would make this case test the WRONG guard, silently. Measured on Linux, not
+# theorised: `bash -c 'python3 thisfile'` in a container makes bash exec the lone command,
+# so the test IS pid 1. Pid 1 is its own group leader, so a "we lead our own group" check
+# passes -- but validate_bound_group then refuses at "pid <= 1 is not signalable" and never
+# reaches the self-group guard, leaving the state assertion green while proving nothing.
+# Probed directly, tallied, and loud. Unreachable through run_all.sh, where this file is
+# always a child of bash.
+if os.getpid() <= 1:
+    skip("case 2 (the LIVE self-group guard)",
+         "this process is PID %d, so the 'pid <= 1 is not signalable' guard answers before "
+         "the self-group guard can be reached; the case cannot be constructed here -- run "
+         "this file as a child process, not as a container entrypoint" % os.getpid())
+else:
+    if os.getpgrp() != os.getpid():
+        try:
+            os.setpgid(0, 0)
+        except PermissionError:
+            pass
+    me, mypg = os.getpid(), os.getpgrp()
+    pre("this process now leads its own group", me == mypg, "(pid=%s pgrp=%s)" % (me, mypg))
+    pre("our own pid is signalable, so the self-group guard is the guard reached",
+        me > 1, "(pid=%s)" % me)
+    v = K.validate_bound_group(K.Binding(target_pid=me, initial_pgid=mypg))
+    eq("a binding naming our live group is refused", "SIGNAL_TARGET_UNVERIFIED", v.state)
+    check("the refusal names the LIVE self group", "live group" in (v.reason or ""))
 
 # ---------------------------------------------------------------------------
 # 2b. a binding that does not name a group LEADER is refused
@@ -522,7 +574,7 @@ eq("no additional signal is claimed", False, field_of(res11, "additional_signal_
 # ---------------------------------------------------------------------------
 print("\n[12 killpg returns EPERM]")
 foreign = None
-psout = subprocess.run(["/bin/ps", "-o", "pgid=,user=", "-A"],
+psout = subprocess.run([PS, "-o", "pgid=,user=", "-A"],
                        capture_output=True, text=True).stdout
 for line in psout.splitlines():
     parts = line.split()
@@ -535,8 +587,18 @@ for line in psout.splitlines():
             break
         except OSError:
             continue
-pre("a group we may not signal was found", foreign is not None, "(none on this host)")
-if foreign is not None:
+if foreign is None:
+    # An environment property, probed directly -- not an assertion outcome. Where we may
+    # signal every group that exists (root in a container, which is how this suite runs on
+    # some Linux images) EPERM cannot be produced at all, and failing here would report the
+    # kernel as broken because the HOST is permissive. Narrow: only these four assertions
+    # are skipped, only on this probe. A group that IS found is asserted hard on every OS,
+    # and a reachable-but-WRONG answer is a hard failure everywhere.
+    skip("case 12 (killpg EPERM)",
+         "no process group on this host refuses our signal (uid=%d), so EPERM is "
+         "unproducible and its four assertions are NOT evidence on this run" % os.getuid())
+else:
+    pre("a group we may not signal was found", True, "(pgid %d)" % foreign)
     res12 = K._deliver(foreign, signal.SIGTERM)
     check("EPERM is not success", res12 is not None)
     eq("it is SIGNAL_DELIVERY_FAILED", "SIGNAL_DELIVERY_FAILED", state_of(res12))
@@ -654,8 +716,23 @@ for pid in CLEANUP:
             print("  cleaned pid %d" % pid)
         except OSError as exc:
             print("  could not clean %d: %s" % (pid, exc))
+# Reap whatever this process happens to be the parent of. Where nothing outside reaps for
+# us -- PID 1 in a container -- an orphan reparents here, and skipping this would leave a
+# zombie that kill(pid, 0) still answers for.
+for pid in CLEANUP:
+    if pid:
+        try:
+            os.waitpid(pid, os.WNOHANG)
+        except OSError:
+            pass
 time.sleep(0.4)
-eq("every recorded pid is gone", [], [p for p in CLEANUP if p and alive(p)])
+survivors = [p for p in CLEANUP if p and alive(p) and not zombie(p)]
+zombies = [p for p in CLEANUP if p and alive(p) and zombie(p)]
+if zombies:
+    print("  reaped-or-zombie (holding only a pid slot, not running): %r" % zombies)
+eq("no recorded pid is still RUNNING", [], survivors)
 
-print("\nprocess group kernel tests: %d run, %d failed" % (RUN, FAILED))
+print("\nprocess group kernel tests: %d run, %d failed, %d skipped" % (RUN, FAILED, SKIPPED))
+if SKIPPED:
+    print("  NOTE: %d host-limitation skip(s) above are NOT evidence -- see PGK_SKIP" % SKIPPED)
 sys.exit(1 if FAILED else 0)
