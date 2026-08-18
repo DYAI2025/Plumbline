@@ -1,0 +1,18 @@
+{
+  "model": "synthetic",
+  "bound": 15000,
+  "roles": {
+    "challenger": {
+      "tokens": null,
+      "text": "The proposed digest feature assumes users actually want a batched summary, but we have zero evidence anyone asked for fewer interruptions versus richer per-event alerts."
+    },
+    "advisor": {
+      "tokens": 3800,
+      "text": "From a go-to-market angle, three incumbents already bundle weekly rollups inside their pricing tiers, so differentiation must come from relevance ranking rather than mere batching."
+    },
+    "critic": {
+      "tokens": 4300,
+      "text": "Implementation-wise the scheduler introduces a recurring fan-out job that contends with the existing notification queue; idempotency on retried digest windows is the trap."
+    }
+  }
+}

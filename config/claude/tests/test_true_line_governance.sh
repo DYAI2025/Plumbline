@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+#
+# Static contract tests for True-Line Governance (the Plumbline customer-value
+# layer). There is no runtime to exercise — the framework is prompts/docs — so,
+# like the rest of this suite, these are static contract assertions: the
+# load-bearing invariants, files, and gate phrases must be present and mutually
+# consistent. Covers TEST-001..008 from the dev brief.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$HERE/../../.." && pwd)"
+
+# shellcheck source=lib.sh
+. "$HERE/lib.sh"
+
+echo "test_true_line_governance"
+
+CMD="$REPO_DIR/config/claude/commands/agileteam.md"
+CONC="$REPO_DIR/config/claude/commands/concilium.md"
+WATCHER="$REPO_DIR/agileteam/plumbline-watcher.md"
+CK="$REPO_DIR/agileteam/context-keeper.md"
+RA="$REPO_DIR/agileteam/requirements-analyst.md"
+PO="$REPO_DIR/agileteam/product-owner.md"
+SA="$REPO_DIR/agileteam/spec-auditor.md"
+RETRO="$REPO_DIR/agileteam/retro-analyst.md"
+TESTER="$REPO_DIR/core/tester.md"
+PV="$REPO_DIR/testing/validation/production-validator.md"
+SPEC="$REPO_DIR/docs/agileteam-spec-v3.md"
+GOV="$REPO_DIR/docs/agileteam-governance.md"
+T_VISION="$REPO_DIR/docs/templates/product-vision.template.md"
+T_CONTRA="$REPO_DIR/docs/templates/contradiction-ledger.template.md"
+T_GATE="$REPO_DIR/docs/templates/true-line-gate-check.template.md"
+T_FIELDS="$REPO_DIR/docs/templates/traceability-true-line-fields.template.md"
+
+# has <description> <file> <literal-pattern>  — fixed-string grep assertion.
+has() {
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if grep -Fq -- "$3" "$2"; then _pass "$1"; else _fail "$1 (missing in $2: $3)"; fi
+}
+
+# --- new artifacts exist ---------------------------------------------------
+assert_file "plumbline-watcher agent exists"            "$WATCHER"
+assert_file "product-vision template exists"            "$T_VISION"
+assert_file "contradiction-ledger template exists"      "$T_CONTRA"
+assert_file "true-line gate-check template exists"      "$T_GATE"
+assert_file "traceability true-line fields template"    "$T_FIELDS"
+
+# --- the non-negotiable invariant (highest-level docs) ---------------------
+INVARIANT="optimizes for staying true to confirmed human customer value"
+has "TEST-CORE invariant in /agileteam command"  "$CMD"     "$INVARIANT"
+has "TEST-CORE invariant in spec-v3"             "$SPEC"    "$INVARIANT"
+has "TEST-CORE invariant in governance"          "$GOV"     "$INVARIANT"
+has "TEST-CORE invariant in watcher"             "$WATCHER" "$INVARIANT"
+
+# --- TEST-001/002: no development without confirmed PRD + Vision -----------
+has "TEST-001 command names the Product Vision artifact" "$CMD" "docs/vision/<feature>.vision.md"
+has "TEST-001 command requires confirmed Vision"         "$CMD" "Product Vision status is user-confirmed"
+has "TEST-001 command hard-blocks development start"      "$CMD" "Development may not start"
+has "TEST-002 command requires confirmed PRD"             "$CMD" "PRD status is user-confirmed"
+has "TEST-002 command gates on Watcher pass verdict"      "$CMD" "Plumbline Watcher verdict is"
+
+# --- TEST-003: Watcher pauses on contradiction -----------------------------
+has "TEST-003 watcher has pause authority"      "$WATCHER" "Pause authority"
+has "TEST-003 watcher pause verdict"            "$WATCHER" "Watcher verdict: pause"
+has "TEST-003 watcher ties pause to contradiction" "$WATCHER" "contradiction"
+has "TEST-003 command stops on pause verdict"   "$CMD"     "verdict \`pause\`"
+has "TEST-003 no contradiction carried forward" "$CMD"     "No contradiction may be carried forward"
+
+# --- TEST-004: value-risk requires Watcher review --------------------------
+has "TEST-004 watcher review-required verdict"  "$WATCHER" "review-required"
+has "TEST-004 watcher value-risk status"        "$WATCHER" "value-risk"
+has "TEST-004 command routes value-risk to review" "$CMD"  "review-required"
+
+# --- TEST-005: retro improvement must prove customer-value link ------------
+has "TEST-005 retro true-line challenge"        "$RETRO" "Retro True-Line Challenge"
+has "TEST-005 retro requires customer-value link" "$RETRO" "customer-value link"
+has "TEST-005 retro detects green-but-useless"  "$RETRO" "green-but-useless"
+has "TEST-005 governance retro challenge"       "$GOV"   "Retro True-Line Challenge"
+
+# --- TEST-006: mock/placeholder/fake/known-limitation cannot resolve -------
+for f_desc in "watcher:$WATCHER" "contradiction-template:$T_CONTRA"; do
+  f="${f_desc#*:}"; d="${f_desc%%:*}"
+  has "TEST-006 $d forbids placeholder"        "$f" "placeholder"
+  has "TEST-006 $d forbids mock"               "$f" "mock"
+  has "TEST-006 $d forbids known limitation"   "$f" "known limitation"
+done
+
+# --- TEST-007: user reframe only with updated, re-approved confirmation ----
+has "TEST-007 watcher reframe needs user confirmation" "$WATCHER" "explicit user confirmation of a reframe"
+has "TEST-007 watcher reframe needs re-approved PRD+Vision" "$WATCHER" "updated and re-approved PRD and Vision"
+has "TEST-007 contradiction template allows user reframe"  "$T_CONTRA" "User confirms reframing"
+
+# --- TEST-008: traceability matrix carries True-Line fields ----------------
+for field in vision-link value-check-id true-line-status contradiction-id user-decision; do
+  has "TEST-008 context-keeper owns field $field" "$CK" "$field"
+done
+has "TEST-008 fields template lists true-line-status" "$T_FIELDS" "true-line-status"
+
+# --- TEST-009: structurally bounded council challenge gate (Phase 0.16, G1) -------
+has "TEST-009 command has council challenge gate section"   "$CMD"  "Council challenge gate"
+has "TEST-009 gate is Phase 0.16"                           "$CMD"  "Phase 0.16"
+has "TEST-009 gate runs after Canvas-confirm"               "$CMD"  "after the Product Canvas is user-confirmed"
+has "TEST-009 gate runs before PRD finalization"            "$CMD"  "before the PRD is finalized"
+has "TEST-009 gate is structurally bounded"                 "$CMD"  "structurally bounded"
+has "TEST-009 false token figure withdrawn, bench-cited"    "$CMD"  "bench-2026-06-03-challenge-token-oracle"
+has "TEST-009 gate produces user-facing summary"            "$CMD"  "user-facing"
+has "TEST-009 summary is at most one page"                  "$CMD"  "1-page"
+has "TEST-009 orchestrator asks user about amending request" "$CMD" "asks the user whether any legitimate point changes the product request"
+has "TEST-009 adopting a point re-confirms the Canvas"      "$CMD"  "amend the Canvas and re-confirm"
+has "TEST-009 council may not auto-edit canvas/PRD"         "$CMD"  "may not auto-edit the Canvas or PRD"
+has "TEST-009 only the user reclassifies (suggests not seizes)" "$CMD" "suggests, never seizes"
+has "TEST-009 names the three challenge roles"              "$CMD"  "Challenger"
+has "TEST-009 names the Advisor role"                       "$CMD"  "Advisor"
+has "TEST-009 names the Critic role"                        "$CMD"  "Critic"
+has "TEST-009 invokes concilium challenge mode"             "$CMD"  "concilium --mode=challenge"
+
+# --- TEST-009b: concilium gains a --mode=challenge (3-role) section ---------
+has "TEST-009b concilium has challenge mode section"        "$CONC" "--mode=challenge"
+has "TEST-009b challenge mode is the three-role gate"       "$CONC" "Challenge mode"
+has "TEST-009b challenge mode names Challenger"             "$CONC" "Challenger"
+has "TEST-009b challenge mode names Advisor"                "$CONC" "Advisor"
+has "TEST-009b challenge mode names Critic"                 "$CONC" "Critic"
+has "TEST-009b challenge mode is structurally bounded"      "$CONC" "structurally bounded"
+has "TEST-009b default 4-body council unchanged"           "$CONC" "Distribution Realist"
+
+# --- TEST-010: Vision-GO gate + autonomous /goal handoff (G3) ---------------
+has "TEST-010 command has Vision GO gate section"           "$CMD"  "Vision GO gate"
+has "TEST-010 gate runs after Vision is user-confirmed"     "$CMD"  "after the Product Vision is user-confirmed"
+has "TEST-010 gate tells the user where the vision lives"   "$CMD"  "where the Vision lives"
+has "TEST-010 gate shows the concrete vision path"          "$CMD"  "docs/vision/<feature>.vision.md"
+has "TEST-010 gate presents the vision path to the user"    "$CMD"  "present the saved Vision path to the user"
+has "TEST-010 gate has an explicit initial GO"             "$CMD"  "explicit initial GO"
+has "TEST-010 the user must say GO before development"     "$CMD"  "the user must say GO before development starts"
+has "TEST-010 from GO it runs autonomously"               "$CMD"  "from GO onward it runs autonomously"
+has "TEST-010 autonomous run is iterative"                "$CMD"  "iteratively"
+has "TEST-010 run follows the /goal skill rules"          "$CMD"  "the autonomous \`/goal\` run follows the \`goal-planner\` skill ruleset"
+has "TEST-010 references the goal-planner skill"          "$CMD"  "goal-planner"
+has "TEST-010 autonomy bounded by the Watcher"            "$CMD"  "autonomy remains bounded by the Plumbline Watcher escalation rule"
+has "TEST-010 Watcher may pause / user is final authority" "$CMD" "the Watcher may pause; the user is the final authority"
+has "TEST-010 gate does not weaken existing gates"        "$CMD"  "does not weaken any existing gate"
+
+# --- TEST-011: minimum + dynamic team composition (G4) ---------------------
+has "TEST-011 command has Team composition section"        "$CMD"  "Team composition"
+has "TEST-011 orchestrator selects most competent team"    "$CMD"  "selects the most competent team for the specific product/architecture"
+has "TEST-011 default minimum is always present"           "$CMD"  "Default minimum (always present)"
+has "TEST-011 minimum names code-reviewer"                 "$CMD"  "at least 1 \`code-reviewer\`"
+has "TEST-011 minimum names tester/QA"                     "$CMD"  "at least 1 \`tester\` (QA)"
+has "TEST-011 minimum names product-owner"                 "$CMD"  "at least 1 \`product-owner\`"
+has "TEST-011 other roles are product/architecture-dependent" "$CMD" "All other roles are product/architecture-dependent"
+has "TEST-011 orchestrator adds domain roles by architecture" "$CMD" "adds domain roles (e.g. \`backend-dev\`, \`security-reviewer\`, \`ml-developer\`, \`mobile-dev\`, \`system-architect\`)"
+has "TEST-011 references the Model selection policy for gate roles" "$CMD" "the **Model selection** section above already flags as Opus-recommended"
+
+# --- TEST-012: per-increment creation chain + graded Watcher escalation (G5, G6) ---
+# (A) per-increment creation chain in Phase 2
+has "TEST-012 Phase 2 has per-increment creation chain" "$CMD" "per-increment creation chain"
+has "TEST-012 chain runs after EACH increment"          "$CMD" "After EACH incremental code part"
+has "TEST-012 chain order reviewer->QA->Watcher"        "$CMD" "code-reviewer -> QA (tester) -> Watcher (vision adherence)"
+has "TEST-012 watcher per-increment value-not-green Q"  "$CMD" "why and how does this increment serve the human customer's benefit?"
+has "TEST-012 watcher ignores green tests as sufficient" "$CMD" "ignores green tests as sufficient"
+# (B) graded escalation in agileteam.md (Watcher continuation rules area)
+has "TEST-012 graded escalation header (command)"       "$CMD" "Graded escalation (per-increment)"
+has "TEST-012 command: re-align to vision FIRST"        "$CMD" "FIRST, the orchestrator + team try to re-align the increment to \`vision.md\`"
+has "TEST-012 command: escalate to user only if unreachable" "$CMD" "ONLY IF no correction can still reach the Vision goal, inform the USER"
+has "TEST-012 command: otherwise continue autonomously" "$CMD" "Otherwise, continue autonomously, iteratively"
+has "TEST-012 command: pause reserved for genuine risk" "$CMD" "reserved for genuine risk of MISSING the Vision goal — not routine doubt"
+# (B) same graded escalation encoded in the Watcher agent file
+has "TEST-012 watcher: graded escalation header"        "$WATCHER" "Graded escalation (per-increment)"
+has "TEST-012 watcher: re-align to vision FIRST"        "$WATCHER" "FIRST, the orchestrator + team try to re-align the increment to \`vision.md\`"
+has "TEST-012 watcher: escalate to user only if unreachable" "$WATCHER" "ONLY IF no correction can still reach the Vision goal, inform the USER"
+has "TEST-012 watcher: otherwise continue autonomously" "$WATCHER" "Otherwise, continue autonomously, iteratively"
+has "TEST-012 watcher: references existing Pause authority (DRY)" "$WATCHER" "without duplicating the Pause authority / Allowed resolutions lists above"
+
+# --- TEST-025: CLI iteration visibility — counter N/M + per-iteration Kanban (G7) ---
+has "TEST-025 command shows pending Kanban tasks for the current iteration" "$CMD" "pending Kanban tasks for the current iteration"
+has "TEST-025 command names the per-iteration visibility duty"             "$CMD" "CLI iteration visibility"
+has "TEST-025 command requires an overall iteration counter"              "$CMD" "overall iteration counter"
+has "TEST-025 command states the counter is in N/M form"                  "$CMD" "iteration counter in \`N/M\` form (e.g. \`3/5\`)"
+has "TEST-025 command reuses the kanban-md / TodoWrite fallback (DRY)"    "$CMD" "kanban-md where available, falling back to TodoWrite (per the Guard clause)"
+has "TEST-025 context-keeper owns the iteration/Kanban progress state"    "$CK"  "owns the iteration/Kanban progress state"
+has "TEST-025 context-keeper tracks total planned iterations M"           "$CK"  "total planned iterations (M)"
+has "TEST-025 context-keeper tracks current iteration N"                  "$CK"  "current iteration (N)"
+has "TEST-025 context-keeper tracks remaining tasks for current iteration" "$CK" "remaining tasks for the current iteration"
+
+# --- TEST-025h: M (total iterations) has a real origin; no fake denominator (review) ---
+M_ORIGIN_CMD="M (total planned iterations) is derived from the planner's atomic task / milestone breakdown"
+has "TEST-025h command: M derived from the planner's breakdown (not invented)" "$CMD" "$M_ORIGIN_CMD"
+has "TEST-025h command: a re-scope of M is shown to the user, never silent"    "$CMD" "a re-scope of the plan updates M and is shown to the user (e.g. \`3/5\` -> \`3/7\` is never silent)"
+has "TEST-025h context-keeper derives + updates N and M from the plan"         "$CK"  "derives N and M from the plan / traceability artifacts and updates them when the plan changes"
+
+# --- TEST-024k: re-alignment is implementation-only; it can never silently redefine the Vision (review) ---
+RE_ALIGN_IMPL_ONLY="Re-alignment may modify only the increment/implementation to fit the user-confirmed Vision; it may NOT modify, narrow, or reinterpret the Vision goal itself"
+has "TEST-024k command: re-align is impl-only, cannot silently change the Vision" "$CMD"     "$RE_ALIGN_IMPL_ONLY"
+has "TEST-024k watcher: re-align is impl-only, cannot silently change the Vision" "$WATCHER" "$RE_ALIGN_IMPL_ONLY"
+
+# --- TEST-024l: Watcher owns the "unreachable" call; uncertainty escalates to the user (review) ---
+WATCHER_OWNS_UNREACHABLE="The Plumbline Watcher (not the coder or orchestrator) owns the determination of whether no correction can still reach the Vision goal; if reachability is uncertain, the Watcher escalates to the user rather than continuing"
+has "TEST-024l command: Watcher owns unreachable call + uncertainty->user" "$CMD"     "$WATCHER_OWNS_UNREACHABLE"
+has "TEST-024l watcher: Watcher owns unreachable call + uncertainty->user" "$WATCHER" "$WATCHER_OWNS_UNREACHABLE"
+
+# --- TEST-024m (optional): re-align / continue paths stay bound by the Forbidden resolutions list (review) ---
+has "TEST-024m watcher: re-align/continue subject to Forbidden resolutions" "$WATCHER" "Re-alignment and the \"continue autonomously\" path remain subject to the Forbidden resolutions list above"
+
+# --- agent-role coverage (every role pulls the same plumbline) -------------
+has "requirements-analyst: bounded brainstorming" "$RA"     "Bounded Brainstorming"
+has "product-owner: owns Product Vision"          "$PO"     "Product Vision Responsibility"
+has "product-owner: final value gate"             "$PO"     "Final Value Gate"
+has "spec-auditor: true-line spec audit"          "$SA"     "True-Line Spec Audit"
+has "tester: customer-value QA"                   "$TESTER" "Customer-Value QA"
+has "production-validator: value alignment"       "$PV"     "Value Alignment"
+has "context-keeper owns vision artifact"         "$CK"     "docs/vision/<feature>.vision.md"
+has "context-keeper owns contradiction ledger"    "$CK"     "docs/contradictions/<feature>.contradictions.md"
+
+finish "test_true_line_governance"

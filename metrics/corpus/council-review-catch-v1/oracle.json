@@ -1,0 +1,27 @@
+{
+  "corpus_id": "council-review-catch-v1",
+  "note": "Machine-readable seeded-defect oracle. Defects were seeded BEFORE and INDEPENDENT of any review (NGOAL-DM-003 Goodhart tripwire). Line numbers index the NEW-file side of each diff hunk under STRICT unified-diff numbering: start at the @@ header's new-side line, then advance by one for every context line (including blank context lines) and every added (+) line; removed (-) lines do not advance. NEVER re-tuned per a model's catch/miss.",
+  "tasks": [
+    {
+      "id": "T1-auth-token",
+      "oracle": [
+        {"id": "D1", "file": "auth/token.py", "line_start": 17, "line_end": 17, "type": "timing-side-channel"}
+      ],
+      "clean_controls": [
+        {"file": "auth/token.py", "line_start": 19, "line_end": 23}
+      ],
+      "recall_control": {"file": "auth/token.py", "line_start": 8, "line_end": 9}
+    },
+    {
+      "id": "T2-pagination",
+      "oracle": [
+        {"id": "D1", "file": "api/list.py", "line_start": 25, "line_end": 25, "type": "resource-exhaustion"},
+        {"id": "D2", "file": "api/list.py", "line_start": 36, "line_end": 36, "type": "unhandled-exception"}
+      ],
+      "clean_controls": [
+        {"file": "api/list.py", "line_start": 40, "line_end": 41}
+      ],
+      "recall_control": {"file": "api/list.py", "line_start": 30, "line_end": 31}
+    }
+  ]
+}

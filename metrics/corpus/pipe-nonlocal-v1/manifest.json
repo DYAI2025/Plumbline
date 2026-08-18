@@ -1,0 +1,31 @@
+{
+  "corpus": "pipe-nonlocal-v1",
+  "purpose": "Non-local dark-zone oracle: measures whether an arm's TESTS reach reality (composition root / real boundary) rather than only units/fakes. Complements pipe-core-v1, whose local-logic mutation oracle could not exhibit a differential because both arms catch local defects by construction.",
+  "venv": "/home/dyai/clawd/hive-backlog/.venv/bin/python",
+  "mutator": "mutate_nonlocal.py",
+  "scoring": "Per built increment: apply the non-local mutation, run the arm's OWN test suite. RED=caught, GREEN=escaped. Escaped-defect-rate per arm. The defect is invisible to unit/fake-only suites and visible only to suites wired through the real composition root / real boundary.",
+  "discrimination_validated": "2026-05-29 — reference suites prove the gap: N1 unit-only ESCAPES + integration CATCHES; N2 fake-only ESCAPES + real-boundary CATCHES. All mutations applied=true; all suites green pre-mutation.",
+  "tasks": [
+    {
+      "id": "N1-wiring-gap",
+      "dark_zone": "composition-root wiring: handler correct in isolation but not wired into build_app()",
+      "mutation": "remove bus.register(...) from build_app()",
+      "escapes": "unit-only test of the handler",
+      "catches": "integration test dispatched through build_app()",
+      "feature_names_the_dark_zone": false
+    },
+    {
+      "id": "N2-fake-boundary",
+      "dark_zone": "fake-test: real persistence boundary never exercised ('tests green != it works')",
+      "mutation": "neuter FileStore.append() to a no-op",
+      "escapes": "fake/in-memory-store-only test",
+      "catches": "real-boundary smoke test round-tripping through a temp file",
+      "feature_names_the_dark_zone": false
+    }
+  ],
+  "constraints": "No real network/services. Real boundary = temp file only (tempfile.TemporaryDirectory). FEATURE.md never names the dark zone (no 'wire it through build_app', no 'test the real FileStore') — the tester must choose reality on their own; that choice is exactly what the DNA targets.",
+  "arms": {
+    "baseline": "agents @ee77e4c (v3, pre-DNA)",
+    "dna": "agents @HEAD (v4 kritische semantische Glättung + wired-in-prod check + evidence-class ledger)"
+  }
+}

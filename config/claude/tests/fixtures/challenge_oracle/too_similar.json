@@ -1,0 +1,18 @@
+{
+  "model": "synthetic",
+  "bound": 15000,
+  "roles": {
+    "challenger": {
+      "tokens": 1200,
+      "text": "The digest feature is a great idea and I think we should build it because users will love getting a clean batched summary every week."
+    },
+    "advisor": {
+      "tokens": 1100,
+      "text": "The digest feature is a great idea and I think we should build it because users will love getting a clean batched summary every week."
+    },
+    "critic": {
+      "tokens": 1150,
+      "text": "The digest feature is a great idea and I think we should build it because users will love getting a clean batched summary each week."
+    }
+  }
+}

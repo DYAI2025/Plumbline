@@ -1,0 +1,16 @@
+# config/claude/agileteam-roster.yml
+# Single source of truth for the roles /agileteam may staff. The G4 team-composition
+# contract (config/claude/tests/test_gate_contracts.sh) asserts every role here resolves
+# to an in-repo agent `name:` (quote-aware). Keep in sync with the "Team composition"
+# section of config/claude/commands/agileteam.md. All roles ship in-repo (verified 2026-06-03).
+minimum:          # always staffed — the fixed judgment/review gates
+  - coder
+  - code-reviewer
+  - tester
+  - product-owner
+specialists:      # architecture-driven; added per confirmed Canvas / PRD
+  - backend-dev
+  - security-reviewer
+  - ml-developer
+  - mobile-dev
+  - system-architect

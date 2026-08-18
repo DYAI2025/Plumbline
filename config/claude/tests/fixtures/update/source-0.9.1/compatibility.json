@@ -1,0 +1,11 @@
+{
+  "version": "0.9.1",
+  "schema": 1,
+  "verifyCommand": "bash config/claude/tests/run_all.sh",
+  "frozenContracts": [
+    "config/claude/install.sh",
+    "VERSION",
+    "config/claude/tests/run_all.sh"
+  ],
+  "migrations": []
+}

@@ -1,0 +1,35 @@
+{
+  "corpus_id": "bench-core-v1",
+  "version": 2,
+  "created": "2026-05-29",
+  "revision_note": "v2 (pre-baseline): one remediation pass after an independent fairness audit. De-cued T01 (no longer names the composition root) and T02 (no fake/real cue); restricted T04 to file-access modes (undiscoverable in prompt-only probe); de-jargoned the T02 rubric; balanced controls 3->6 (added T10 failure-mode over-fire, T11 foreign-api over-fire, T12 pure-validation) so catch-rate and cry-wolf-rate are equally powered. Never baselined under v1, so no re-baseline owed.",
+  "purpose": "Frozen, gap-seeded task corpus to bench the agileteam DNA (Reality Ledger, composition-root/wired-in-prod, failure-mode->test, foreign-API verification, docstring-lie review) vs. the frozen baseline. Measures escaped-defect-rate on planted gaps AND false-positive-rate on controls.",
+  "primary_metric": "escaped_defect_rate",
+  "secondary_metric": "false_positive_rate",
+  "anti_goodhart": "Weight catching real gaps + NOT crying wolf on controls over flow/throughput. A high catch-rate bought with a high false-positive-rate is not an improvement.",
+  "scoring": "Per task, an independent BLIND judge scores the arm output against rubric.md: gap tasks -> caught|missed; control tasks -> clean|false_positive. escaped_defect_rate = missed / gap_tasks; false_positive_rate = false_positive / control_tasks.",
+  "run_modes": {
+    "isolated_probe": "Cheap per-agent A/B: feed the task to the target_agent's prompt under each arm (baseline @ee77e4c vs DNA @<head>). Use for tester/requirements-analyst/code-reviewer dimensions.",
+    "full_pipeline": "Expensive, faithful: run /agileteam over each task per arm; exercises every DNA intervention together. >=3 runs/arm/task."
+  },
+  "matrix": {
+    "arms": ["baseline@ee77e4c", "dna@HEAD"],
+    "models": ["haiku", "opus"],
+    "runs_per_cell": 3,
+    "pin_note": "Pin ONE agent snapshot per arm across all runs; record in config_fingerprint. Run weak (haiku) AND strong (opus) to measure floor-raising vs ceiling."
+  },
+  "tasks": [
+    {"id": "T01", "title": "Per-client rate limiting (429)", "gap_class": "wiring-not-composed", "is_control": false, "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T02", "title": "Outbound signed webhooks", "gap_class": "fake-only-reality", "is_control": false, "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T03", "title": "Read-through price cache w/ fallback", "gap_class": "named-failure-mode-not-tested", "is_control": false, "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T04", "title": "Nightly ticket archive via vendor SDK", "gap_class": "disproven-external-api", "is_control": false, "target_agent": ["requirements-analyst", "full"], "file_dependent": true, "probe_requires_file_access": true, "fixtures": ["vendor/ticketing_sdk.py (stub WITHOUT an archive method — only close_ticket/set_status)"]},
+    {"id": "T05", "title": "Review: withdraw() diff", "gap_class": "docstring-lie", "is_control": false, "target_agent": ["code-reviewer"], "fixtures": ["diff in tasks.md"]},
+    {"id": "T06", "title": "Discount calculator (pure logic)", "gap_class": "none", "is_control": true, "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T07", "title": "CSV order export (already well-specified)", "gap_class": "none", "is_control": true, "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T08", "title": "Delete-account file cleanup (anti-confound)", "gap_class": "wiring+fake-only-unannounced", "is_control": false, "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T09", "title": "Review: honest refund() diff", "gap_class": "none", "is_control": true, "target_agent": ["code-reviewer"], "fixtures": ["diff in tasks.md"]},
+    {"id": "T10", "title": "Format a duration (pure logic)", "gap_class": "none", "is_control": true, "control_for": "failure-mode-detector over-fire", "target_agent": ["tester", "full"], "fixtures": []},
+    {"id": "T11", "title": "SMS for 2FA (foreign API present)", "gap_class": "none", "is_control": true, "control_for": "foreign-api-detector over-fire", "target_agent": ["requirements-analyst", "full"], "file_dependent": true, "probe_requires_file_access": true, "fixtures": ["vendor/sms_sdk.py (stub WITH a send method)"]},
+    {"id": "T12", "title": "Signup input validation (pure logic)", "gap_class": "none", "is_control": true, "control_for": "reality/wiring over-fire", "target_agent": ["tester", "full"], "fixtures": []}
+  ]
+}
