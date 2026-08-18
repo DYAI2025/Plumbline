@@ -1,6 +1,6 @@
 ---
 name: testing-anti-patterns
-description: Use when reviewing tests for fragility, over-mocking, false positives, missing production wiring, or assertions that do not prove the requirement.
+description: Use when writing or reviewing tests for fragility, over-mocking, false positives, missing production wiring, or assertions that do not prove the requirement - including before committing any new test that asserts a property.
 ---
 
 # Testing Anti-patterns

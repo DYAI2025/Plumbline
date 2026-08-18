@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.0](https://github.com/DYAI2025/Plumbline/compare/v0.22.2...v0.23.0) (2026-07-08)
+
+
+### Features
+
+* **agileteam:** 2026-07-08 retro amendments C3/C4/C5 + local test ports ([267ddd4](https://github.com/DYAI2025/Plumbline/commit/267ddd41489fd7c287532ffc13454b5ee16d90cb))
+* **agileteam:** 2026-07-08 retro amendments C3/C4/C5 + local test ports (user-approved via /reflect gate) ([73079d1](https://github.com/DYAI2025/Plumbline/commit/73079d15e3794cfb22345ffd8eee647424a53a1b))
+
 ## [0.22.2](https://github.com/DYAI2025/Plumbline/compare/v0.22.1...v0.22.2) (2026-06-22)
 
 
