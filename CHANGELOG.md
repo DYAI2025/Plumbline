@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/DYAI2025/Plumbline/compare/v0.24.0...v0.25.0) (2026-08-18)
+
+
+### Features
+
+* **pril:** GitHub transport with pinned CA bundle + konfabulations-a… ([de3094e](https://github.com/DYAI2025/Plumbline/commit/de3094e0e0e3db8c00d8b5003e5ce6356fcea731))
+* **pril:** GitHub transport with pinned CA bundle + konfabulations-audit update ([227773e](https://github.com/DYAI2025/Plumbline/commit/227773ea7b773b6727f244859afa73e698e92191))
+
 ## [0.24.0](https://github.com/DYAI2025/Plumbline/compare/v0.23.2...v0.24.0) (2026-08-18)
 
 
