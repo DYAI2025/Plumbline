@@ -396,6 +396,8 @@ if old not in text:
 pathlib.Path(dst).write_text(text.replace(old, new))
 PYMUT
 
+# Called indirectly through assert's eval; ShellCheck cannot see that call edge.
+# shellcheck disable=SC2317
 mutant_ok() { # mutant_ok <dir> -- differs, substantial, parses, and RUNS
   local f="$1/plumbline_ref_probe.py"
   local orig="$REPO_DIR/config/claude/lib/plumbline_ref_probe.py"
