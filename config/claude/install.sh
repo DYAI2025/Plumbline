@@ -159,13 +159,13 @@ same_path() {
 # missing target is never current. Used only by --update; normal installs keep the
 # untouched "skip if exists" behavior.
 content_current() {
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" effective_mode="${3:-$MODE}"
   [ -e "$dst" ] || return 1
   # A symlink that already resolves to the same source path is current; otherwise
   # the link must be replaced (e.g. a stale symlink, or a symlink where update now
   # materializes a copy).
   if [ -L "$dst" ]; then
-    if [ "$MODE" = "symlink" ] && same_path "$src" "$dst"; then
+    if [ "$effective_mode" = "symlink" ] && same_path "$src" "$dst"; then
       return 0
     fi
     return 1
@@ -465,7 +465,7 @@ resolve_hook_script() {
 }
 
 transfer() {
-  local src="$1" dst="$2"
+  local src="$1" dst="$2" effective_mode="${3:-$MODE}"
   if [ ! -e "$src" ]; then
     echo "missing source: $src" >&2
     exit 1
@@ -475,7 +475,7 @@ transfer() {
   # NEW (absent) target. This replaces the plain "skip if exists" so a real user's
   # home is actually refreshed.
   if [ "$UPDATE" -eq 1 ]; then
-    if [ -e "$dst" ] && content_current "$src" "$dst"; then
+    if [ -e "$dst" ] && content_current "$src" "$dst" "$effective_mode"; then
       log_action "up-to-date: $dst"
       return
     fi
@@ -499,7 +499,7 @@ transfer() {
     return 0
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
-    if [ "$MODE" = "copy" ]; then
+    if [ "$effective_mode" = "copy" ]; then
       log_action "would copy:     $src -> $dst"
     else
       log_action "would symlink:  $dst -> $src"
@@ -508,7 +508,7 @@ transfer() {
   fi
   mkdir -p "$(dirname "$dst")"
   rm -rf "$dst"
-  if [ "$MODE" = "copy" ]; then
+  if [ "$effective_mode" = "copy" ]; then
     cp -R "$src" "$dst"
     echo "copied:   $dst"
   else
@@ -685,9 +685,22 @@ install_bin_libs() {
     return 0
   fi
   local src_dir="$REPO_DIR/config/claude/lib"
+  local name transfer_mode
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' lib; do
-    transfer "$lib" "$CLAUDE_HOME/lib/$(basename "$lib")"
+    name="$(basename "$lib")"
+    transfer_mode="$MODE"
+    case "$name" in
+      plumbline_cli.py|plumbline_python.sh|plumbline_scope.py|plumbline_scope_update.py|plumbline_context.py|plumbline_reality.py)
+        # These files form the executable scope/context/reality authority. A
+        # symlink back into the governed checkout would let that checkout
+        # authenticate itself and would also strand confirmed replanning once
+        # project-local authority is correctly rejected. Keep an independent
+        # install-time snapshot for every blocking checker and its runtime.
+        transfer_mode="copy"
+        ;;
+    esac
+    transfer "$lib" "$CLAUDE_HOME/lib/$name" "$transfer_mode"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
   write_install_anchor
 }
@@ -698,9 +711,20 @@ install_bin() {
     return 0
   fi
   local src_dir="$REPO_DIR/config/claude/bin"
+  local name transfer_mode
   [ -d "$src_dir" ] || return 0
   while IFS= read -r -d '' tool; do
-    transfer "$tool" "$CLAUDE_HOME/bin/$(basename "$tool")"
+    name="$(basename "$tool")"
+    transfer_mode="$MODE"
+    case "$name" in
+      plumbline-scope-check|plumbline-scope-update|plumbline-context-check|plumbline-reality-check)
+        # Blocking PRIL authorization and the scope repair path must resolve
+        # outside the repository whose writes they judge, even in the default
+        # live/symlink install mode.
+        transfer_mode="copy"
+        ;;
+    esac
+    transfer "$tool" "$CLAUDE_HOME/bin/$name" "$transfer_mode"
   done < <(find "$src_dir" -maxdepth 1 -type f -print0 | sort -z)
 }
 
@@ -980,6 +1004,70 @@ EOF
   fi
 }
 
+# Idempotently add the PLUM-12 canonical-scope preflight. It runs only for
+# write-capable tools and implementation subagents. Canvas-only legacy features
+# pass through; versioned manifests fail closed on missing/extra/contradictory
+# plan paths before the first implementation write.
+register_pretool_scope_hook() {
+  local settings="$CLAUDE_HOME/settings.json"
+  local hook_script="$CLAUDE_HOME/hooks/pretool-scope-gate.sh"
+  if ! layer_root_safe "$CLAUDE_HOME/hooks"; then
+    TRANSFER_REFUSALS=$((TRANSFER_REFUSALS + 1))
+    return 0
+  fi
+  # The gate itself is part of the authorization boundary. Register an
+  # independent copy, never executable code from the governed checkout.
+  transfer "$REPO_DIR/config/claude/hooks/pretool-scope-gate.sh" \
+    "$hook_script" "copy"
+  local cmd="bash \"$hook_script\""
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "skip pretool-scope-hook: jq not found — install jq and re-run, or add it manually to $settings"
+    return
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log_action "would register pretool-scope-hook in $settings with command: $cmd"
+    return
+  fi
+  mkdir -p "$CLAUDE_HOME"
+  [ -f "$settings" ] || echo '{}' > "$settings"
+  if ! jq -e . "$settings" >/dev/null 2>&1; then
+    echo "skip pretool-scope-hook: $settings is not valid JSON — fix it first"
+    return
+  fi
+  local tmp; tmp="$(mktemp)"
+  if jq --arg cmd "$cmd" '
+    .hooks //= {} |
+    .hooks.PreToolUse //= [] |
+    if ([.hooks.PreToolUse[]?.hooks[]? | .command? // ""] |
+        any(test("pretool-scope-gate\\.sh"))) then
+      .hooks.PreToolUse |= map(
+        if ([.hooks[]? | .command? // ""] |
+            any(test("pretool-scope-gate\\.sh"))) then
+          .matcher = "Agent|Bash|Task|Write|Edit|MultiEdit|NotebookEdit" |
+          .hooks |= map(
+            if (.command? // "" | test("pretool-scope-gate\\.sh"))
+            then .command = $cmd
+            else . end
+          )
+        else .
+        end
+      )
+    else
+      .hooks.PreToolUse += [ {
+        "matcher": "Agent|Bash|Task|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [ { "type": "command", "command": $cmd, "timeout": 10 } ]
+      } ]
+    end
+  ' "$settings" > "$tmp"; then
+    mv "$tmp" "$settings"
+    echo "registered or updated pretool-scope-hook in $settings"
+  else
+    rm -f "$tmp"
+    echo "skip pretool-scope-hook: jq failed to update $settings" >&2
+  fi
+}
+
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "dry-run: no changes will be written (target CLAUDE_HOME=$CLAUDE_HOME)"
 fi
@@ -992,6 +1080,7 @@ if [ "$INSTALL_HOOK" -eq 1 ]; then
   register_stop_hook
   register_enforce_hook
   register_pretool_vision_hook
+  register_pretool_scope_hook
 fi
 # bin and lib are SEPARATE layers with separate escape guards. install_bin used to call
 # install_bin_libs itself, so a refusal in `bin` returned early and silently skipped the
