@@ -30,99 +30,7 @@ PROBE="$REPO_DIR/config/claude/bin/plumbline-ref-probe"
 
 if ! command -v jq >/dev/null 2>&1; then
   _skip "jq not installed; the probe's output is structured JSON"
-  ############################################################################
-# Counter-mutations. Three, as required: freshness removed, remote-swap
-# detection removed, timeout fail-open.
-#
-# Mutations are EXACT LITERAL replacements that fail loudly when the target text
-# is absent. The precondition is not "the file differs" -- a failed replacement
-# leaves an empty or unparseable file, which also differs. And a mutant module
-# must ship its sibling, or it dies on ImportError and the assertion passes
-# because NOTHING RAN. Both are lessons paid for in earlier slices.
-############################################################################
-
-mutate_probe() { # mutate_probe <name> <old> <new> -> prints mutant dir
-  local name="$1"
-  local dir="$WORK/mut-$name"
-  mkdir -p "$dir"
-  cp "$REPO_DIR/config/claude/lib/plumbline_cli.py" "$dir/"
-  python3 "$WORK/mutate.py" "$REPO_DIR/config/claude/lib/plumbline_ref_probe.py" \
-    "$dir/plumbline_ref_probe.py" "$2" "$3" 2>/dev/null
-  printf '%s' "$dir"
-}
-cat >"$WORK/mutate.py" <<'PYMUT'
-import pathlib, sys
-src, dst, old, new = sys.argv[1:5]
-text = pathlib.Path(src).read_text()
-if old not in text:
-    sys.stderr.write("MUTATION TARGET NOT FOUND\n")
-    raise SystemExit(2)
-pathlib.Path(dst).write_text(text.replace(old, new))
-PYMUT
-
-# Invoked through assert's eval, which shellcheck cannot see.
-# shellcheck disable=SC2329
-mutant_ok() { # mutant_ok <dir> -- differs, substantial, parses, and RUNS
-  local f="$1/plumbline_ref_probe.py"
-  local orig="$REPO_DIR/config/claude/lib/plumbline_ref_probe.py"
-  [ -f "$f" ] || return 1
-  cmp -s "$orig" "$f" && return 1
-  local o m
-  o="$(wc -c <"$orig" | tr -d ' ')"
-  m="$(wc -c <"$f" | tr -d ' ')"
-  [ "$m" -gt $((o / 2)) ] || return 1
-  env PATH="$SANITISED_PATH" python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" >/dev/null 2>&1 || return 1
-  # It must actually execute -- an ImportError mutant proves nothing.
-  env PATH="$SANITISED_PATH" python3 "$f" probe --repo "$REPO_DIR" --remote origin \
-    --ref refs/heads/main >/dev/null 2>&1
-  [ "$?" -ne 1 ] || return 1
-  return 0
-}
-
-run_mutant() { # run_mutant <dir> <repo> <args...>
-  local dir="$1" repo="$2"
-  shift 2
-  M_JSON="$(env PATH="$STUB_PATH" HOME="$NOHOME" python3 "$dir/plumbline_ref_probe.py" \
-    probe --repo "$repo" --remote origin "$@" 2>/dev/null)"
-  M_RC=$?
-  M_STATUS="$(printf '%s' "$M_JSON" | jq -r '.status // ""' 2>/dev/null)"
-  export M_JSON M_RC M_STATUS
-}
-
-# CM-A: freshness removed -- answer from the local cache instead of the remote.
-# CM-B: remote-swap detection removed.
-CMB="$(mutate_probe noswap '    if expect_url is not None and url != expect_url:' \
-  '    if False:')"
-assert "CM-B precondition: the identity check was actually removed" "mutant_ok '$CMB'"
-cmb_repo="$(make_repo)"
-cmb_bound="$(origin_of "$cmb_repo")"
-cmb_decoy="$(mktemp -d "$WORK/cmbd.XXXXXX")"
-git init -q --bare "$cmb_decoy"
-git -C "$cmb_repo" push -q "$cmb_decoy" main
-git -C "$cmb_repo" remote set-url origin "$cmb_decoy"
-run_mutant "$CMB" "$cmb_repo" --ref refs/heads/main --expect-url "$cmb_bound"
-assert "CM-B: without the identity check a swapped remote passes" "[ '$M_RC' -eq 0 ]"
-assert "CM-B: and it is not reported as an identity change" \
-  "[ '$M_STATUS' != 'REMOTE_IDENTITY_CHANGED' ]"
-
-# CM-C: the timeout fails OPEN instead of classifying.
-CMC="$(mutate_probe timeoutopen '    except subprocess.TimeoutExpired:
-        return TIMEOUT, None, f"the remote did not answer within {timeout}s"' \
-  '    except subprocess.TimeoutExpired:
-        class _P:
-            returncode = 0
-            stdout = ""
-            stderr = ""
-        return "", _P(), "MUTANT: timeout ignored"')"
-assert "CM-C precondition: the timeout branch was actually changed" "mutant_ok '$CMC'"
-cmc_repo="$(make_repo)"
-git -C "$cmc_repo" remote set-url origin "plhang::x"
-run_mutant "$CMC" "$cmc_repo" --ref refs/heads/main --timeout 2
-assert "CM-C: a timeout treated as an empty answer stops being classified" \
-  "[ '$M_STATUS' != 'REMOTE_TIMEOUT' ]"
-assert "CM-C: and the run is no longer refused as unverified" "[ '$M_RC' -ne 5 ]"
-
-finish "test_remote_ref_probe"
+  finish "test_remote_ref_probe"
   exit $?
 fi
 
@@ -247,10 +155,13 @@ old_oid="$(git -C "$r2" rev-parse main)"
 other="$(mktemp -d "$WORK/other.XXXXXX")"
 git clone -q "$(origin_of "$r2")" "$other" 2>/dev/null
 git -C "$other" checkout -q main
+git -C "$other" config user.email p@example.com
+git -C "$other" config user.name "P"
 printf 'moved\n' >>"$other/src/a"
 git -C "$other" commit -qam moved
 git -C "$other" push -q origin main
 new_oid="$(git -C "$other" rev-parse main)"
+assert "P2 precondition: the remote main really moved" "[ '$new_oid' != '$old_oid' ]"
 assert "P2 precondition: the local origin/main really is stale" \
   "[ \"\$(git -C '$r2' rev-parse origin/main 2>/dev/null)\" = '$old_oid' ]"
 probe "$SANITISED_PATH" probe --repo "$r2" --remote origin \
@@ -528,9 +439,15 @@ cma_old="$(git -C "$cma_repo" rev-parse main)"
 cma_other="$(mktemp -d "$WORK/cmao.XXXXXX")"
 git clone -q "$(origin_of "$cma_repo")" "$cma_other" 2>/dev/null
 git -C "$cma_other" checkout -q main
+git -C "$cma_other" config user.email p@example.com
+git -C "$cma_other" config user.name "P"
 printf 'moved\n' >>"$cma_other/src/a"
 git -C "$cma_other" commit -qam moved
 git -C "$cma_other" push -q origin main
+cma_new="$(git -C "$cma_other" rev-parse main)"
+assert "CM-A precondition: the remote main really moved" "[ '$cma_new' != '$cma_old' ]"
+assert "CM-A precondition: the local cache is still stale" \
+  "[ \"\$(git -C '$cma_repo' rev-parse origin/main 2>/dev/null)\" = '$cma_old' ]"
 run_mutant "$CMA" "$cma_repo" --ref refs/heads/main --expect "refs/heads/main=$cma_old"
 assert "CM-A: answering from the local cache misses the remote change" \
   "[ '$M_RC' -eq 0 ]"
