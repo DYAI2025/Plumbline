@@ -194,6 +194,9 @@ bash config/claude/tests/test_pretool_vision_gate_hook.sh || mark_fail
 stage "runtime start governance gate tests"
 bash config/claude/tests/test_runtime_start_governance_gate.sh || mark_fail
 
+stage "safe process-group signaling kernel (PLUM-27)"
+python3 config/claude/tests/test_process_group_kernel.py || mark_fail
+
 stage "shell portability / anti-footgun lint (bash-3.2 \$()-heredoc, confusable quotes, jq // default)"
 bash config/claude/tests/test_shell_portability.sh || mark_fail
 
