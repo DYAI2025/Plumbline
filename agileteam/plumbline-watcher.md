@@ -36,8 +36,15 @@ gate to pass:
 config/claude/bin/plumbline-context-check --repo <repo> --feature <feature-slug>
 ```
 
-Before implementation changes are accepted, require the scope guard to pass against the
-confirmed Canvas `Allowed change scope` and the actual repo-relative changed-files list:
+Before the first implementation write, require the canonical manifest's Canvas/plan
+preflight to pass. The manifest — not duplicated Canvas prose — is the executable truth:
+
+```bash
+config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --preflight
+```
+
+Before implementation changes are accepted, also check the actual repo-relative
+changed-files list:
 
 ```bash
 config/claude/bin/plumbline-scope-check --repo <repo> --feature <feature-slug> --changed-files <changed-files.txt>

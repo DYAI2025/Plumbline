@@ -87,7 +87,7 @@ if bad or nodesc or dupes or colon:
 PY
 
 stage "metrics scripts compile"
-if python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/metrics/challenge_token_oracle.py config/claude/lib/plumbline_update.py config/claude/lib/gate_contracts.py config/claude/lib/plumbline_start.py config/claude/lib/council_backend.py config/claude/lib/council_inference.py config/claude/lib/council_presets.py config/claude/lib/deepseek_review.py; then
+if python3 -m py_compile config/claude/metrics/emit_run.py config/claude/metrics/process_health.py config/claude/metrics/challenge_token_oracle.py config/claude/lib/plumbline_update.py config/claude/lib/plumbline_scope.py config/claude/lib/plumbline_scope_update.py config/claude/lib/gate_contracts.py config/claude/lib/plumbline_start.py config/claude/lib/council_backend.py config/claude/lib/council_inference.py config/claude/lib/council_presets.py config/claude/lib/deepseek_review.py; then
   echo "py_compile OK"
 else
   mark_fail
@@ -121,7 +121,7 @@ bash config/claude/tests/test_agileteam_start_gate.sh || mark_fail
 stage "scope shift notice tests"
 bash config/claude/tests/test_scope_shift_notice.sh || mark_fail
 
-stage "canonical scope manifest tests (PLUM-10)"
+stage "canonical scope manifest and pre-write drift gate tests (PLUM-10/PLUM-12)"
 bash config/claude/tests/test_scope_manifest.sh || mark_fail
 
 stage "plan/canvas vs scope drift tests (PLUM-12)"
@@ -247,6 +247,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     config/claude/bin/plumbline-remote-watch \
     config/claude/bin/plumbline-runtime-hygiene \
     config/claude/bin/plumbline-scope-check \
+    config/claude/bin/plumbline-scope-update \
     config/claude/hooks/*.sh \
     config/claude/install.sh \
     config/claude/lib/plumbline_python.sh \

@@ -145,9 +145,9 @@ mutate_checker_lib() { # mutate_checker_lib <repo>
 # --- O1a CONTROL: clean vendored checker detects the scope violation ----------
 o1a="$(make_governed_repo trustfeat)"
 plant_violation "$o1a"
-run_hook "$o1a"
+run_hook "$o1a" PLUMBLINE_BIN_DIR="$BIN_SRC"
 assert_eq "O1a control: hook exits 0 (block travels in the payload)" "0" "$HOOK_RC"
-assert_contains "O1a control: clean project-local checker blocks the violation" \
+assert_contains "O1a control: independent installed checker blocks the violation" \
   "$HOOK_OUT" "gate=scope"
 
 # --- O1b THE DEFECT: mutated checker must NOT be trusted ----------------------
@@ -204,6 +204,19 @@ run_hook "$o1g" HOME="$NOHOME" PLUMBLINE_BIN_DIR="$linkdir"
 assert_contains "O1g: a symlink into the governed repo is resolved and verified" \
   "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
 
+# --- O1j a project-owned symlink OUTSIDE cannot launder external authority ---
+o1j="$(make_governed_repo trustfeat)"
+plant_violation "$o1j"
+rm "$o1j/config/claude/bin/plumbline-scope-check"
+ln -s /bin/true "$o1j/config/claude/bin/plumbline-scope-check"
+git -C "$o1j" add config/claude/bin/plumbline-scope-check
+git -C "$o1j" commit -q -m "plant external checker link"
+run_hook "$o1j" HOME="$NOHOME"
+assert_contains "O1j: repository-owned symlink to external checker is refused" \
+  "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
+assert_contains "O1j: symlink laundering still blocks the run" \
+  "$HOOK_OUT" '"decision":"block"'
+
 # --- O1h an EXTERNAL immutable checker is preferred over a mutated in-repo one -
 # The spec's fallback: refuse the mutated checker, but do not lose enforcement
 # when a checker outside the governed repo exists. The run must still block --
@@ -230,9 +243,21 @@ assert_not_contains "O1h: the mutated in-repo verdict is not used" \
 o1i="$(make_governed_repo trustfeat)"
 printf 'def f():\n    return 1\n' >"$o1i/src/feature/impl.py"
 git -C "$o1i" add src/feature/impl.py
-run_hook "$o1i"
-assert_not_contains "O1i: an unmodified vendored checker raises no integrity finding" \
+run_hook "$o1i" PLUMBLINE_BIN_DIR="$BIN_SRC"
+assert_not_contains "O1i: independent fallback keeps a clean run unblocked" \
   "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
+
+# --- O1k even a clean committed project checker is not independent authority -
+o1k="$(make_governed_repo trustfeat)"
+plant_violation "$o1k"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$o1k/config/claude/bin/plumbline-scope-check"
+git -C "$o1k" add config/claude/bin/plumbline-scope-check
+git -C "$o1k" commit -q -m "commit attacker-controlled checker"
+run_hook "$o1k" HOME="$NOHOME"
+assert_contains "O1k: committed project checker is refused as enforcement authority" \
+  "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
+assert_contains "O1k: committed project checker cannot bypass the run" \
+  "$HOOK_OUT" '"decision":"block"'
 
 ############################################################################
 # OPEN-2 — the active scope manifest cannot authorize its own change
@@ -388,23 +413,22 @@ assert_eq "N1c: genuinely missing scope input keeps exit 2 (MISSING)" "2" "$SCOP
 
 MUT="$WORK/mutated-hook.sh"
 
-# CM-1: neutralise the checker-integrity verification in a copy of the hook.
-# The guard is defeated at its DEFINITION, not at a call site: the only call is
-# `if verify_checker_integrity "$1"; then`, so a line-initial pattern matches
-# nothing and the "mutation" silently mutates nothing. That is how this
-# counter-mutation first went green while proving absolutely nothing -- it was
-# also inheriting the real HOME, so the machine's own install satisfied the
-# fallback and no integrity block was ever reachable. Both are fixed here.
-sed 's|^verify_checker_integrity() {.*|verify_checker_integrity() { return 0; }\
-_orig_verify_checker_integrity() {|' "$HOOK" >"$MUT"
+# CM-1: neutralise the independent-authority boundary in a copy of the hook.
+# A clean, committed checker is attacker-controlled in a foreign repository,
+# even though the older tracked+HEAD check considers it internally consistent.
+# shellcheck disable=SC2016  # the sed expression must match literal shell variables
+sed 's/^  if { \[ -n "\$entry" \] && path_inside_repo "\$entry"; } || path_inside_repo "\$1"; then$/  if false; then/' \
+  "$HOOK" >"$MUT"
 bash -n "$MUT" || _fail "CM-1: the mutated hook must still parse"
 assert "CM-1 precondition: the mutation actually changed the hook" \
   "! cmp -s '$HOOK' '$MUT'"
 cm1="$(make_governed_repo trustfeat)"
 plant_violation "$cm1"
-mutate_checker_lib "$cm1"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$cm1/config/claude/bin/plumbline-scope-check"
+git -C "$cm1" add config/claude/bin/plumbline-scope-check
+git -C "$cm1" commit -q -m "commit attacker-controlled checker"
 run_hook_file "$MUT" "$cm1" HOME="$NOHOME"
-assert_not_contains "CM-1 counter-mutation: without the guard the mutated checker is trusted again" \
+assert_not_contains "CM-1 counter-mutation: without the boundary the committed checker is trusted again" \
   "$HOOK_OUT" "CHECKER_INTEGRITY_UNVERIFIED"
 
 # CM-2: strip the scope-authority binding from a copy of the checker runtime.

@@ -150,17 +150,23 @@ esac
 #   3. PATH
 #   4. CLAUDE_HOME/bin, then HOME/.claude/bin (normal user install)
 #
-# Do not use `readlink -f`: macOS does not provide the GNU option. Canonicalize
-# the containing directory with pwd -P and append the basename instead.
+# Do not use `readlink -f`: macOS does not provide the GNU option. Python is
+# already a required runtime dependency, so use Path.resolve to follow both
+# directory and executable symlinks before evaluating the trust boundary.
 canonical_executable() {
-  local candidate="$1" dir base physical_dir
+  local candidate="$1"
   [ -f "$candidate" ] && [ -x "$candidate" ] || return 1
-  dir="$(dirname "$candidate")" || return 1
-  base="$(basename "$candidate")" || return 1
-  physical_dir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
-  [ -n "$physical_dir" ] || return 1
-  printf '%s/%s\n' "$physical_dir" "$base"
+  python3 - "$candidate" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+try:
+    print(Path(sys.argv[1]).resolve(strict=True))
+except OSError:
+    raise SystemExit(1)
+PY
 }
+
+repo_physical="$(cd "$repo" 2>/dev/null && pwd -P)" || repo_physical="$repo"
 
 # --- OPEN-1: never execute a checker the governed repo could have rewritten ---
 #
@@ -190,6 +196,12 @@ path_inside_repo() { # path_inside_repo <canonical-path>
     "$repo_physical"/*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+candidate_entry_path() { # candidate_entry_path <path>, preserve final symlink
+  local candidate="$1" dir=""
+  dir="$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$dir" "$(basename "$candidate")"
 }
 
 # One file is verifiable iff git tracks it AND it matches HEAD exactly.
@@ -268,7 +280,16 @@ refused_cli_reason=""
 # Accept a candidate only after it survives the integrity test. A refused
 # candidate does not end resolution: the search continues, so an immutable
 # checker installed outside the repo still takes over and enforcement is kept.
-accept_candidate() { # accept_candidate <canonical-path> <source-label>
+accept_candidate() { # accept_candidate <canonical-path> <source-label> <entry-path>
+  local entry=""
+  entry="$(candidate_entry_path "$3" 2>/dev/null)" || entry=""
+  if { [ -n "$entry" ] && path_inside_repo "$entry"; } || path_inside_repo "$1"; then
+    checker_integrity_reason="repository-owned executable cannot be an independent enforcement authority"
+    refused_cli_reason="$checker_integrity_reason (candidate $3, source=$2)"
+    printf 'PRIL CHECKER_INTEGRITY_UNVERIFIED: refusing %s -- %s\n' \
+      "$3" "$checker_integrity_reason" >&2
+    return 1
+  fi
   if verify_checker_integrity "$1"; then
     resolved_cli_path="$1"
     resolved_cli_source="$2"
@@ -290,7 +311,7 @@ resolve_cli() {
     candidate="$PLUMBLINE_BIN_DIR/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "PLUMBLINE_BIN_DIR" || :
+      accept_candidate "$found" "PLUMBLINE_BIN_DIR" "$candidate" || :
     fi
   fi
 
@@ -298,7 +319,7 @@ resolve_cli() {
     candidate="$repo/config/claude/bin/$name"
     found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "project-local" || :
+      accept_candidate "$found" "project-local" "$candidate" || :
     fi
   fi
 
@@ -309,23 +330,25 @@ resolve_cli() {
       found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     fi
     if [ -n "$found" ]; then
-      accept_candidate "$found" "PATH" || :
+      accept_candidate "$found" "PATH" "$candidate" || :
     fi
   fi
 
   if [ -z "$resolved_cli_path" ] && [ -n "${CLAUDE_HOME:-}" ]; then
     user_bin="$CLAUDE_HOME/bin"
-    found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    candidate="$user_bin/$name"
+    found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "CLAUDE_HOME/bin" || :
+      accept_candidate "$found" "CLAUDE_HOME/bin" "$candidate" || :
     fi
   fi
 
   if [ -z "$resolved_cli_path" ] && [ -n "${HOME:-}" ]; then
     user_bin="$HOME/.claude/bin"
-    found="$(canonical_executable "$user_bin/$name" 2>/dev/null)" || found=""
+    candidate="$user_bin/$name"
+    found="$(canonical_executable "$candidate" 2>/dev/null)" || found=""
     if [ -n "$found" ]; then
-      accept_candidate "$found" "HOME/.claude/bin" || :
+      accept_candidate "$found" "HOME/.claude/bin" "$candidate" || :
     fi
   fi
 
@@ -362,7 +385,7 @@ done
 # Integrity is decided BEFORE any checker result is interpreted: a checker that
 # cannot be proven unmodified never runs, so there is no verdict to weigh.
 if [ -n "$unverified_clis" ]; then
-  emit_block "PRIL_CHECKER_INTEGRITY_UNVERIFIED: a scope/context/reality checker resolved INSIDE the governed repository but is not the reviewed artifact --$unverified_clis A checker the repository under judgement could have rewritten is never executed, and no immutable checker was found elsewhere on the resolution chain. Commit the checker change (so it is tracked and identical to HEAD), or install Plumbline outside this repository, then re-run."
+  emit_block "PRIL_CHECKER_INTEGRITY_UNVERIFIED: a scope/context/reality checker resolved INSIDE the governed repository and cannot be an independent authority --$unverified_clis A checker the repository under judgement could have rewritten is never executed, and no immutable checker was found elsewhere on the resolution chain. Install Plumbline outside this repository, then re-run."
   exit 0
 fi
 
