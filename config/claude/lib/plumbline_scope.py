@@ -6,6 +6,7 @@ import argparse
 import fnmatch
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -229,7 +230,41 @@ def _load_changed_files(path: Path) -> tuple[int, list[str]]:
     return EXIT_PASS, changed
 
 
-def validate_scope(repo: Path, feature: str, changed_files: Path) -> int:
+def _gitignored_untracked(repo: Path, paths: list[str]) -> set[str]:
+    """Subset of ``paths`` that are BOTH gitignored AND untracked.
+
+    These are session-tooling droppings (e.g. ``.claude-flow/`` daemon state),
+    not feature edits, and repeatedly false-positived the scope gate
+    (2026-07-08 retro, C4). Tracked files are never exempted — a
+    tracked-but-ignore-matching file still counts as a real edit. Any git
+    failure (no repo, git missing) exempts nothing: fail-closed.
+    """
+    if not paths:
+        return set()
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(repo), "ls-files", "--", *paths],
+            capture_output=True, text=True, check=False,
+        )
+        if tracked.returncode != 0:
+            return set()
+        tracked_set = {line.strip() for line in tracked.stdout.splitlines() if line.strip()}
+        candidates = [p for p in paths if p.rstrip("/") not in tracked_set]
+        if not candidates:
+            return set()
+        ignored = subprocess.run(
+            ["git", "-C", str(repo), "check-ignore", "--", *candidates],
+            capture_output=True, text=True, check=False,
+        )
+        # check-ignore exits 1 when no path matches — not an error here.
+        if ignored.returncode not in (0, 1):
+            return set()
+        return {line.strip() for line in ignored.stdout.splitlines() if line.strip()}
+    except OSError:
+        return set()
+
+
+def validate_scope(repo: Path, feature: str, changed_files: Path, strict_gitignored: bool = False) -> int:
     if not _valid_feature(feature):
         print(f"ERROR: malformed feature slug: {feature!r}", file=sys.stderr)
         return EXIT_MALFORMED
@@ -240,6 +275,15 @@ def validate_scope(repo: Path, feature: str, changed_files: Path) -> int:
     if changed_status != EXIT_PASS:
         return changed_status
     out = [path for path in changed if not any(_matches(path, pattern) for pattern in patterns)]
+    if out and not strict_gitignored:
+        exempt = _gitignored_untracked(repo, out)
+        if exempt:
+            # Visible, never silent (no-silent-caps rule): name what was skipped.
+            print(
+                "NOTE: ignoring gitignored+untracked tool artifacts (not feature edits): "
+                + ", ".join(sorted(exempt))
+            )
+            out = [p for p in out if p not in exempt]
     if out:
         print(
             "ERROR: changed files outside Allowed change scope: "
@@ -258,12 +302,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", required=True, help="Repository root to inspect")
     parser.add_argument("--feature", required=True, help="Feature slug")
     parser.add_argument("--changed-files", required=True, help="File containing repo-relative changed paths")
+    parser.add_argument(
+        "--strict-gitignored",
+        action="store_true",
+        help="Also flag gitignored+untracked paths (default: exempted as tool artifacts, visibly logged)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return validate_scope(Path(args.repo).resolve(), args.feature, Path(args.changed_files))
+    return validate_scope(
+        Path(args.repo).resolve(),
+        args.feature,
+        Path(args.changed_files),
+        strict_gitignored=args.strict_gitignored,
+    )
 
 
 if __name__ == "__main__":
