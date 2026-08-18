@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# PLUM-12: canonical scope manifest, provenance and pre-write drift gate.
+#
 # PLUM-10 contract tests: the machine-critical Allowed Scope must live in an
 # explicit, schema-validated manifest -- not in fragile markdown prose.
 #
@@ -33,6 +35,1144 @@ REPO_DIR="$(cd "$HERE/../../.." && pwd)"
 
 echo "test_scope_manifest"
 
+SCOPE_CHECK="$REPO_DIR/config/claude/bin/plumbline-scope-check"
+SCOPE_UPDATE="$REPO_DIR/config/claude/bin/plumbline-scope-update"
+PRETOOL_SCOPE="$REPO_DIR/config/claude/hooks/pretool-scope-gate.sh"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+assert_exit() {
+  local description="$1" expected="$2"
+  shift 2
+  TESTS_RUN=$((TESTS_RUN + 1))
+  local output status
+  output="$({ "$@"; } 2>&1)"
+  status=$?
+  if [ "$status" -eq "$expected" ]; then
+    _pass "$description"
+  else
+    _fail "$description (expected exit $expected, got $status; output: $output)"
+  fi
+}
+
+assert_output_contains() {
+  local description="$1" needle="$2"
+  shift 2
+  TESTS_RUN=$((TESTS_RUN + 1))
+  local output status
+  output="$({ "$@"; } 2>&1)"
+  status=$?
+  if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -Fq -- "$needle"; then
+    _pass "$description"
+  else
+    _fail "$description (exit $status, wanted non-zero output containing '$needle'; output: $output)"
+  fi
+}
+
+make_repo() {
+  local repo="$1"
+  mkdir -p "$repo/docs/scope" "$repo/docs/canvas" "$repo/docs/plans" \
+    "$repo/docs/context" "$repo/src/demo" "$repo/config/claude/tests"
+  printf 'demo\n' >"$repo/docs/context/.active-feature"
+  cat >"$repo/docs/canvas/demo.canvas.md" <<'EOF'
+# Product Canvas: demo
+
+Status: user-confirmed
+
+## Allowed change scope
+
+Status: CONFIRMED
+
+Scope manifest: `docs/scope/demo.scope.json`
+EOF
+  cat >"$repo/docs/plans/2026-07-29-demo.md" <<'EOF'
+# Demo implementation plan
+
+- Create: `src/demo/app.py`
+- Modify: `config/claude/tests/test_demo.sh`
+- Modify: `docs/scope/demo.scope.json`
+- Delete: `src/demo/old.py`
+- Test: `bash config/claude/tests/test_demo.sh`
+EOF
+  python3 - "$repo/docs/scope/demo.scope.json" <<'PY'
+import hashlib
+import json
+import sys
+
+scope = {
+    "product": ["src/demo/**"],
+    "governance": [
+        "config/claude/tests/test_demo.sh",
+        "docs/canvas/demo.canvas.md",
+        "docs/plans/2026-07-29-demo.md",
+        "docs/scope/demo.scope.json",
+    ],
+}
+payload = json.dumps(scope, sort_keys=True, separators=(",", ":")).encode()
+manifest = {
+    "schema_version": 1,
+    "feature": "demo",
+    "scope": scope,
+    "artifacts": {
+        "canvas": "docs/canvas/demo.canvas.md",
+        "plan": "docs/plans/2026-07-29-demo.md",
+    },
+    "provenance": [{
+        "revision": 1,
+        "origin": "jira:PLUM-12",
+        "decision_maker": "test-user",
+        "decided_at": "2026-07-29T20:00:00+00:00",
+        "rationale": "Confirmed pilot scope",
+        "confirmed": True,
+        "scope": scope,
+        "scope_digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+    }],
+}
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2)
+    handle.write("\n")
+PY
+}
+
+BASE="$WORK/base"
+make_repo "$BASE"
+
+# Canonical happy path: Canvas references the manifest, and every planned file
+# matches exactly one of the separated product/governance path sets.
+assert_exit "manifest preflight passes aligned Canvas and plan" 0 \
+  "$SCOPE_CHECK" --repo "$BASE" --feature demo --preflight
+
+# The manifest is the runtime Source of Truth. Even if freely formatted Canvas
+# Markdown carries a copied list, changed-file containment reads the manifest;
+# the separate preflight then catches that copy as drift.
+SOURCE_OF_TRUTH="$WORK/source-of-truth"
+cp -R "$BASE" "$SOURCE_OF_TRUTH"
+printf '%s\n' "- \`src/other/**\`" >>"$SOURCE_OF_TRUTH/docs/canvas/demo.canvas.md"
+printf 'src/demo/app.py\n' >"$SOURCE_OF_TRUTH/changed-files.txt"
+assert_exit "changed-file guard reads canonical manifest before Canvas Markdown" 0 \
+  "$SCOPE_CHECK" --repo "$SOURCE_OF_TRUTH" --feature demo \
+    --changed-files "$SOURCE_OF_TRUTH/changed-files.txt"
+assert_output_contains "preflight independently detects copied Canvas drift" "duplicated scope path" \
+  "$SCOPE_CHECK" --repo "$SOURCE_OF_TRUTH" --feature demo --preflight
+
+# Missing: a plan path absent from the canonical manifest blocks before coding.
+MISSING="$WORK/missing"
+cp -R "$BASE" "$MISSING"
+printf '%s\n' "- Create: \`src/demo/app.py\`" "- Modify: \`CLAUDE.md\`" \
+  >"$MISSING/docs/plans/2026-07-29-demo.md"
+assert_output_contains "missing allowed path blocks preflight" "CLAUDE.md" \
+  "$SCOPE_CHECK" --repo "$MISSING" --feature demo --preflight
+
+# A quoted allowed path must not hide an additional unquoted planned path.
+PARTIAL_QUOTE="$WORK/partial-quote"
+cp -R "$BASE" "$PARTIAL_QUOTE"
+printf '%s\n' "- Modify: \`src/demo/app.py\`, src/outside.py" \
+  >"$PARTIAL_QUOTE/docs/plans/2026-07-29-demo.md"
+assert_output_contains "partially unquoted plan declaration is rejected" \
+  "outside backtick-wrapped paths" \
+  "$SCOPE_CHECK" --repo "$PARTIAL_QUOTE" --feature demo --preflight
+
+CONFLICTING_ACTIONS="$WORK/conflicting-actions"
+cp -R "$BASE" "$CONFLICTING_ACTIONS"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`src/demo/./app.py\`" \
+  >"$CONFLICTING_ACTIONS/docs/plans/2026-07-29-demo.md"
+assert_output_contains "one normalized path cannot carry conflicting plan actions" \
+  "conflicting actions Modify and Delete: src/demo/app.py" \
+  "$SCOPE_CHECK" --repo "$CONFLICTING_ACTIONS" --feature demo --preflight
+
+SYMLINK_SCOPE_ESCAPE="$WORK/symlink-scope-escape"
+cp -R "$BASE" "$SYMLINK_SCOPE_ESCAPE"
+printf 'outside scope\n' >"$SYMLINK_SCOPE_ESCAPE/secret.py"
+ln -s ../../secret.py "$SYMLINK_SCOPE_ESCAPE/src/demo/link.py"
+printf '%s\n' "- Modify: \`src/demo/link.py\`" \
+  >"$SYMLINK_SCOPE_ESCAPE/docs/plans/2026-07-29-demo.md"
+assert_output_contains "resolved planned symlink target must remain inside canonical scope" \
+  "planned file outside canonical scope: secret.py" \
+  "$SCOPE_CHECK" --repo "$SYMLINK_SCOPE_ESCAPE" --feature demo --preflight
+
+# Extra: Canvas must only reference the manifest. A copied scope bullet is a
+# second truth source and therefore deliberate drift, even if the path is valid.
+EXTRA="$WORK/extra"
+cp -R "$BASE" "$EXTRA"
+printf '%s\n' "- \`src/other/**\`" >>"$EXTRA/docs/canvas/demo.canvas.md"
+assert_output_contains "extra Canvas scope path is rejected as drift" "duplicated scope path" \
+  "$SCOPE_CHECK" --repo "$EXTRA" --feature demo --preflight
+
+# Contradictory: one path cannot be classified as both product and governance.
+CONTRADICTORY="$WORK/contradictory"
+cp -R "$BASE" "$CONTRADICTORY"
+python3 - "$CONTRADICTORY/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("src/demo/**")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "contradictory product/governance path is rejected" "overlap across product and governance" \
+  "$SCOPE_CHECK" --repo "$CONTRADICTORY" --feature demo --preflight
+
+# Different glob strings may still classify the same path twice.
+INTERSECTING="$WORK/intersecting"
+cp -R "$BASE" "$INTERSECTING"
+python3 - "$INTERSECTING/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("src/demo/private/**")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "intersecting product/governance globs are rejected" "src/demo/private/**" \
+  "$SCOPE_CHECK" --repo "$INTERSECTING" --feature demo --preflight
+
+# Intersection must be decided from both glob languages, not guessed witnesses.
+CRISS_CROSS="$WORK/criss-cross"
+cp -R "$BASE" "$CRISS_CROSS"
+python3 - "$CRISS_CROSS/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/*/foo"]
+data["scope"]["governance"] = ["src/bar/*"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "criss-cross glob intersection is rejected" "src/bar/*" \
+  "$SCOPE_CHECK" --repo "$CRISS_CROSS" --feature demo --preflight
+
+# Overlap validation must include _matches' directory-prefix shortcuts.
+DIRECTORY_PREFIX="$WORK/directory-prefix"
+cp -R "$BASE" "$DIRECTORY_PREFIX"
+python3 - "$DIRECTORY_PREFIX/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/demo/app.py"]
+data["scope"]["governance"].append("src/demo/")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "directory-prefix runtime overlap is rejected" "src/demo/" \
+  "$SCOPE_CHECK" --repo "$DIRECTORY_PREFIX" --feature demo --preflight
+
+DIRECTORY_ROOT="$WORK/directory-root"
+cp -R "$BASE" "$DIRECTORY_ROOT"
+python3 - "$DIRECTORY_ROOT/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/demo"]
+data["scope"]["governance"].append("src/demo/**")
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "directory-root runtime overlap is rejected" "src/demo/**" \
+  "$SCOPE_CHECK" --repo "$DIRECTORY_ROOT" --feature demo --preflight
+
+UNICODE_OVERLAP="$WORK/unicode-overlap"
+cp -R "$BASE" "$UNICODE_OVERLAP"
+python3 - "$UNICODE_OVERLAP/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/[! -~].py"]
+data["scope"]["governance"] = ["src/?.py"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "non-ASCII glob intersection is rejected" "src/?.py" \
+  "$SCOPE_CHECK" --repo "$UNICODE_OVERLAP" --feature demo --preflight
+
+LEADING_BRACKET_CLASS="$WORK/leading-bracket-class"
+cp -R "$BASE" "$LEADING_BRACKET_CLASS"
+python3 - "$LEADING_BRACKET_CLASS/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["src/[!]].py"]
+data["scope"]["governance"] = ["src/?.py"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "fnmatch class with leading closing bracket overlaps question glob" \
+  "src/?.py" \
+  "$SCOPE_CHECK" --repo "$LEADING_BRACKET_CLASS" --feature demo --preflight
+
+ROOT_GLOB="$WORK/root-glob"
+cp -R "$BASE" "$ROOT_GLOB"
+printf '%s\n' "- Create: \`root.py\`" >"$ROOT_GLOB/docs/plans/2026-07-29-demo.md"
+python3 - "$ROOT_GLOB/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["product"] = ["*.py"]
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_exit "clean root-level anchored glob remains valid manifest scope" 0 \
+  "$SCOPE_CHECK" --repo "$ROOT_GLOB" --feature demo --preflight
+
+# Every revision must retain complete decision provenance.
+NO_PROVENANCE="$WORK/no-provenance"
+cp -R "$BASE" "$NO_PROVENANCE"
+python3 - "$NO_PROVENANCE/docs/scope/demo.scope.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+del data["provenance"][0]["rationale"]
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+assert_output_contains "missing decision provenance fails closed" "rationale" \
+  "$SCOPE_CHECK" --repo "$NO_PROVENANCE" --feature demo --preflight
+
+# A confirmed change is written through the updater as one atomic manifest
+# replacement and records a new, digest-bound provenance revision.
+UPDATE="$WORK/update"
+cp -R "$BASE" "$UPDATE"
+printf '%s\n' "- Create: \`src/demo/app.py\`" "- Modify: \`CLAUDE.md\`" \
+  >"$UPDATE/docs/plans/2026-07-29-demo.md"
+assert_exit "confirmed scope update succeeds atomically" 0 \
+  "$SCOPE_UPDATE" --repo "$UPDATE" --feature demo \
+    --product-path 'src/demo/**' \
+    --governance-path 'CLAUDE.md' \
+    --governance-path 'docs/canvas/demo.canvas.md' \
+    --governance-path 'docs/plans/2026-07-29-demo.md' \
+    --governance-path 'docs/scope/demo.scope.json' \
+    --origin 'jira:PLUM-12' --decision-maker 'test-user' \
+    --decided-at '2026-07-29T21:00:00+00:00' \
+    --rationale 'User confirmed CLAUDE.md for the increment' --confirmed
+assert_exit "updated manifest and derived artifacts remain aligned" 0 \
+  "$SCOPE_CHECK" --repo "$UPDATE" --feature demo --preflight
+assert_eq "scope update appends provenance revision" "2" \
+  "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["provenance"]))' \
+    "$UPDATE/docs/scope/demo.scope.json")"
+
+# The same confirmed updater can revise the active plan and record provenance
+# in one validated operation, avoiding a deadlock caused by exact target checks.
+assert_exit "confirmed updater can add a newly approved planned file" 0 \
+  "$SCOPE_UPDATE" --repo "$UPDATE" --feature demo \
+    --product-path 'src/demo/**' \
+    --governance-path 'CLAUDE.md' \
+    --governance-path 'docs/canvas/demo.canvas.md' \
+    --governance-path 'docs/plans/2026-07-29-demo.md' \
+    --governance-path 'docs/scope/demo.scope.json' \
+    --planned-create 'src/demo/new.py' \
+    --origin 'jira:PLUM-12' --decision-maker 'test-user' \
+    --decided-at '2026-07-29T21:30:00+00:00' \
+    --rationale 'User confirmed the new implementation file' --confirmed
+assert_exit "joint plan/manifest revision remains aligned" 0 \
+  "$SCOPE_CHECK" --repo "$UPDATE" --feature demo --preflight
+assert_eq "plan repair records a provenance revision" "3" \
+  "$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["provenance"]))' \
+    "$UPDATE/docs/scope/demo.scope.json")"
+UPDATED_PLAN_TARGET_PASS="$(
+  CLAUDE_PROJECT_DIR="$UPDATE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Write","tool_input":{"file_path":"src/demo/new.py"}}
+EOF
+)"
+assert_eq "newly confirmed planned target passes the hook" "" "$UPDATED_PLAN_TARGET_PASS"
+
+assert_exit "confirmed updater can replace superseded plan declarations" 0 \
+  "$SCOPE_UPDATE" --repo "$UPDATE" --feature demo \
+    --product-path 'src/replacement/**' \
+    --governance-path 'CLAUDE.md' \
+    --governance-path 'docs/canvas/demo.canvas.md' \
+    --governance-path 'docs/plans/2026-07-29-demo.md' \
+    --governance-path 'docs/scope/demo.scope.json' \
+    --replace-plan-declarations \
+    --planned-create 'src/replacement/app.py' \
+    --planned-modify 'CLAUDE.md' \
+    --origin 'jira:PLUM-12' --decision-maker 'test-user' \
+    --decided-at '2026-07-29T22:00:00+00:00' \
+    --rationale 'User replaced the superseded implementation path' --confirmed
+assert_exit "replacement plan and narrowed manifest remain aligned" 0 \
+  "$SCOPE_CHECK" --repo "$UPDATE" --feature demo --preflight
+assert_not_contains "superseded declaration is removed from active plan" \
+  "$(cat "$UPDATE/docs/plans/2026-07-29-demo.md")" "src/demo/new.py"
+
+# Integration-real boundary: an active feature with a manifest is validated by
+# the PreToolUse hook before the first write-capable dispatch.
+HOOK_REPO="$WORK/hook"
+cp -R "$MISSING" "$HOOK_REPO"
+HOOK_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "pre-write hook denies a drifted plan" "$HOOK_DENY" '"decision":"deny"'
+assert_contains "pre-write hook names the out-of-scope planned path" "$HOOK_DENY" "CLAUDE.md"
+
+BASH_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"python3 build.py"}}
+EOF
+)"
+assert_contains "Bash write path runs the pre-write scope gate" "$BASH_DENY" '"decision":"deny"'
+
+ALIGNED_BASH_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"printf x > src/demo/unplanned.py"}}
+EOF
+)"
+assert_contains "opaque Bash writes fail closed even when artifacts are aligned" \
+  "$ALIGNED_BASH_DENY" '"decision":"deny"'
+assert_contains "Bash denial explains exact target proof requirement" \
+  "$ALIGNED_BASH_DENY" "not declared as a confirmed Test"
+
+mkdir -p "$BASE/config/claude/tests"
+TEST_AUTHORITY_HOME="$WORK/test-authority-home"
+mkdir -p "$TEST_AUTHORITY_HOME/hooks"
+printf '%s\n' 'trusted authority' \
+  >"$TEST_AUTHORITY_HOME/hooks/pretool-scope-gate.sh"
+# shellcheck disable=SC2016  # fixture must expand CLAUDE_HOME only when executed
+printf '%s\n' '#!/usr/bin/env bash' \
+  'printf compromised > "$CLAUDE_HOME/hooks/pretool-scope-gate.sh"' \
+  >"$BASE/config/claude/tests/test_demo.sh"
+chmod +x "$BASE/config/claude/tests/test_demo.sh"
+TRACKED_TEST_DENY="$(
+  CLAUDE_HOME="$TEST_AUTHORITY_HOME" CLAUDE_PROJECT_DIR="$BASE" \
+    "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"bash config/claude/tests/test_demo.sh"}}
+EOF
+)"
+assert_contains "project Test command cannot execute against same-user gate authority" \
+  "$TRACKED_TEST_DENY" '"decision":"deny"'
+assert_contains "Test denial explains the required disarm boundary" \
+  "$TRACKED_TEST_DENY" "Disarm the active feature marker"
+assert "denied project Test never rewrites installed gate authority" \
+  "grep -Fxq 'trusted authority' '$TEST_AUTHORITY_HOME/hooks/pretool-scope-gate.sh'"
+
+MARKER_CLEANUP_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/context/.active-feature"}}
+EOF
+)"
+assert_eq "exact active-feature cleanup command remains available" \
+  "" "$MARKER_CLEANUP_PASS"
+
+PLANNED_DELETE_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f src/demo/old.py"}}
+EOF
+)"
+assert_eq "exact confirmed Delete target remains executable" \
+  "" "$PLANNED_DELETE_PASS"
+
+UNPLANNED_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f src/demo/unplanned.py"}}
+EOF
+)"
+assert_contains "undeclared deletion target is denied" \
+  "$UNPLANNED_DELETE_DENY" '"decision":"deny"'
+
+SCOPE_REPAIR_PASS="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "direct atomic scope updater remains available as repair path" \
+  "" "$SCOPE_REPAIR_PASS"
+
+UNTRUSTED_UPDATER="$WORK/plumbline-scope-update"
+printf '%s\n' '#!/usr/bin/env bash' 'printf bypass' >"$UNTRUSTED_UPDATER"
+chmod +x "$UNTRUSTED_UPDATER"
+UNTRUSTED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$UNTRUSTED_UPDATER --confirmed"}}
+EOF
+)"
+assert_contains "untrusted same-named updater cannot bypass preflight" \
+  "$UNTRUSTED_REPAIR_DENY" '"decision":"deny"'
+
+PATH_REPAIR_PASS="$(
+  PATH="$(dirname "$SCOPE_UPDATE"):$PATH" \
+    CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "trusted updater installed on PATH remains available as repair path" \
+  "" "$PATH_REPAIR_PASS"
+
+UNTRUSTED_PATH_REPAIR_DENY="$(
+  PATH="$WORK:$PATH" CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"plumbline-scope-update --confirmed"}}
+EOF
+)"
+assert_contains "untrusted same-named updater found on PATH cannot bypass preflight" \
+  "$UNTRUSTED_PATH_REPAIR_DENY" '"decision":"deny"'
+
+INACTIVE_FEATURE_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature inactive --confirmed"}}
+EOF
+)"
+assert_contains "trusted updater cannot repair a feature other than the active one" \
+  "$INACTIVE_FEATURE_REPAIR_DENY" '"decision":"deny"'
+
+EXPANDED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo {--repo=/other/repo,--feature=inactive} --confirmed"}}
+EOF
+)"
+assert_contains "shell expansion syntax cannot alter validated updater arguments" \
+  "$EXPANDED_REPAIR_DENY" '"decision":"deny"'
+
+ABBREVIATED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --fea inactive --confirmed"}}
+EOF
+)"
+assert_contains "abbreviated updater options cannot override active feature" \
+  "$ABBREVIATED_REPAIR_DENY" '"decision":"deny"'
+
+MUTABLE_UPDATER="$WORK/mutable-updater"
+cp -R "$BASE" "$MUTABLE_UPDATER"
+mkdir -p "$MUTABLE_UPDATER/config/claude/bin" "$MUTABLE_UPDATER/config/claude/lib"
+cp "$SCOPE_UPDATE" "$MUTABLE_UPDATER/config/claude/bin/plumbline-scope-update"
+cp "$REPO_DIR/config/claude/lib/plumbline_python.sh" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope.py" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope_update.py" \
+  "$MUTABLE_UPDATER/config/claude/lib/"
+git -C "$MUTABLE_UPDATER" init -q
+git -C "$MUTABLE_UPDATER" add config/claude/bin config/claude/lib
+git -C "$MUTABLE_UPDATER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+printf '\n# mutated after confirmation\n' \
+  >>"$MUTABLE_UPDATER/config/claude/lib/plumbline_scope_update.py"
+MUTABLE_UPDATER_DENY="$(
+  CLAUDE_PROJECT_DIR="$MUTABLE_UPDATER" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$MUTABLE_UPDATER/config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "mutable repository updater runtime cannot receive repair exemption" \
+  "$MUTABLE_UPDATER_DENY" '"decision":"deny"'
+
+CLEAN_MALICIOUS_UPDATER="$WORK/clean-malicious-updater"
+cp -R "$MISSING" "$CLEAN_MALICIOUS_UPDATER"
+mkdir -p "$CLEAN_MALICIOUS_UPDATER/config/claude/bin"
+printf '%s\n' '#!/usr/bin/env bash' 'touch repository-updater-ran' 'exit 0' \
+  >"$CLEAN_MALICIOUS_UPDATER/config/claude/bin/plumbline-scope-update"
+chmod +x "$CLEAN_MALICIOUS_UPDATER/config/claude/bin/plumbline-scope-update"
+git -C "$CLEAN_MALICIOUS_UPDATER" init -q
+git -C "$CLEAN_MALICIOUS_UPDATER" add .
+git -C "$CLEAN_MALICIOUS_UPDATER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+CLEAN_MALICIOUS_UPDATER_DENY="$(
+  CLAUDE_PROJECT_DIR="$CLEAN_MALICIOUS_UPDATER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "foreign repository cannot authenticate its committed updater" \
+  "$CLEAN_MALICIOUS_UPDATER_DENY" '"decision":"deny"'
+assert "foreign repository updater is never executed" \
+  "test ! -e '$CLEAN_MALICIOUS_UPDATER/repository-updater-ran'"
+
+SYMLINKED_UPDATER="$WORK/symlinked-updater"
+cp -R "$HOOK_REPO" "$SYMLINKED_UPDATER"
+mkdir -p "$SYMLINKED_UPDATER/config/claude/bin"
+ln -sf /bin/true \
+  "$SYMLINKED_UPDATER/config/claude/bin/plumbline-scope-update"
+SYMLINKED_UPDATER_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINKED_UPDATER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "repository-owned updater symlink cannot launder external authority" \
+  "$SYMLINKED_UPDATER_DENY" '"decision":"deny"'
+
+OUTSIDE_UPDATER_TARGET="$WORK/outside-updater-target"
+cp -R "$MISSING" "$OUTSIDE_UPDATER_TARGET"
+mkdir -p "$OUTSIDE_UPDATER_TARGET/config/claude/bin" "$WORK/outside-updater-bin"
+printf '%s\n' '#!/usr/bin/env bash' 'touch updater-ran' 'exit 0' \
+  >"$OUTSIDE_UPDATER_TARGET/config/claude/bin/plumbline-scope-update"
+chmod +x "$OUTSIDE_UPDATER_TARGET/config/claude/bin/plumbline-scope-update"
+ln -s "$OUTSIDE_UPDATER_TARGET/config/claude/bin/plumbline-scope-update" \
+  "$WORK/outside-updater-bin/plumbline-scope-update"
+OUTSIDE_UPDATER_TARGET_DENY="$(
+  PLUMBLINE_BIN_DIR="$WORK/outside-updater-bin" \
+    CLAUDE_PROJECT_DIR="$OUTSIDE_UPDATER_TARGET" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$WORK/outside-updater-bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "outside updater symlink into governed repository is not trusted" \
+  "$OUTSIDE_UPDATER_TARGET_DENY" '"decision":"deny"'
+assert "outside updater symlink target is never executed" \
+  "test ! -e '$OUTSIDE_UPDATER_TARGET/updater-ran'"
+
+ALTERNATE_UPDATER="$WORK/alternate-updater"
+cp -R "$BASE" "$ALTERNATE_UPDATER"
+mkdir -p "$ALTERNATE_UPDATER/tools"
+cp "$SCOPE_UPDATE" "$ALTERNATE_UPDATER/tools/plumbline-scope-update"
+chmod +x "$ALTERNATE_UPDATER/tools/plumbline-scope-update"
+ALTERNATE_UPDATER_DENY="$(
+  PLUMBLINE_BIN_DIR="$ALTERNATE_UPDATER/tools" \
+    CLAUDE_PROJECT_DIR="$ALTERNATE_UPDATER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"tools/plumbline-scope-update --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_contains "noncanonical project updater cannot receive repair exemption" \
+  "$ALTERNATE_UPDATER_DENY" '"decision":"deny"'
+
+CHAINED_REPAIR_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
+EOF
+)"
+assert_contains "chained scope-updater command cannot bypass the gate" \
+  "$CHAINED_REPAIR_DENY" '"decision":"deny"'
+
+MULTILINE_SCHEMA="$WORK/multiline-schema"
+cp -R "$MISSING" "$MULTILINE_SCHEMA"
+python3 - "$MULTILINE_SCHEMA/docs/scope/demo.scope.json" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(
+    path.read_text(encoding="utf-8").replace('"schema_version": 1', '"schema_version":\n  1'),
+    encoding="utf-8",
+)
+PY
+MULTILINE_DENY="$(
+  CLAUDE_PROJECT_DIR="$MULTILINE_SCHEMA" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "multiline schema_version still activates the pre-write gate" \
+  "$MULTILINE_DENY" '"decision":"deny"'
+
+ESCAPED_SCHEMA="$WORK/escaped-schema"
+cp -R "$MISSING" "$ESCAPED_SCHEMA"
+python3 - "$ESCAPED_SCHEMA/docs/scope/demo.scope.json" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(
+    path.read_text(encoding="utf-8").replace(
+        '"schema_version"', '"schema\\u005fversion"'
+    ),
+    encoding="utf-8",
+)
+PY
+ESCAPED_SCHEMA_DENY="$(
+  CLAUDE_PROJECT_DIR="$ESCAPED_SCHEMA" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "escaped canonical JSON key still activates the gate" \
+  "$ESCAPED_SCHEMA_DENY" '"decision":"deny"'
+
+MISSING_MANIFEST="$WORK/missing-manifest"
+cp -R "$BASE" "$MISSING_MANIFEST"
+mv "$MISSING_MANIFEST/docs/scope/demo.scope.json" \
+  "$MISSING_MANIFEST/docs/scope/demo.scope.json.removed"
+MISSING_MANIFEST_DENY="$(
+  CLAUDE_PROJECT_DIR="$MISSING_MANIFEST" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "referenced missing manifest fails closed before writes" \
+  "$MISSING_MANIFEST_DENY" '"decision":"deny"'
+assert_contains "missing-manifest denial is actionable" \
+  "$MISSING_MANIFEST_DENY" "missing canonical scope manifest"
+
+MISSING_MANIFEST_REPAIR="$(
+  CLAUDE_PROJECT_DIR="$MISSING_MANIFEST" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "scope updater can create a newly referenced missing manifest" \
+  "" "$MISSING_MANIFEST_REPAIR"
+
+HOOK_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_eq "pre-write hook passes an aligned plan without output" "" "$HOOK_PASS"
+
+UNPLANNED_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/unplanned.py"}}
+EOF
+)"
+assert_contains "explicit write target absent from plan is denied before dispatch" \
+  "$UNPLANNED_WRITE_DENY" '"decision":"deny"'
+assert_contains "unplanned write denial names the concrete target" \
+  "$UNPLANNED_WRITE_DENY" "src/demo/unplanned.py"
+assert "foreign-repository fixture is blocked before its first write" \
+  "test ! -e '$BASE/src/demo/unplanned.py'"
+
+ABSOLUTE_WRITE_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Write","tool_input":{"file_path":"$BASE/src/demo/app.py"}}
+EOF
+)"
+assert_eq "absolute in-repository target matching the plan is accepted" \
+  "" "$ABSOLUTE_WRITE_PASS"
+
+MANIFEST_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "direct manifest writes are reserved for confirmed updater" \
+  "$MANIFEST_WRITE_DENY" '"decision":"deny"'
+
+PLAN_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/plans/2026-07-29-demo.md"}}
+EOF
+)"
+assert_contains "direct active-plan writes are reserved for confirmed updater" \
+  "$PLAN_WRITE_DENY" '"decision":"deny"'
+
+NORMALIZED_PLAN_CONTROL="$WORK/normalized-plan-control"
+cp -R "$BASE" "$NORMALIZED_PLAN_CONTROL"
+python3 - "$NORMALIZED_PLAN_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["artifacts"]["plan"] = "docs/plans/./2026-07-29-demo.md"
+data["scope"]["governance"] = [
+    "docs/plans/**" if item == "docs/plans/2026-07-29-demo.md" else item
+    for item in data["scope"]["governance"]
+]
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+NORMALIZED_PLAN_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$NORMALIZED_PLAN_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/plans/2026-07-29-demo.md"}}
+EOF
+)"
+assert_contains "normalized active-plan spelling remains a reserved control path" \
+  "$NORMALIZED_PLAN_WRITE_DENY" '"decision":"deny"'
+
+CONTROL_DELETE="$WORK/control-delete"
+cp -R "$BASE" "$CONTROL_DELETE"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/scope/demo.scope.json\`" \
+  >"$CONTROL_DELETE/docs/plans/2026-07-29-demo.md"
+CONTROL_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$CONTROL_DELETE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "canonical manifest cannot be deleted through Delete declaration" \
+  "$CONTROL_DELETE_DENY" '"decision":"deny"'
+
+NORMALIZED_CONTROL_DELETE="$WORK/normalized-control-delete"
+cp -R "$BASE" "$NORMALIZED_CONTROL_DELETE"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/scope/./demo.scope.json\`" \
+  >"$NORMALIZED_CONTROL_DELETE/docs/plans/2026-07-29-demo.md"
+NORMALIZED_CONTROL_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$NORMALIZED_CONTROL_DELETE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/./demo.scope.json"}}
+EOF
+)"
+assert_contains "normalized manifest spelling cannot bypass deletion reservation" \
+  "$NORMALIZED_CONTROL_DELETE_DENY" '"decision":"deny"'
+
+SYMLINK_MANIFEST_WRITE="$WORK/symlink-manifest-write"
+cp -R "$BASE" "$SYMLINK_MANIFEST_WRITE"
+mv "$SYMLINK_MANIFEST_WRITE/docs/scope/demo.scope.json" \
+  "$SYMLINK_MANIFEST_WRITE/docs/scope/resolved-demo.scope.json"
+ln -s resolved-demo.scope.json \
+  "$SYMLINK_MANIFEST_WRITE/docs/scope/demo.scope.json"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`docs/scope/demo.scope.json\`" \
+  >"$SYMLINK_MANIFEST_WRITE/docs/plans/2026-07-29-demo.md"
+SYMLINK_MANIFEST_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_MANIFEST_WRITE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "resolved symlink manifest remains a reserved write target" \
+  "$SYMLINK_MANIFEST_WRITE_DENY" '"decision":"deny"'
+
+SYMLINK_MANIFEST_DELETE="$WORK/symlink-manifest-delete"
+cp -R "$BASE" "$SYMLINK_MANIFEST_DELETE"
+mv "$SYMLINK_MANIFEST_DELETE/docs/scope/demo.scope.json" \
+  "$SYMLINK_MANIFEST_DELETE/docs/scope/resolved-demo.scope.json"
+ln -s resolved-demo.scope.json \
+  "$SYMLINK_MANIFEST_DELETE/docs/scope/demo.scope.json"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/scope/demo.scope.json\`" \
+  >"$SYMLINK_MANIFEST_DELETE/docs/plans/2026-07-29-demo.md"
+SYMLINK_MANIFEST_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_MANIFEST_DELETE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/demo.scope.json"}}
+EOF
+)"
+assert_contains "resolved symlink manifest remains a reserved deletion target" \
+  "$SYMLINK_MANIFEST_DELETE_DENY" '"decision":"deny"'
+
+DELETE_ONLY_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/old.py"}}
+EOF
+)"
+assert_contains "Delete-only target cannot be modified through Edit" \
+  "$DELETE_ONLY_WRITE_DENY" '"decision":"deny"'
+
+MARKER_CONTROL="$WORK/marker-control"
+cp -R "$BASE" "$MARKER_CONTROL"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`docs/context/.active-feature\`" \
+  >"$MARKER_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$MARKER_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("docs/context/.active-feature")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+MARKER_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$MARKER_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/context/.active-feature"}}
+EOF
+)"
+assert_contains "active-feature marker is reserved from direct writes" \
+  "$MARKER_WRITE_DENY" '"decision":"deny"'
+
+SYMLINK_MARKER_CONTROL="$WORK/symlink-marker-control"
+cp -R "$BASE" "$SYMLINK_MARKER_CONTROL"
+mv "$SYMLINK_MARKER_CONTROL/docs/context/.active-feature" \
+  "$SYMLINK_MARKER_CONTROL/docs/context/active-feature-target"
+ln -s active-feature-target \
+  "$SYMLINK_MARKER_CONTROL/docs/context/.active-feature"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`docs/context/active-feature-target\`" \
+  >"$SYMLINK_MARKER_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$SYMLINK_MARKER_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("docs/context/active-feature-target")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+SYMLINK_MARKER_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_MARKER_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"docs/context/.active-feature"}}
+EOF
+)"
+assert_contains "resolved active-feature marker target remains reserved" \
+  "$SYMLINK_MARKER_WRITE_DENY" '"decision":"deny"'
+
+CANVAS_DELETE_CONTROL="$WORK/canvas-delete-control"
+cp -R "$BASE" "$CANVAS_DELETE_CONTROL"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Delete: \`docs/canvas/demo.canvas.md\`" \
+  >"$CANVAS_DELETE_CONTROL/docs/plans/2026-07-29-demo.md"
+CANVAS_DELETE_DENY="$(
+  CLAUDE_PROJECT_DIR="$CANVAS_DELETE_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Bash","tool_input":{"command":"rm -f docs/canvas/demo.canvas.md"}}
+EOF
+)"
+assert_contains "active Canvas is reserved from deletion" \
+  "$CANVAS_DELETE_DENY" '"decision":"deny"'
+
+STOP_HOOK_CONTROL="$WORK/stop-hook-control"
+cp -R "$BASE" "$STOP_HOOK_CONTROL"
+mkdir -p "$STOP_HOOK_CONTROL/config/claude/hooks"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$STOP_HOOK_CONTROL/config/claude/hooks/plumbline-enforce.sh"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`config/claude/hooks/plumbline-enforce.sh\`" \
+  >"$STOP_HOOK_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$STOP_HOOK_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("config/claude/hooks/plumbline-enforce.sh")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+STOP_HOOK_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$STOP_HOOK_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"config/claude/hooks/plumbline-enforce.sh"}}
+EOF
+)"
+assert_contains "registered Stop hook source is reserved from planned writes" \
+  "$STOP_HOOK_WRITE_DENY" '"decision":"deny"'
+
+SYMLINK_STOP_HOOK_CONTROL="$WORK/symlink-stop-hook-control"
+cp -R "$BASE" "$SYMLINK_STOP_HOOK_CONTROL"
+mkdir -p "$SYMLINK_STOP_HOOK_CONTROL/config/claude/hooks"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$SYMLINK_STOP_HOOK_CONTROL/config/claude/hooks/active-enforce.sh"
+ln -s active-enforce.sh \
+  "$SYMLINK_STOP_HOOK_CONTROL/config/claude/hooks/plumbline-enforce.sh"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`config/claude/hooks/active-enforce.sh\`" \
+  >"$SYMLINK_STOP_HOOK_CONTROL/docs/plans/2026-07-29-demo.md"
+python3 - "$SYMLINK_STOP_HOOK_CONTROL/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("config/claude/hooks/active-enforce.sh")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+SYMLINK_STOP_HOOK_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINK_STOP_HOOK_CONTROL" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"config/claude/hooks/plumbline-enforce.sh"}}
+EOF
+)"
+assert_contains "resolved registered Stop hook target remains reserved" \
+  "$SYMLINK_STOP_HOOK_WRITE_DENY" '"decision":"deny"'
+
+MUTABLE_CHECKER="$WORK/mutable-checker"
+cp -R "$MISSING" "$MUTABLE_CHECKER"
+mkdir -p "$MUTABLE_CHECKER/config/claude/bin" "$MUTABLE_CHECKER/config/claude/lib"
+cp "$SCOPE_CHECK" "$MUTABLE_CHECKER/config/claude/bin/plumbline-scope-check"
+cp "$REPO_DIR/config/claude/lib/plumbline_python.sh" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope.py" \
+  "$MUTABLE_CHECKER/config/claude/lib/"
+git -C "$MUTABLE_CHECKER" init -q
+git -C "$MUTABLE_CHECKER" add config/claude/bin config/claude/lib
+git -C "$MUTABLE_CHECKER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$MUTABLE_CHECKER/config/claude/bin/plumbline-scope-check"
+chmod +x "$MUTABLE_CHECKER/config/claude/bin/plumbline-scope-check"
+MUTABLE_CHECKER_DENY="$(
+  CLAUDE_PROJECT_DIR="$MUTABLE_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "modified project checker is skipped and immutable checker catches drift" \
+  "$MUTABLE_CHECKER_DENY" '"decision":"deny"'
+
+CLEAN_MALICIOUS_CHECKER="$WORK/clean-malicious-checker"
+cp -R "$MISSING" "$CLEAN_MALICIOUS_CHECKER"
+mkdir -p "$CLEAN_MALICIOUS_CHECKER/config/claude/bin" \
+  "$CLEAN_MALICIOUS_CHECKER/config/claude/lib"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$CLEAN_MALICIOUS_CHECKER/config/claude/bin/plumbline-scope-check"
+printf '%s\n' '# foreign controlled runtime' \
+  >"$CLEAN_MALICIOUS_CHECKER/config/claude/lib/plumbline_scope.py"
+printf '%s\n' '# foreign controlled launcher' \
+  >"$CLEAN_MALICIOUS_CHECKER/config/claude/lib/plumbline_python.sh"
+chmod +x "$CLEAN_MALICIOUS_CHECKER/config/claude/bin/plumbline-scope-check"
+git -C "$CLEAN_MALICIOUS_CHECKER" init -q
+git -C "$CLEAN_MALICIOUS_CHECKER" add .
+git -C "$CLEAN_MALICIOUS_CHECKER" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+CLEAN_MALICIOUS_CHECKER_DENY="$(
+  CLAUDE_PROJECT_DIR="$CLEAN_MALICIOUS_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "foreign repository committed checker is skipped for installed authority" \
+  "$CLEAN_MALICIOUS_CHECKER_DENY" '"decision":"deny"'
+
+SYMLINKED_CHECKER="$WORK/symlinked-checker"
+cp -R "$HOOK_REPO" "$SYMLINKED_CHECKER"
+mkdir -p "$SYMLINKED_CHECKER/config/claude/bin"
+ln -sf /bin/true \
+  "$SYMLINKED_CHECKER/config/claude/bin/plumbline-scope-check"
+SYMLINKED_CHECKER_DENY="$(
+  CLAUDE_PROJECT_DIR="$SYMLINKED_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "repository-owned checker symlink cannot launder external authority" \
+  "$SYMLINKED_CHECKER_DENY" '"decision":"deny"'
+
+ALTERNATE_CHECKER="$WORK/alternate-checker"
+cp -R "$MISSING" "$ALTERNATE_CHECKER"
+mkdir -p "$ALTERNATE_CHECKER/tools"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$ALTERNATE_CHECKER/tools/plumbline-scope-check"
+chmod +x "$ALTERNATE_CHECKER/tools/plumbline-scope-check"
+ALTERNATE_CHECKER_DENY="$(
+  PLUMBLINE_BIN_DIR="$ALTERNATE_CHECKER/tools" \
+    CLAUDE_PROJECT_DIR="$ALTERNATE_CHECKER" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_contains "noncanonical project checker is skipped in favor of immutable authority" \
+  "$ALTERNATE_CHECKER_DENY" '"decision":"deny"'
+
+# A confirmed checker-runtime change remains implementable, but only while an
+# immutable checker outside the writable project authorizes the exact planned
+# target. This prevents the protection from making its own maintenance
+# impossible.
+CHECKER_MAINTENANCE="$WORK/checker-maintenance"
+cp -R "$BASE" "$CHECKER_MAINTENANCE"
+mkdir -p "$CHECKER_MAINTENANCE/config/claude/bin" \
+  "$CHECKER_MAINTENANCE/config/claude/lib"
+cp "$SCOPE_CHECK" \
+  "$CHECKER_MAINTENANCE/config/claude/bin/plumbline-scope-check"
+cp "$REPO_DIR/config/claude/lib/plumbline_python.sh" \
+  "$REPO_DIR/config/claude/lib/plumbline_scope.py" \
+  "$CHECKER_MAINTENANCE/config/claude/lib/"
+printf '%s\n' \
+  "- Modify: \`src/demo/app.py\`" \
+  "- Modify: \`config/claude/lib/plumbline_scope.py\`" \
+  >"$CHECKER_MAINTENANCE/docs/plans/2026-07-29-demo.md"
+python3 - "$CHECKER_MAINTENANCE/docs/scope/demo.scope.json" <<'PY'
+import hashlib, json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+data["scope"]["governance"].append("config/claude/lib/plumbline_scope.py")
+data["provenance"][-1]["scope"] = data["scope"]
+payload = json.dumps(data["scope"], sort_keys=True, separators=(",", ":")).encode()
+data["provenance"][-1]["scope_digest"] = "sha256:" + hashlib.sha256(payload).hexdigest()
+json.dump(data, open(path, "w", encoding="utf-8"), indent=2)
+PY
+git -C "$CHECKER_MAINTENANCE" init -q
+git -C "$CHECKER_MAINTENANCE" add .
+git -C "$CHECKER_MAINTENANCE" \
+  -c user.name=test -c user.email=test@example.invalid commit -qm fixture
+CHECKER_MAINTENANCE_PASS="$(
+  CLAUDE_PROJECT_DIR="$CHECKER_MAINTENANCE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"config/claude/lib/plumbline_scope.py"}}
+EOF
+)"
+assert_eq "immutable external checker authorizes exact planned runtime maintenance" \
+  "" "$CHECKER_MAINTENANCE_PASS"
+
+NOTEBOOK_WRITE_PASS="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"NotebookEdit","tool_input":{"notebook_path":"src/demo/app.py"}}
+EOF
+)"
+assert_eq "NotebookEdit reads notebook_path and accepts a planned target" \
+  "" "$NOTEBOOK_WRITE_PASS"
+
+OUTSIDE_WRITE_DENY="$(
+  CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Edit","tool_input":{"file_path":"$WORK/outside.py"}}
+EOF
+)"
+assert_contains "write target outside the repository is denied" \
+  "$OUTSIDE_WRITE_DENY" '"decision":"deny"'
+
+AGENT_DENY="$(
+  CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Agent","tool_input":{"subagent_type":"backend-developer"}}
+EOF
+)"
+assert_contains "Agent implementation dispatch runs the scope preflight" \
+  "$AGENT_DENY" '"decision":"deny"'
+
+# PLUM-10 owns migration of the old JSON shape. Its presence must not
+# unexpectedly activate PLUM-12's stricter runtime contract.
+LEGACY_HOOK="$WORK/legacy-hook"
+mkdir -p "$LEGACY_HOOK/docs/context" "$LEGACY_HOOK/docs/scope"
+printf 'demo\n' >"$LEGACY_HOOK/docs/context/.active-feature"
+printf '{"feature":"demo","allowed_change_scope":["src/demo/**"]}\n' \
+  >"$LEGACY_HOOK/docs/scope/demo.scope.json"
+LEGACY_PASS="$(
+  CLAUDE_PROJECT_DIR="$LEGACY_HOOK" "$PRETOOL_SCOPE" <<'EOF'
+{"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
+EOF
+)"
+assert_eq "legacy JSON scope remains outside PLUM-12 pre-write contract" "" "$LEGACY_PASS"
+
+# The install path is the runtime boundary: registration is idempotent and does
+# not repurpose the intentionally inert historical prototype.
+INSTALL_HOME="$WORK/install-home"
+CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
+  --no-agents --no-commands --no-skills --no-bin >/dev/null
+assert_eq "installer registers canonical scope preflight exactly once" "1" \
+  "$(jq '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
+    "$INSTALL_HOME/settings.json")"
+assert_eq "installer registers the scope gate for Bash writes" "1" \
+  "$(jq '[.hooks.PreToolUse[]? | select(.matcher | split("|") | index("Bash")) | .hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
+    "$INSTALL_HOME/settings.json")"
+assert_eq "installer registers the scope gate for Agent dispatches" "1" \
+  "$(jq '[.hooks.PreToolUse[]? | select(.matcher | split("|") | index("Agent")) | .hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
+    "$INSTALL_HOME/settings.json")"
+CLAUDE_HOME="$INSTALL_HOME" bash "$REPO_DIR/config/claude/install.sh" \
+  --no-agents --no-commands --no-skills --no-bin >/dev/null
+assert_eq "scope preflight registration is idempotent" "1" \
+  "$(jq '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))] | length' \
+    "$INSTALL_HOME/settings.json")"
+assert "installer materializes the scope gate outside the governed checkout" \
+  "test -f '$INSTALL_HOME/hooks/pretool-scope-gate.sh' && test ! -L '$INSTALL_HOME/hooks/pretool-scope-gate.sh'"
+assert_contains "settings execute the independent installed scope gate" \
+  "$(jq -r '[.hooks.PreToolUse[]?.hooks[]?.command? // "" | select(test("pretool-scope-gate\\.sh"))][0]' \
+    "$INSTALL_HOME/settings.json")" \
+  "$INSTALL_HOME/hooks/pretool-scope-gate.sh"
+
+# Default installs keep most files live through symlinks, but the scope
+# checker/updater and their loaded runtime are independent copied authority.
+AUTH_HOME="$WORK/authority-home"
+CLAUDE_HOME="$AUTH_HOME" bash "$REPO_DIR/config/claude/install.sh" \
+  --no-agents --no-commands --no-skills --no-hook >/dev/null
+for authority_path in \
+  bin/plumbline-scope-check \
+  bin/plumbline-scope-update \
+  lib/plumbline_cli.py \
+  lib/plumbline_python.sh \
+  lib/plumbline_scope.py \
+  lib/plumbline_scope_update.py
+do
+  assert "default install materializes independent scope authority: $authority_path" \
+    "test -f '$AUTH_HOME/$authority_path' && test ! -L '$AUTH_HOME/$authority_path'"
+done
+assert_exit "installed copied checker loads only the materialized scope runtime" 0 \
+  "$AUTH_HOME/bin/plumbline-scope-check" --help
+INSTALLED_REPAIR_PASS="$(
+  CLAUDE_HOME="$AUTH_HOME" CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<EOF
+{"tool_name":"Bash","tool_input":{"command":"$AUTH_HOME/bin/plumbline-scope-update --repo $BASE --feature demo --confirmed"}}
+EOF
+)"
+assert_eq "default installed updater remains an authenticated repair path" \
+  "" "$INSTALLED_REPAIR_PASS"
+
+# An --update must convert authority symlinks created by older versions even
+# when the global/default install mode remains symlink.
+UPGRADE_HOME="$WORK/upgrade-home"
+mkdir -p "$UPGRADE_HOME/bin" "$UPGRADE_HOME/lib"
+for authority_path in \
+  bin/plumbline-scope-check \
+  bin/plumbline-scope-update \
+  lib/plumbline_cli.py \
+  lib/plumbline_python.sh \
+  lib/plumbline_scope.py \
+  lib/plumbline_scope_update.py
+do
+  ln -s "$REPO_DIR/config/claude/${authority_path}" "$UPGRADE_HOME/$authority_path"
+done
+CLAUDE_HOME="$UPGRADE_HOME" bash "$REPO_DIR/config/claude/install.sh" --update \
+  --no-agents --no-commands --no-skills --no-hook >/dev/null
+for authority_path in \
+  bin/plumbline-scope-check \
+  bin/plumbline-scope-update \
+  lib/plumbline_cli.py \
+  lib/plumbline_python.sh \
+  lib/plumbline_scope.py \
+  lib/plumbline_scope_update.py
+do
+  assert "update converts legacy authority symlink to copy: $authority_path" \
+    "test -f '$UPGRADE_HOME/$authority_path' && test ! -L '$UPGRADE_HOME/$authority_path'"
+done
+rm -rf "$WORK"
 SCOPE_BIN="$REPO_DIR/config/claude/bin/plumbline-scope-check"
 
 WORK="$(mktemp -d)"
@@ -332,5 +1472,4 @@ EOF
 run_scope "$repo" legacysource src/feature/app.py
 assert_contains "legacy canvas: pass names the canvas source" \
   "$SCOPE_OUT" "source=canvas"
-
 finish "test_scope_manifest"

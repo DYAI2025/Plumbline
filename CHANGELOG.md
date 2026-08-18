@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.24.0](https://github.com/DYAI2025/Plumbline/compare/v0.23.2...v0.24.0) (2026-08-18)
+
+
+### Features
+
+* **pril:** remote-ref probe + measurement-slice rules moved to load-on-demand skill ([6b8c7d6](https://github.com/DYAI2025/Plumbline/commit/6b8c7d604a10cdf2d77ea863319cd0eca1d5fde6))
+* **pril:** remote-ref probe, validated in isolation ([c2c2161](https://github.com/DYAI2025/Plumbline/commit/c2c2161c2fbb3789eb7c5a7bb7baca724c7bc6b3))
+
+
+### Bug Fixes
+
+* **install:** close the layer-root escape and the stop-hook repoint gap ([3e7d641](https://github.com/DYAI2025/Plumbline/commit/3e7d64188a2cc76d0096587ef2c929e81bf4b09a))
+* **install:** materialize independent scope authority ([3a62f8e](https://github.com/DYAI2025/Plumbline/commit/3a62f8ebb85406c9c2aaf335be2e8ffb60985879))
+* **install:** repoint ALL layers, verify hook provenance, signal partial failure ([322d873](https://github.com/DYAI2025/Plumbline/commit/322d873a1ef143242748c1f52c36f0420d129543))
+* **install:** stop the escape guard from breaking legacy and sandbox layouts ([01ae27c](https://github.com/DYAI2025/Plumbline/commit/01ae27c20136e2954c9a6d7253c49830e4a35e7b))
+* **PLUM-12:** close remaining scope authority gaps ([16cc746](https://github.com/DYAI2025/Plumbline/commit/16cc746458831aa726ffe75c0ee24c93c31dc457))
+* **PLUM-12:** install all blocking checkers independently ([42320c3](https://github.com/DYAI2025/Plumbline/commit/42320c320e0827d02d777866aab3dcbf7dab91b0))
+* **PLUM-12:** isolate enforcement from project code ([cc9dd1f](https://github.com/DYAI2025/Plumbline/commit/cc9dd1f02755e0058f3c8a4021d6f7f9946bbf82))
+* preserve installer regression fixtures ([b44fac0](https://github.com/DYAI2025/Plumbline/commit/b44fac06b5511ce6fd3a82fe62edfa1468c94fe8))
+* **pril:** close the three trust-boundary defects that blocked PR [#103](https://github.com/DYAI2025/Plumbline/issues/103) ([88555f9](https://github.com/DYAI2025/Plumbline/commit/88555f934519660ef639e035d8cf3c82afa7a00c))
+* **scope:** install complete immutable authority ([d47ec9c](https://github.com/DYAI2025/Plumbline/commit/d47ec9c3a0140fd86c9fbb88226abd11ae2615c3))
+* **scope:** preserve checker entrypoint provenance ([e334864](https://github.com/DYAI2025/Plumbline/commit/e3348646c0c827e89e1fda22e970309255d5b839))
+* **scope:** prevent plan and canvas drift (PLUM-12) ([15790d2](https://github.com/DYAI2025/Plumbline/commit/15790d2fd8da9687fda63f60cfa57a984a73ecd6))
+* **scope:** reject ambiguous control targets ([c37d6d7](https://github.com/DYAI2025/Plumbline/commit/c37d6d79565ae67d70e2a5196878bdb1033c6524))
+* **scope:** trust only external pre-write authority ([6d69196](https://github.com/DYAI2025/Plumbline/commit/6d6919613d7ee7c155a4ec8f5de23a0762f568ac))
+* **scope:** validate resolved planned targets ([c8b2a08](https://github.com/DYAI2025/Plumbline/commit/c8b2a0876749403fa329fdc5eaf4c9d4db38c54c))
+* **test:** make the counter-mutations actually mutate ([97e3f09](https://github.com/DYAI2025/Plumbline/commit/97e3f092435baea368909c9b51df16c05cb8e95a))
+
 ## [0.23.2](https://github.com/DYAI2025/Plumbline/compare/v0.23.1...v0.23.2) (2026-07-29)
 
 
