@@ -70,6 +70,7 @@ plumbline-run-ledger
 plumbline-scope-update
 "
 STANDALONE_CLIS="
+plumbline-ref-probe
 plumbline
 plumbline-council-gui
 plumbline-rule-ledger

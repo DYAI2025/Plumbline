@@ -136,6 +136,9 @@ bash config/claude/tests/test_evidence_target.sh || mark_fail
 stage "remote-state watcher tests (PLUM-14)"
 bash config/claude/tests/test_remote_state_watch.sh || mark_fail
 
+stage "remote-ref probe (ls-remote only: exact refs, identity, timeout, parsing)"
+bash config/claude/tests/test_remote_ref_probe.sh || mark_fail
+
 stage "generated-artifact provenance tests (PLUM-15)"
 bash config/claude/tests/test_artifact_provenance.sh || mark_fail
 
@@ -244,6 +247,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     config/claude/bin/plumbline-provenance-check \
     config/claude/bin/plumbline-reality-check \
     config/claude/bin/plumbline-redact \
+    config/claude/bin/plumbline-ref-probe \
     config/claude/bin/plumbline-remote-watch \
     config/claude/bin/plumbline-runtime-hygiene \
     config/claude/bin/plumbline-scope-check \
