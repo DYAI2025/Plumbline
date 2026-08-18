@@ -104,3 +104,25 @@ Never let an architecture change happen silently in code. When divergence is det
    `retro-analyst` for the branch-routing decision.
 
 Be terse and factual. Your value is that the context is always reconstructable.
+
+## Authoring gotchas (field-tested)
+
+- **Appending a row to a markdown TABLE that is not the last thing in the file: use `Edit`
+  anchored on the last existing row — never `cat >>` / `>>`.** `>>` appends at EOF, past any
+  trailing sections (e.g. the Contradiction Ledger below a table), so the row lands in the wrong
+  place and needs a fix-up Edit + extra commit. (Appending a *new top-level `## section`* at EOF
+  is fine; appending a table *row* is not.)
+- **Reality-Ledger `evidence_class` is a fixed vocabulary — never invent one.** Valid values are
+  the schema enum in `docs/templates/reality-ledger-evidence.schema.json` (10 values, incl. the
+  back-compat `unit-only` (rank 1) and `integration` (rank 2), plus the 4-rung ladder
+  `unit-fake < integration-fake < real-boundary-smoke < production-verified`). `n/a` is NOT a value
+  → the reality gate exits `EXIT_MALFORMED`. A pure-client REQ with no boundary is `unit-only`,
+  not `n/a`. The token scan also rejects the WHOLE line if it contains any `FORBIDDEN_TOKENS`
+  substring (`fake-only`, `mock-only`, `placeholder`, `unverified`) — anywhere, including prose.
+  Full ranked table: `docs/reality-evidence-crosswalk.md`.
+- **Real-boundary pin before any "traceable to real data" claim.** When developing against a
+  self-authored fixture, hit the mocked external's REAL boundary once, pin the response, and diff
+  its shape/enums against the fixture + strict schema — divergence fails BEFORE the claim. This is
+  what caught a run that was "green against a fabricated fixture". Reusable exemplar: an
+  `amd003-pin.mjs`-style harness; the broader pattern is codified in the global
+  `fail-closed-source-governance` skill.

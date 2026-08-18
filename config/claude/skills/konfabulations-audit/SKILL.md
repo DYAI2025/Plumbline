@@ -57,6 +57,27 @@ lesen), nutze es, bevor du `belegt` vergibst.
    `nicht behaupten`.
 3. **Verifizieren oder herabstufen** — `belegt`/`ableitbar` mit Quelle behalten;
    `ungeprüft` jetzt verifizieren oder sichtbar abschwächen; `nicht behaupten` entfernen.
+3b. **Wiederholungen mitziehen** — nach jedem Herabstufen die Kernbegriffe des Claims
+   über das **ganze** Artefakt greppen und **jede** Wiederholung auf dieselbe Marke
+   ziehen. Eine Abschwächung nur an der Fundstelle ist keine Abschwächung: sie wirkt
+   nicht dort, wo der Leser entscheidet. Besonders zu prüfen sind
+   **Empfehlung/Fazit/Zusammenfassung**, **stärkstes Gegenargument** und
+   **Änderungsprotokoll** — dort überleben absolute Fassungen, weil sie beim
+   Redigieren wie Rückblick statt wie Behauptung aussehen.
+
+   **Der Änderungsprotokoll-Eintrag ist selbst ein Claim der Marke `ungeprüft`.**
+   „X ersetzt durch Y", „Finding erledigt", „Absolutaussage entfernt" liest sich wie
+   Evidenz, ist aber nur eine Behauptung über den eigenen Diff. Beleg ist der Grep,
+   nicht der Eintrag. Erst wenn der Grep null unqualifizierte Treffer zeigt, wird der
+   Eintrag `belegt`.
+
+   *Realfall (15.08.2026):* Ein Plan schwächte „es gibt keinen externen Client"
+   korrekt zu fünf abgestuften Sätzen mit `ASSUMPTION` ab — **und behielt die
+   absolute Fassung in Empfehlung und Gegenargument**, wo die Entscheidung fällt.
+   Dasselbe mit Evidenzklassen: der Detailabschnitt sagte
+   `AGENT_REPORTED_RUNTIME_EVIDENCE`, die Zusammenfassung leitete mit „jeder Punkt
+   gemessen" ein. Beide Findings standen im Protokoll als erledigt und hatten eine
+   beauftragte Reviewrunde überlebt.
 4. **Lücken benennen statt füllen** — für jede entfernte/unhaltbare Behauptung die offene
    Frage präzise benennen. Im Spec-/Anforderungskontext zwingend: Lücke an den
    **Menschen** zurückgeben (gezieltes Nachfragen, z.B. via `brainstorming`), nicht selbst
