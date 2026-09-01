@@ -7,6 +7,29 @@
 set -uo pipefail
 
 PROJECT="${CLAUDE_PROJECT_DIR:-$PWD}"
+
+# Emit a PreToolUse denial in the shape the Claude Code hook-output schema
+# accepts. The top-level "decision" member is the legacy approve|block enum: a
+# {"decision":"deny"} object fails validation, the harness discards it, and the
+# gate fails OPEN. A denial must travel in hookSpecificOutput.permissionDecision.
+# Without jq the object is built by printf: a reason that contains nothing
+# needing escaping (the three fixed reasons below always; checker output only
+# when it is plain) is emitted verbatim, anything else falls back to the stable
+# diagnostic the checker path already used, so the object stays valid JSON.
+emit_deny() { # emit_deny <reason>
+  local reason="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -cn --arg reason "$reason" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
+    return
+  fi
+  case "$reason" in
+    *[\"\\]*|*[[:cntrl:]]*)
+      reason="Plumbline scope preflight blocked before coding; run plumbline-scope-check --preflight for details"
+      ;;
+  esac
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+}
 PAYLOAD="$(cat 2>/dev/null || true)"
 [ -n "$PAYLOAD" ] || exit 0
 
@@ -191,7 +214,7 @@ if [ ! -f "$manifest" ]; then
   canvas="$PROJECT/docs/canvas/$feature.canvas.md"
   reference="Scope manifest: \`docs/scope/$feature.scope.json\`"
   if [ -f "$canvas" ] && grep -Fq "$reference" "$canvas" 2>/dev/null; then
-    printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: Canvas references a missing canonical scope manifest"}'
+    emit_deny "Plumbline scope preflight blocked: Canvas references a missing canonical scope manifest"
   fi
   exit 0
 fi
@@ -290,7 +313,7 @@ PY
   fi
 done
 if [ ! -x "$checker" ]; then
-  printf '%s\n' '{"decision":"deny","reason":"Plumbline scope gate unavailable: plumbline-scope-check is missing"}'
+  emit_deny "Plumbline scope gate unavailable: plumbline-scope-check is missing"
   exit 0
 fi
 
@@ -298,7 +321,7 @@ checker_args=(--repo "$PROJECT" --feature "$feature" --preflight)
 case "$tool_name" in
   Write|Edit|MultiEdit|NotebookEdit)
     if [ -z "$write_target" ]; then
-      printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked: write-capable tool did not provide a file_path/notebook_path target"}'
+      emit_deny "Plumbline scope preflight blocked: write-capable tool did not provide a file_path/notebook_path target"
       exit 0
     fi
     checker_args+=(--write-target "$write_target")
@@ -337,12 +360,5 @@ output="$("$checker" "${checker_args[@]}" 2>&1)"
 status=$?
 [ "$status" -eq 0 ] && exit 0
 
-reason="Plumbline scope preflight blocked before coding: $output"
-if command -v jq >/dev/null 2>&1; then
-  jq -cn --arg reason "$reason" '{decision:"deny",reason:$reason}'
-else
-  # The detailed validator output may contain quotes. Without jq, keep the
-  # decision valid JSON and fail closed with a stable diagnostic.
-  printf '%s\n' '{"decision":"deny","reason":"Plumbline scope preflight blocked before coding; run plumbline-scope-check --preflight for details"}'
-fi
+emit_deny "Plumbline scope preflight blocked before coding: $output"
 exit 0

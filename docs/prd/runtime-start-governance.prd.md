@@ -68,7 +68,7 @@ verweigert; (b) ein behavioraler real-boundary-Trace als Evidence.
 | REQ-A-005 | Bei `VISION_MISSING` darf `/agileteam` ausschließlich Vision Extraction + explizite User Confirmation als nächsten Schritt anbieten. | SRC-A-004 | MUST |
 | REQ-A-006 | Es muss ein behavioraler real-boundary-Trace existieren, der zeigt, dass `/agileteam` bei PRD-present + Vision-missing VOR Planning angehalten hat. | SRC-A-002 | MUST |
 | REQ-A-007 | Das command-level Gate muss in LOCAL-Sessions wirken (keine Abhängigkeit von Remote-Only-Flags wie `CLAUDE_CODE_REMOTE`/`AGILETEAM_FORCE_BOOTSTRAP`) und darf nicht als technischer Crash, sondern als steuernder Blocker wirken. | SRC-A-004 | MUST |
-| REQ-A-011 | Defense-in-Depth-Backstop (User-Entscheidung Ben, 2026-06-18): Ein **PreToolUse-Hook** MUSS Planning-/Coding-Tool-Dispatch bei `VISION_MISSING` **harness-erzwungen** verweigern (`decision: deny` / non-zero), unabhängig von der Compliance des command-level Gates. Der Hook MUSS normale Sessions ohne `VISION_MISSING` ungehindert durchlassen (fail-open nur für nicht-betroffene Aktionen, fail-closed für die betroffenen). | SRC-A-003 | MUST |
+| REQ-A-011 | Defense-in-Depth-Backstop (User-Entscheidung Ben, 2026-06-18): Ein **PreToolUse-Hook** MUSS Planning-/Coding-Tool-Dispatch bei `VISION_MISSING` **harness-erzwungen** verweigern (`hookSpecificOutput.permissionDecision: deny` oder Exit-Code 2), unabhängig von der Compliance des command-level Gates. Der Hook MUSS normale Sessions ohne `VISION_MISSING` ungehindert durchlassen (fail-open nur für nicht-betroffene Aktionen, fail-closed für die betroffenen). | SRC-A-003 | MUST |
 
 ## 6. Non-Functional Requirements
 
@@ -114,7 +114,7 @@ das Missing Artifact UND dass `/agileteam` VOR Planning angehalten hat
 ### AC-A-006: PreToolUse Hook Backstop (harness-enforced)
 Given `Gate: VISION_MISSING` und ein registrierter PreToolUse-Hook
 When ein Planning-/Coding-Tool-Dispatch versucht wird (auch wenn das command-level Gate umgangen würde)
-Then der Hook verweigert den Dispatch harness-erzwungen (`decision: deny` / non-zero)
+Then der Hook verweigert den Dispatch harness-erzwungen (`hookSpecificOutput.permissionDecision: deny` oder Exit-Code 2)
 And ein normaler Tool-Dispatch ohne `VISION_MISSING` wird NICHT behindert
 
 ## 8. Evidence Requirements
