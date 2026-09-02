@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1](https://github.com/DYAI2025/Plumbline/compare/v0.25.0...v0.25.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **hooks:** enforce Claude PreToolUse deny protocol ([9bb058c](https://github.com/DYAI2025/Plumbline/commit/9bb058c8ecf661226d1a9ca22e7a0ea1914ffef6))
+* **hooks:** enforce Claude PreToolUse deny protocol ([21bdd67](https://github.com/DYAI2025/Plumbline/commit/21bdd6703bc41511169d659b1c33d71869d0f0fa))
+
 ## [0.25.0](https://github.com/DYAI2025/Plumbline/compare/v0.24.0...v0.25.0) (2026-08-18)
 
 
