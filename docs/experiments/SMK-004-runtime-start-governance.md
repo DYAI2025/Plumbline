@@ -4,6 +4,11 @@
 **Status:** complete. · Branch `agileteam/runtime-start-governance`.
 REQ-A-001..011 · AC-A-001..006 · BL-002 / BL-003.
 
+> **Correction 2026-09-01:** the `{"decision":"deny", …}` results below are rejected by the
+> Claude Code 2.1.252 PreToolUse hook-output validator; they prove the hook process emitted a
+> deny-shaped object, not that the harness honoured it. "Real-boundary smoke" here reads with
+> that ceiling — see the dated correction at the end of this file.
+
 A capability proof: does the PreToolUse hook *actually* deny a real planning/coding dispatch
 under `VISION_MISSING`, or does only the orchestrator instruction exist? Every block in the
 source is verbatim stdout/exit-code from executing the shipped artifacts. Provenance: commit
@@ -74,3 +79,14 @@ Command-gate halt stays `integration-fake`. `Bash`-tool path explicitly out of s
 - Artifacts under test: `config/claude/hooks/pretool-vision-gate.sh`,
   `config/claude/bin/plumbline-start-check`, `config/claude/commands/agileteam.md` (Phase-0).
 </content>
+
+## Correction 2026-09-01 — hook-output protocol (evidence ceiling)
+
+Under Claude Code 2.1.252, top-level `decision:"deny"` is rejected by the PreToolUse
+hook-output validator and therefore cannot be used as current-version enforcement evidence.
+Current valid permission denial uses `hookSpecificOutput.permissionDecision:"deny"`. The
+`{"decision":"deny", …}` results above prove the hook process emitted a deny-shaped legacy
+object, not that the harness honoured it; the Claude Code version of the original run is not recorded, so this
+evidence is version-bound / insufficient for current-version enforcement. The "Harness
+backstop → real-boundary-smoke" row reads with that ceiling. Whether the original run was
+fail-open at the time is not established here.

@@ -17,17 +17,22 @@ touching I/O / remote / UI that stays `*-fake` is RED regardless of green tests.
 
 | Trace ID | Requirement | Canvas | Acceptance | Evidence | wired-in-prod? | evidence-class (target) | True-Line |
 |---|---|---|---|---|---|---|---|
-| TRC-A-001 | REQ-A-001 (command-level Gate konsumiert Verdict, HALT vor Planning) | CAN-A-010 | AC-A-001 | EV-A-002 | instruction-only (cmd); realer HALT via Hook TRC-A-011 | real-boundary-smoke | pass |
+| TRC-A-001 | REQ-A-001 (command-level Gate konsumiert Verdict, HALT vor Planning) | CAN-A-010 | AC-A-001 | EV-A-002 | instruction-only (cmd); realer HALT via Hook TRC-A-011 → carries the TRC-A-011 ceiling (Correction 2026-09-02) | real-boundary-smoke (target) — via TRC-A-011, version-bound; current: PASS(tests)/RED(confidence) | review-required (was: pass, 2026-06-18) |
 | TRC-A-002 | REQ-A-002 | CAN-A-011 | AC-A-001 | EV-A-001, EV-A-004 | instruction-only | integration-fake | pass |
-| TRC-A-003 | REQ-A-003 | CAN-A-012 | AC-A-002 | EV-A-001, EV-A-002, EV-A-004 | yes — Hook denied Planning (trace §2) | real-boundary-smoke | pass |
-| TRC-A-004 | REQ-A-004 | CAN-A-012 | AC-A-003 | EV-A-001, EV-A-002, EV-A-004 | yes — Hook denied Coding (trace §3) | real-boundary-smoke | pass |
+| TRC-A-003 | REQ-A-003 | CAN-A-012 | AC-A-002 | EV-A-001, EV-A-002, EV-A-004 | yes (hook registered, see TRC-A-011) — hook process emitted a legacy `{"decision":"deny"}` for a Planning dispatch (trace §2); current-version harness enforcement not proven by that capture — version-bound (Correction 2026-09-02) | real-boundary-smoke (target) — June trace version-bound; current: PASS(tests)/RED(confidence) | review-required (was: pass, 2026-06-18) |
+| TRC-A-004 | REQ-A-004 | CAN-A-012 | AC-A-003 | EV-A-001, EV-A-002, EV-A-004 | yes (hook registered, see TRC-A-011) — hook process emitted a legacy `{"decision":"deny"}` for a Coding (Write) dispatch (trace §3); current-version harness enforcement not proven by that capture — version-bound (Correction 2026-09-02) | real-boundary-smoke (target) — June trace version-bound; current: PASS(tests)/RED(confidence) | review-required (was: pass, 2026-06-18) |
 | TRC-A-005 | REQ-A-005 | CAN-A-013 | AC-A-004 | EV-A-002, EV-A-004 | instruction-only | integration-fake | pass |
-| TRC-A-006 | REQ-A-006 (behavioraler real-boundary-Trace) | CAN-A-013 | AC-A-005 | EV-A-002 | yes — trace artifact (real run) | real-boundary-smoke | pass |
-| TRC-A-007 | REQ-A-007 (LOCAL-Session, steuernd nicht fatal) | CAN-A-012 | AC-A-002, AC-A-003 | EV-A-002, EV-A-004 | yes — Hook fail-open (trace §5 + tests) | real-boundary-smoke | pass |
+| TRC-A-006 | REQ-A-006 (behavioraler real-boundary-Trace) | CAN-A-013 | AC-A-005 | EV-A-002 | historical trace exists (real hook-process run, 2026-06-18, kept verbatim in the benchmark); current-version harness enforcement not proven by that capture — version-bound (Correction 2026-09-02) | real-boundary-smoke (target) — June trace version-bound (legacy deny shape); current: PASS(tests)/RED(confidence) | review-required (was: pass, 2026-06-18) |
+| TRC-A-007 | REQ-A-007 (LOCAL-Session, steuernd nicht fatal) | CAN-A-012 | AC-A-002, AC-A-003 | EV-A-002, EV-A-004 | yes — intended pass-through (conceptual fail-open) for non-affected dispatches (trace §5 + tests: empty stdout, exit 0), distinct from the unintended schema fail-open of the legacy deny shape under Claude Code 2.1.252 on the deny path that PR #110 corrected; the "steuernder Blocker" (deny) side is version-bound (Correction 2026-09-02) | real-boundary-smoke (target) — pass-through side unaffected; deny side version-bound; current: PASS(tests)/RED(confidence) | review-required (was: pass, 2026-06-18) |
 | TRC-A-008 | REQ-A-008 (Reuse, keine Duplizierung) | CAN-A-010 | AC-A-001 | EV-A-001 | instruction-only (Reuse per Test geprüft) | integration-fake | pass |
 | TRC-A-009 | REQ-A-009 | CAN-A-011 | AC-A-001..005 | EV-A-001, EV-A-004 | instruction-only | integration-fake | pass |
 | TRC-A-010 | REQ-A-010 | CAN-A-013 | AC-A-005 | EV-A-002 | instruction-only | integration-fake | pass |
-| TRC-A-011 | REQ-A-011 (PreToolUse-Hook-Backstop, harness-erzwungen) | CAN-A-014 | AC-A-006 | EV-A-005 | yes — install.sh→settings.json PreToolUse (trace §2-4) | real-boundary-smoke | pass |
+| TRC-A-011 | REQ-A-011 (PreToolUse-Hook-Backstop, harness-erzwungen) | CAN-A-014 | AC-A-006 | EV-A-005 | yes — install.sh→settings.json PreToolUse registration (contract-tested); deny protocol repaired in PR #110 (`hookSpecificOutput.permissionDecision: "deny"`; RED against the legacy contract, GREEN against the repaired one in `test_pretool_vision_gate_hook.sh` + `test_scope_manifest.sh`); June trace §2-4 = legacy shape, version-bound; the end-to-end block observed under Claude Code 2.1.252 outside this repository is AGENT_REPORTED supplementary evidence, not a canonical harness trace | real-boundary-smoke (target) — current: PASS(repo contract/tests)/RED(current live-harness confidence); no canonical live harness trace yet | review-required (was: pass, 2026-06-18) |
+
+> **Correction 2026-09-02:** the closure and acceptance paragraphs below are the 2026-06-18
+> record, kept verbatim, and read with the PreToolUse evidence ceiling stated in the dated
+> correction after them (PR #110): the June `{"decision":"deny"}` captures prove hook-process
+> output, not current harness enforcement.
 
 **BL-002/BL-003 closure (F3) — Stand 2026-06-18:** Der **Hook-Backstop (TRC-A-011)** und die
 darüber getragenen Planning/Coding-Block-Zeilen (TRC-A-003/004/006/007) haben
@@ -45,6 +50,34 @@ geschlossen** (BL-002). Der command-gate Live-Modell-HALT bleibt `RED(confidence
 **als Ceiling akzeptiert** (BL-003) — nicht als „proven" deklariert, da der Runtime keinen
 Kontrollfluss-Probe bietet. Die `Bash`-Tool-Lücke ist als v1-Boundary akzeptiert (Follow-up
 BL-005). Kein autonomes Schließen erfolgte vor dieser User-Entscheidung.
+
+**Correction 2026-09-02 (PR #110 — PreToolUse evidence ceiling):** PR #110 established that
+the captured legacy PreToolUse output (`{"decision":"deny", …}`, trace §2-4) is rejected by
+the Claude Code 2.1.252 hook-output validator and is therefore insufficient to prove current
+Claude Code harness enforcement: it proves the hook process emitted a deny-shaped legacy
+object, not that the harness honoured it. The Claude Code version of the June run is not
+recorded, so that evidence is **version-bound**; whether the June run was fail-open at the
+time is NOT established. The historical user acceptance above remains recorded as a
+historical decision — it is neither rewritten nor re-simulated — but its enforcement evidence
+must not be cited as a current `real-boundary-smoke` proof until a new canonical live harness
+trace exists.
+
+**Stand 2026-09-02 — TRC-A-011, the rows it carries per the 2026-06-18 closure
+(TRC-A-003/004/006/007), and TRC-A-001, whose row routes its real HALT through TRC-A-011 and
+therefore inherits the same ceiling:**
+**PASS(repo contract/tests) / RED(current live-harness confidence).** The repository proves
+the correct protocol shape (`hookSpecificOutput.permissionDecision: "deny"`), the
+hook-process behaviour, the registration/install contract, RED against the legacy contract
+and GREEN against the repaired one (`test_pretool_vision_gate_hook.sh`,
+`test_scope_manifest.sh`); it does not contain a new canonical live Claude harness trace. The
+end-to-end block observed outside this repository (PR #110 description, section
+"Supplementary evidence (AGENT_REPORTED)"; not reproduced here) is AGENT_REPORTED
+supplementary evidence and does not create a `real-boundary-smoke` classification on its own.
+True-Line for these rows is `review-required` until the user reclassifies at the acceptance
+gate; no reclassification is simulated here. "Fail-open" in TRC-A-007 / REQ-A-011 means the
+intended pass-through for non-affected dispatches (trace §5: empty stdout, exit 0) and is
+distinct from the unintended schema fail-open of the legacy deny shape under Claude Code
+2.1.252 on the deny path that PR #110 corrected.
 
 **EDGE-A-002 (F2, verifiziert):** PRD-present + Vision-vorhanden-aber-unconfirmed →
 `VISION_MISSING` (Kurzschluss `plumbline_start.py:25`). `START_ARTIFACTS_MISSING` ist ein

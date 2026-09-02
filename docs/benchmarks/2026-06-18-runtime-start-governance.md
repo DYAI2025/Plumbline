@@ -9,6 +9,12 @@ Provenance: commit `1a6a260` (pre-commit working tree of this slice), branch
 `agileteam/runtime-start-governance`, hook
 `sha256:327503475ef2b8d360053496764f782df449ac1a9f0af22099251c06a901b6a2`.
 
+> **Correction 2026-09-01:** the `{"decision":"deny"}` objects captured in sections 2–4 are
+> rejected by the Claude Code 2.1.252 PreToolUse hook-output validator; they prove the hook
+> process emitted a deny-shaped object, not that the harness honoured it. The
+> "real-boundary-smoke" rows and headings below read with that ceiling — see the dated
+> correction at the end of this file.
+
 ## Evidence-class map (honest, per layer)
 
 | Layer | Artifact | What it proves | Evidence class |
@@ -108,3 +114,20 @@ The HALT-before-planning guarantee reaches **real-boundary-smoke** at the hook l
 remains **integration-fake** and is reported as **PASS(tests)/RED(confidence)** for the
 live-model halt claim. Per F3 this RED may not be silently downgraded; only the user may
 reclassify it at the acceptance gate.
+
+## Correction 2026-09-01 — hook-output protocol (evidence ceiling)
+
+Under Claude Code 2.1.252, a top-level `{"decision":"deny", …}` object — the shape the deny
+captures in sections 2–4 show — is rejected by the PreToolUse hook-output validator
+(`decision` is the legacy `approve|block` enum) and the dispatch proceeds. Those captures
+therefore prove that the **hook process emitted a deny-shaped legacy object**; they do
+**not** prove that the harness honoured it, and they cannot be used as current-version
+enforcement evidence.
+Current valid permission denial uses `hookSpecificOutput.permissionDecision:"deny"`
+(shipped in `pretool-vision-gate.sh` / `pretool-scope-gate.sh` and pinned by
+`test_pretool_vision_gate_hook.sh` / `test_scope_manifest.sh`).
+
+The Claude Code version under which this trace was captured is not recorded here, so the
+historical evidence is **version-bound / insufficient for current-version enforcement**;
+whether that run was fail-open at the time is not established by this note. The captures
+above are left verbatim as history.

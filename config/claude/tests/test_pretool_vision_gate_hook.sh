@@ -69,14 +69,31 @@ run_hook() {
   rm -f "$outf"
 }
 
-# A genuine PreToolUse deny is either a JSON {"decision":"deny"} on stdout, or a
-# deliberate non-zero exit from an EXISTING hook (1 or 2 — the documented block
-# codes). 255 is our "hook absent" sentinel and must NOT count as a deny; 127
-# (command-not-found) likewise indicates no real hook ran.
-is_deny() { # is_deny <decision> <rc>
+# A genuine Claude Code PreToolUse deny is either the permission object
+#   {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",...}}
+# on stdout, or exit code 2 (the documented blocking exit) from an EXISTING hook.
+# The top-level "decision" member is the LEGACY approve|block enum: Claude Code
+# 2.1.252 rejects {"decision":"deny"} at its hook-output validator and the
+# dispatch proceeds — that shape is fail-OPEN and must NOT count as a deny.
+# Exit 1 is a non-blocking error (execution continues); 255 is our "hook absent"
+# sentinel and 127 (command-not-found) indicates no real hook ran.
+is_deny() { # is_deny <permission-decision> <rc>
   [ "$1" = "deny" ] && return 0
-  case "$2" in 1|2) return 0 ;; esac
+  [ "$2" = "2" ] && return 0
   return 1
+}
+
+# Extract the PreToolUse permission decision from hook stdout. Prints "deny"
+# only for the accepted permission object; anything the harness would discard
+# prints nothing: a legacy top-level decision (also when it rides along with a
+# valid envelope — the whole object fails validation), several JSON documents
+# or trailing text (treated as plain text), or no JSON at all.
+pretool_decision() { # pretool_decision <hook-stdout>
+  printf '%s' "$1" \
+    | jq -rs 'if length == 1 then .[0] else empty end
+              | select(.hookSpecificOutput.hookEventName == "PreToolUse"
+                       and (.decision // "") != "deny")
+              | .hookSpecificOutput.permissionDecision // empty' 2>/dev/null
 }
 
 # A repo whose start state is VISION_MISSING. The orchestrator's Phase-0 gate is
@@ -113,25 +130,49 @@ else
   _fail "hook missing or failed bash -n"
 fi
 
+# --- Beat 1.5: contract canary — rejected shapes must not read as a deny. ------
+# Guards the extractor itself: if it is ever re-widened to accept a shape the
+# validator discards, this goes red before a hook regression could hide behind it.
+VALID_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"x"}}'
+TESTS_RUN=$((TESTS_RUN + 1))
+if [ "$(pretool_decision "$VALID_DENY")" = "deny" ] \
+   && [ -z "$(pretool_decision '{"decision":"deny","reason":"legacy"}')" ] \
+   && [ -z "$(pretool_decision '{"decision":"deny","reason":"legacy","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"x"}}')" ] \
+   && [ -z "$(pretool_decision "$(printf '{"a":1}\n%s' "$VALID_DENY")")" ] \
+   && [ -z "$(pretool_decision "$(printf '%s\ngarbage' "$VALID_DENY")")" ] \
+   && [ -z "$(pretool_decision '')" ]; then
+  _pass "contract canary: only a single hookSpecificOutput.permissionDecision:deny object is a deny (legacy, hybrid, multi-document, trailing text, empty are not)"
+else
+  _fail "contract canary: extractor must accept exactly the valid permission object and reject legacy/hybrid/multi-document/trailing-text/empty stdout"
+fi
+
 # --- Beat 2 (Schärfung 1a): VISION_MISSING + a PLANNING tool dispatch -> DENY. -
 # A planning/coding tool dispatch (Task to a planner/coder, or Edit/Write of
 # production code) under VISION_MISSING must be denied harness-enforced:
-# either a JSON {"decision":"deny"} on stdout OR a non-zero exit (the two ways a
-# PreToolUse hook can block a dispatch).
+# either the PreToolUse permission object (hookSpecificOutput.permissionDecision
+# "deny") on stdout OR exit code 2 (the two ways a PreToolUse hook can block a
+# dispatch).
 vm_repo="$(make_vision_missing_repo)"
 run_hook "$vm_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"planner","description":"plan the feature"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-vdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
+vdecision="$(pretool_decision "$HOOK_OUT")"
 if is_deny "$vdecision" "$HOOK_RC"; then
-  _pass "VISION_MISSING planning dispatch is DENIED (decision=deny or block exit code)"
+  _pass "VISION_MISSING planning dispatch is DENIED (permissionDecision=deny or exit 2)"
 else
   _fail "VISION_MISSING planning dispatch must be denied (rc=$HOOK_RC, out: $HOOK_OUT)"
+fi
+TESTS_RUN=$((TESTS_RUN + 1))
+vreason="$(printf '%s' "$HOOK_OUT" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
+if [ -n "$vreason" ]; then
+  _pass "deny carries a permissionDecisionReason"
+else
+  _fail "deny must carry a permissionDecisionReason (out: $HOOK_OUT)"
 fi
 
 # Coding dispatch (Write of production code) under VISION_MISSING -> DENY too.
 run_hook "$vm_repo" '{"tool_name":"Write","tool_input":{"file_path":"src/feature.py","content":"x=1"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-cdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
+cdecision="$(pretool_decision "$HOOK_OUT")"
 if is_deny "$cdecision" "$HOOK_RC"; then
   _pass "VISION_MISSING coding dispatch is DENIED"
 else
@@ -143,10 +184,11 @@ fi
 normal_repo="$(make_normal_repo)"
 run_hook "$normal_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"planner","description":"plan the feature"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-ndecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
-# Pass-through requires a REAL hook (rc 0, not the 255 absent-sentinel) that does
-# not deny.
-if [ "$HOOK_RC" -eq 0 ] && [ "$ndecision" != "deny" ]; then
+ndecision="$(pretool_decision "$HOOK_OUT")"
+# Pass-through requires a REAL hook (rc 0, not the 255 absent-sentinel) that
+# prints NOTHING: an empty stdout is the hook's documented pass path, and it is
+# the only shape that can neither block (legacy "block", exit 2) nor prompt.
+if [ "$HOOK_RC" -eq 0 ] && [ -z "$ndecision" ] && [ -z "$HOOK_OUT" ]; then
   _pass "no VISION_MISSING: planning dispatch PASSES THROUGH (not denied)"
 else
   _fail "normal session must pass through (rc=$HOOK_RC, out: $HOOK_OUT)"
@@ -158,8 +200,8 @@ fi
 # a blanket session-kill that would also block the Vision-Extraction work itself.
 run_hook "$vm_repo" '{"tool_name":"Read","tool_input":{"file_path":"docs/prd/x.md"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-rdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
-if [ "$HOOK_RC" -eq 0 ] && [ "$rdecision" != "deny" ]; then
+rdecision="$(pretool_decision "$HOOK_OUT")"
+if [ "$HOOK_RC" -eq 0 ] && [ -z "$rdecision" ] && [ -z "$HOOK_OUT" ]; then
   _pass "VISION_MISSING: read-only dispatch passes through (fail-open for non-affected)"
 else
   _fail "VISION_MISSING read-only must pass through (rc=$HOOK_RC, out: $HOOK_OUT)"
@@ -199,7 +241,7 @@ make_path2_confirmed_repo() {
 p2_vm_repo="$(make_path2_vision_missing_repo)"
 run_hook "$p2_vm_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"planner","description":"plan"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-p2decision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
+p2decision="$(pretool_decision "$HOOK_OUT")"
 if is_deny "$p2decision" "$HOOK_RC"; then
   _pass "path-2: active-feature + PRD + unconfirmed vision DENIES planning (no marker)"
 else
@@ -209,8 +251,8 @@ fi
 p2_ok_repo="$(make_path2_confirmed_repo)"
 run_hook "$p2_ok_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"planner","description":"plan"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-p2okdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
-if [ "$HOOK_RC" -eq 0 ] && [ "$p2okdecision" != "deny" ]; then
+p2okdecision="$(pretool_decision "$HOOK_OUT")"
+if [ "$HOOK_RC" -eq 0 ] && [ -z "$p2okdecision" ] && [ -z "$HOOK_OUT" ]; then
   _pass "path-2: active-feature + confirmed vision PASSES THROUGH"
 else
   _fail "path-2 confirmed-vision must pass through (rc=$HOOK_RC, out: $HOOK_OUT)"
@@ -222,8 +264,8 @@ fi
 # Phase-0 gate is the broad control; this is the planning/coding backstop).
 run_hook "$vm_repo" '{"tool_name":"Task","tool_input":{"subagent_type":"devops","description":"deploy"}}'
 TESTS_RUN=$((TESTS_RUN + 1))
-opsdecision="$(printf '%s' "$HOOK_OUT" | jq -r '.decision // empty' 2>/dev/null)"
-if [ "$HOOK_RC" -eq 0 ] && [ "$opsdecision" != "deny" ]; then
+opsdecision="$(pretool_decision "$HOOK_OUT")"
+if [ "$HOOK_RC" -eq 0 ] && [ -z "$opsdecision" ] && [ -z "$HOOK_OUT" ]; then
   _pass "VISION_MISSING: non-coding ops role (devops) passes through (matcher not over-broad)"
 else
   _fail "devops dispatch must pass through; matcher over-broad (rc=$HOOK_RC, out: $HOOK_OUT)"

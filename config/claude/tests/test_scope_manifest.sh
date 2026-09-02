@@ -69,6 +69,47 @@ assert_output_contains() {
   fi
 }
 
+# A PreToolUse denial is only real when it travels in hookSpecificOutput:
+# Claude Code (2.1.252) validates hook stdout and rejects a top-level
+# {"decision":"deny"} — "decision" is the legacy approve|block enum — so that
+# shape fails OPEN, also when it rides along with a valid envelope. Several JSON
+# documents or trailing text are demoted to plain text. Assert exactly one
+# accepted permission object with a reason, never the legacy literal.
+is_pretool_deny() { # is_pretool_deny <hook-stdout>
+  local docs event permission reason legacy
+  docs="$(printf '%s' "$1" | jq -s 'length' 2>/dev/null)"
+  [ "$docs" = "1" ] || return 1
+  event="$(printf '%s' "$1" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)"
+  permission="$(printf '%s' "$1" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
+  reason="$(printf '%s' "$1" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
+  legacy="$(printf '%s' "$1" | jq -r '.decision // empty' 2>/dev/null)"
+  [ "$event" = "PreToolUse" ] && [ "$permission" = "deny" ] \
+    && [ -n "$reason" ] && [ "$legacy" != "deny" ]
+}
+
+assert_pretool_deny() { # assert_pretool_deny <description> <hook-stdout>
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if is_pretool_deny "$2"; then
+    _pass "$1"
+  else
+    _fail "$1 (expected exactly one hookSpecificOutput PreToolUse permissionDecision=deny object with reason; output: $2)"
+  fi
+}
+
+# Contract canary for the predicate itself (fixed literals, no hook involved).
+VALID_PRETOOL_DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"x"}}'
+assert_pretool_deny "canary: the accepted permission object is a deny" "$VALID_PRETOOL_DENY"
+assert "canary: legacy top-level decision:deny is NOT a deny" \
+  '! is_pretool_deny "{\"decision\":\"deny\",\"reason\":\"x\"}"'
+assert "canary: a legacy decision riding along with a valid envelope is NOT a deny" \
+  '! is_pretool_deny "{\"decision\":\"deny\",\"reason\":\"x\",\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"x\"}}"'
+assert "canary: an envelope without a reason is NOT accepted" \
+  '! is_pretool_deny "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\"}}"'
+assert "canary: two JSON documents are NOT a deny" \
+  "! is_pretool_deny \"\$(printf '{\"a\":1}\\n%s' \"\$VALID_PRETOOL_DENY\")\""
+assert "canary: trailing text after the object is NOT a deny" \
+  "! is_pretool_deny \"\$(printf '%s\\ngarbage' \"\$VALID_PRETOOL_DENY\")\""
+
 make_repo() {
   local repo="$1"
   mkdir -p "$repo/docs/scope" "$repo/docs/canvas" "$repo/docs/plans" \
@@ -397,7 +438,7 @@ HOOK_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "pre-write hook denies a drifted plan" "$HOOK_DENY" '"decision":"deny"'
+assert_pretool_deny "pre-write hook denies a drifted plan" "$HOOK_DENY"
 assert_contains "pre-write hook names the out-of-scope planned path" "$HOOK_DENY" "CLAUDE.md"
 
 BASH_DENY="$(
@@ -405,15 +446,15 @@ BASH_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"python3 build.py"}}
 EOF
 )"
-assert_contains "Bash write path runs the pre-write scope gate" "$BASH_DENY" '"decision":"deny"'
+assert_pretool_deny "Bash write path runs the pre-write scope gate" "$BASH_DENY"
 
 ALIGNED_BASH_DENY="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"printf x > src/demo/unplanned.py"}}
 EOF
 )"
-assert_contains "opaque Bash writes fail closed even when artifacts are aligned" \
-  "$ALIGNED_BASH_DENY" '"decision":"deny"'
+assert_pretool_deny "opaque Bash writes fail closed even when artifacts are aligned" \
+  "$ALIGNED_BASH_DENY"
 assert_contains "Bash denial explains exact target proof requirement" \
   "$ALIGNED_BASH_DENY" "not declared as a confirmed Test"
 
@@ -433,8 +474,8 @@ TRACKED_TEST_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"bash config/claude/tests/test_demo.sh"}}
 EOF
 )"
-assert_contains "project Test command cannot execute against same-user gate authority" \
-  "$TRACKED_TEST_DENY" '"decision":"deny"'
+assert_pretool_deny "project Test command cannot execute against same-user gate authority" \
+  "$TRACKED_TEST_DENY"
 assert_contains "Test denial explains the required disarm boundary" \
   "$TRACKED_TEST_DENY" "Disarm the active feature marker"
 assert "denied project Test never rewrites installed gate authority" \
@@ -461,8 +502,8 @@ UNPLANNED_DELETE_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"rm -f src/demo/unplanned.py"}}
 EOF
 )"
-assert_contains "undeclared deletion target is denied" \
-  "$UNPLANNED_DELETE_DENY" '"decision":"deny"'
+assert_pretool_deny "undeclared deletion target is denied" \
+  "$UNPLANNED_DELETE_DENY"
 
 SCOPE_REPAIR_PASS="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
@@ -480,8 +521,8 @@ UNTRUSTED_REPAIR_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"$UNTRUSTED_UPDATER --confirmed"}}
 EOF
 )"
-assert_contains "untrusted same-named updater cannot bypass preflight" \
-  "$UNTRUSTED_REPAIR_DENY" '"decision":"deny"'
+assert_pretool_deny "untrusted same-named updater cannot bypass preflight" \
+  "$UNTRUSTED_REPAIR_DENY"
 
 PATH_REPAIR_PASS="$(
   PATH="$(dirname "$SCOPE_UPDATE"):$PATH" \
@@ -497,32 +538,32 @@ UNTRUSTED_PATH_REPAIR_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"plumbline-scope-update --confirmed"}}
 EOF
 )"
-assert_contains "untrusted same-named updater found on PATH cannot bypass preflight" \
-  "$UNTRUSTED_PATH_REPAIR_DENY" '"decision":"deny"'
+assert_pretool_deny "untrusted same-named updater found on PATH cannot bypass preflight" \
+  "$UNTRUSTED_PATH_REPAIR_DENY"
 
 INACTIVE_FEATURE_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
 {"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature inactive --confirmed"}}
 EOF
 )"
-assert_contains "trusted updater cannot repair a feature other than the active one" \
-  "$INACTIVE_FEATURE_REPAIR_DENY" '"decision":"deny"'
+assert_pretool_deny "trusted updater cannot repair a feature other than the active one" \
+  "$INACTIVE_FEATURE_REPAIR_DENY"
 
 EXPANDED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
 {"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo {--repo=/other/repo,--feature=inactive} --confirmed"}}
 EOF
 )"
-assert_contains "shell expansion syntax cannot alter validated updater arguments" \
-  "$EXPANDED_REPAIR_DENY" '"decision":"deny"'
+assert_pretool_deny "shell expansion syntax cannot alter validated updater arguments" \
+  "$EXPANDED_REPAIR_DENY"
 
 ABBREVIATED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<EOF
 {"tool_name":"Bash","tool_input":{"command":"$SCOPE_UPDATE --repo . --feature demo --fea inactive --confirmed"}}
 EOF
 )"
-assert_contains "abbreviated updater options cannot override active feature" \
-  "$ABBREVIATED_REPAIR_DENY" '"decision":"deny"'
+assert_pretool_deny "abbreviated updater options cannot override active feature" \
+  "$ABBREVIATED_REPAIR_DENY"
 
 MUTABLE_UPDATER="$WORK/mutable-updater"
 cp -R "$BASE" "$MUTABLE_UPDATER"
@@ -543,8 +584,8 @@ MUTABLE_UPDATER_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"$MUTABLE_UPDATER/config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
 EOF
 )"
-assert_contains "mutable repository updater runtime cannot receive repair exemption" \
-  "$MUTABLE_UPDATER_DENY" '"decision":"deny"'
+assert_pretool_deny "mutable repository updater runtime cannot receive repair exemption" \
+  "$MUTABLE_UPDATER_DENY"
 
 CLEAN_MALICIOUS_UPDATER="$WORK/clean-malicious-updater"
 cp -R "$MISSING" "$CLEAN_MALICIOUS_UPDATER"
@@ -561,8 +602,8 @@ CLEAN_MALICIOUS_UPDATER_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
 EOF
 )"
-assert_contains "foreign repository cannot authenticate its committed updater" \
-  "$CLEAN_MALICIOUS_UPDATER_DENY" '"decision":"deny"'
+assert_pretool_deny "foreign repository cannot authenticate its committed updater" \
+  "$CLEAN_MALICIOUS_UPDATER_DENY"
 assert "foreign repository updater is never executed" \
   "test ! -e '$CLEAN_MALICIOUS_UPDATER/repository-updater-ran'"
 
@@ -576,8 +617,8 @@ SYMLINKED_UPDATER_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
 EOF
 )"
-assert_contains "repository-owned updater symlink cannot launder external authority" \
-  "$SYMLINKED_UPDATER_DENY" '"decision":"deny"'
+assert_pretool_deny "repository-owned updater symlink cannot launder external authority" \
+  "$SYMLINKED_UPDATER_DENY"
 
 OUTSIDE_UPDATER_TARGET="$WORK/outside-updater-target"
 cp -R "$MISSING" "$OUTSIDE_UPDATER_TARGET"
@@ -593,8 +634,8 @@ OUTSIDE_UPDATER_TARGET_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"$WORK/outside-updater-bin/plumbline-scope-update --repo . --feature demo --confirmed"}}
 EOF
 )"
-assert_contains "outside updater symlink into governed repository is not trusted" \
-  "$OUTSIDE_UPDATER_TARGET_DENY" '"decision":"deny"'
+assert_pretool_deny "outside updater symlink into governed repository is not trusted" \
+  "$OUTSIDE_UPDATER_TARGET_DENY"
 assert "outside updater symlink target is never executed" \
   "test ! -e '$OUTSIDE_UPDATER_TARGET/updater-ran'"
 
@@ -609,16 +650,16 @@ ALTERNATE_UPDATER_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"tools/plumbline-scope-update --repo . --feature demo --confirmed"}}
 EOF
 )"
-assert_contains "noncanonical project updater cannot receive repair exemption" \
-  "$ALTERNATE_UPDATER_DENY" '"decision":"deny"'
+assert_pretool_deny "noncanonical project updater cannot receive repair exemption" \
+  "$ALTERNATE_UPDATER_DENY"
 
 CHAINED_REPAIR_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Bash","tool_input":{"command":"config/claude/bin/plumbline-scope-update --confirmed; printf bypass > src/outside.py"}}
 EOF
 )"
-assert_contains "chained scope-updater command cannot bypass the gate" \
-  "$CHAINED_REPAIR_DENY" '"decision":"deny"'
+assert_pretool_deny "chained scope-updater command cannot bypass the gate" \
+  "$CHAINED_REPAIR_DENY"
 
 MULTILINE_SCHEMA="$WORK/multiline-schema"
 cp -R "$MISSING" "$MULTILINE_SCHEMA"
@@ -636,8 +677,8 @@ MULTILINE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "multiline schema_version still activates the pre-write gate" \
-  "$MULTILINE_DENY" '"decision":"deny"'
+assert_pretool_deny "multiline schema_version still activates the pre-write gate" \
+  "$MULTILINE_DENY"
 
 ESCAPED_SCHEMA="$WORK/escaped-schema"
 cp -R "$MISSING" "$ESCAPED_SCHEMA"
@@ -657,8 +698,8 @@ ESCAPED_SCHEMA_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "escaped canonical JSON key still activates the gate" \
-  "$ESCAPED_SCHEMA_DENY" '"decision":"deny"'
+assert_pretool_deny "escaped canonical JSON key still activates the gate" \
+  "$ESCAPED_SCHEMA_DENY"
 
 MISSING_MANIFEST="$WORK/missing-manifest"
 cp -R "$BASE" "$MISSING_MANIFEST"
@@ -669,8 +710,8 @@ MISSING_MANIFEST_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "referenced missing manifest fails closed before writes" \
-  "$MISSING_MANIFEST_DENY" '"decision":"deny"'
+assert_pretool_deny "referenced missing manifest fails closed before writes" \
+  "$MISSING_MANIFEST_DENY"
 assert_contains "missing-manifest denial is actionable" \
   "$MISSING_MANIFEST_DENY" "missing canonical scope manifest"
 
@@ -694,8 +735,8 @@ UNPLANNED_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/unplanned.py"}}
 EOF
 )"
-assert_contains "explicit write target absent from plan is denied before dispatch" \
-  "$UNPLANNED_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "explicit write target absent from plan is denied before dispatch" \
+  "$UNPLANNED_WRITE_DENY"
 assert_contains "unplanned write denial names the concrete target" \
   "$UNPLANNED_WRITE_DENY" "src/demo/unplanned.py"
 assert "foreign-repository fixture is blocked before its first write" \
@@ -714,16 +755,16 @@ MANIFEST_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"docs/scope/demo.scope.json"}}
 EOF
 )"
-assert_contains "direct manifest writes are reserved for confirmed updater" \
-  "$MANIFEST_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "direct manifest writes are reserved for confirmed updater" \
+  "$MANIFEST_WRITE_DENY"
 
 PLAN_WRITE_DENY="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Edit","tool_input":{"file_path":"docs/plans/2026-07-29-demo.md"}}
 EOF
 )"
-assert_contains "direct active-plan writes are reserved for confirmed updater" \
-  "$PLAN_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "direct active-plan writes are reserved for confirmed updater" \
+  "$PLAN_WRITE_DENY"
 
 NORMALIZED_PLAN_CONTROL="$WORK/normalized-plan-control"
 cp -R "$BASE" "$NORMALIZED_PLAN_CONTROL"
@@ -746,8 +787,8 @@ NORMALIZED_PLAN_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"docs/plans/2026-07-29-demo.md"}}
 EOF
 )"
-assert_contains "normalized active-plan spelling remains a reserved control path" \
-  "$NORMALIZED_PLAN_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "normalized active-plan spelling remains a reserved control path" \
+  "$NORMALIZED_PLAN_WRITE_DENY"
 
 CONTROL_DELETE="$WORK/control-delete"
 cp -R "$BASE" "$CONTROL_DELETE"
@@ -760,8 +801,8 @@ CONTROL_DELETE_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/demo.scope.json"}}
 EOF
 )"
-assert_contains "canonical manifest cannot be deleted through Delete declaration" \
-  "$CONTROL_DELETE_DENY" '"decision":"deny"'
+assert_pretool_deny "canonical manifest cannot be deleted through Delete declaration" \
+  "$CONTROL_DELETE_DENY"
 
 NORMALIZED_CONTROL_DELETE="$WORK/normalized-control-delete"
 cp -R "$BASE" "$NORMALIZED_CONTROL_DELETE"
@@ -774,8 +815,8 @@ NORMALIZED_CONTROL_DELETE_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/./demo.scope.json"}}
 EOF
 )"
-assert_contains "normalized manifest spelling cannot bypass deletion reservation" \
-  "$NORMALIZED_CONTROL_DELETE_DENY" '"decision":"deny"'
+assert_pretool_deny "normalized manifest spelling cannot bypass deletion reservation" \
+  "$NORMALIZED_CONTROL_DELETE_DENY"
 
 SYMLINK_MANIFEST_WRITE="$WORK/symlink-manifest-write"
 cp -R "$BASE" "$SYMLINK_MANIFEST_WRITE"
@@ -792,8 +833,8 @@ SYMLINK_MANIFEST_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"docs/scope/demo.scope.json"}}
 EOF
 )"
-assert_contains "resolved symlink manifest remains a reserved write target" \
-  "$SYMLINK_MANIFEST_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "resolved symlink manifest remains a reserved write target" \
+  "$SYMLINK_MANIFEST_WRITE_DENY"
 
 SYMLINK_MANIFEST_DELETE="$WORK/symlink-manifest-delete"
 cp -R "$BASE" "$SYMLINK_MANIFEST_DELETE"
@@ -810,16 +851,16 @@ SYMLINK_MANIFEST_DELETE_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"rm -f docs/scope/demo.scope.json"}}
 EOF
 )"
-assert_contains "resolved symlink manifest remains a reserved deletion target" \
-  "$SYMLINK_MANIFEST_DELETE_DENY" '"decision":"deny"'
+assert_pretool_deny "resolved symlink manifest remains a reserved deletion target" \
+  "$SYMLINK_MANIFEST_DELETE_DENY"
 
 DELETE_ONLY_WRITE_DENY="$(
   CLAUDE_PROJECT_DIR="$BASE" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/old.py"}}
 EOF
 )"
-assert_contains "Delete-only target cannot be modified through Edit" \
-  "$DELETE_ONLY_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "Delete-only target cannot be modified through Edit" \
+  "$DELETE_ONLY_WRITE_DENY"
 
 MARKER_CONTROL="$WORK/marker-control"
 cp -R "$BASE" "$MARKER_CONTROL"
@@ -842,8 +883,8 @@ MARKER_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"docs/context/.active-feature"}}
 EOF
 )"
-assert_contains "active-feature marker is reserved from direct writes" \
-  "$MARKER_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "active-feature marker is reserved from direct writes" \
+  "$MARKER_WRITE_DENY"
 
 SYMLINK_MARKER_CONTROL="$WORK/symlink-marker-control"
 cp -R "$BASE" "$SYMLINK_MARKER_CONTROL"
@@ -870,8 +911,8 @@ SYMLINK_MARKER_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"docs/context/.active-feature"}}
 EOF
 )"
-assert_contains "resolved active-feature marker target remains reserved" \
-  "$SYMLINK_MARKER_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "resolved active-feature marker target remains reserved" \
+  "$SYMLINK_MARKER_WRITE_DENY"
 
 CANVAS_DELETE_CONTROL="$WORK/canvas-delete-control"
 cp -R "$BASE" "$CANVAS_DELETE_CONTROL"
@@ -884,8 +925,8 @@ CANVAS_DELETE_DENY="$(
 {"tool_name":"Bash","tool_input":{"command":"rm -f docs/canvas/demo.canvas.md"}}
 EOF
 )"
-assert_contains "active Canvas is reserved from deletion" \
-  "$CANVAS_DELETE_DENY" '"decision":"deny"'
+assert_pretool_deny "active Canvas is reserved from deletion" \
+  "$CANVAS_DELETE_DENY"
 
 STOP_HOOK_CONTROL="$WORK/stop-hook-control"
 cp -R "$BASE" "$STOP_HOOK_CONTROL"
@@ -911,8 +952,8 @@ STOP_HOOK_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"config/claude/hooks/plumbline-enforce.sh"}}
 EOF
 )"
-assert_contains "registered Stop hook source is reserved from planned writes" \
-  "$STOP_HOOK_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "registered Stop hook source is reserved from planned writes" \
+  "$STOP_HOOK_WRITE_DENY"
 
 SYMLINK_STOP_HOOK_CONTROL="$WORK/symlink-stop-hook-control"
 cp -R "$BASE" "$SYMLINK_STOP_HOOK_CONTROL"
@@ -940,8 +981,8 @@ SYMLINK_STOP_HOOK_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"config/claude/hooks/plumbline-enforce.sh"}}
 EOF
 )"
-assert_contains "resolved registered Stop hook target remains reserved" \
-  "$SYMLINK_STOP_HOOK_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "resolved registered Stop hook target remains reserved" \
+  "$SYMLINK_STOP_HOOK_WRITE_DENY"
 
 MUTABLE_CHECKER="$WORK/mutable-checker"
 cp -R "$MISSING" "$MUTABLE_CHECKER"
@@ -962,8 +1003,8 @@ MUTABLE_CHECKER_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "modified project checker is skipped and immutable checker catches drift" \
-  "$MUTABLE_CHECKER_DENY" '"decision":"deny"'
+assert_pretool_deny "modified project checker is skipped and immutable checker catches drift" \
+  "$MUTABLE_CHECKER_DENY"
 
 CLEAN_MALICIOUS_CHECKER="$WORK/clean-malicious-checker"
 cp -R "$MISSING" "$CLEAN_MALICIOUS_CHECKER"
@@ -985,8 +1026,8 @@ CLEAN_MALICIOUS_CHECKER_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "foreign repository committed checker is skipped for installed authority" \
-  "$CLEAN_MALICIOUS_CHECKER_DENY" '"decision":"deny"'
+assert_pretool_deny "foreign repository committed checker is skipped for installed authority" \
+  "$CLEAN_MALICIOUS_CHECKER_DENY"
 
 SYMLINKED_CHECKER="$WORK/symlinked-checker"
 cp -R "$HOOK_REPO" "$SYMLINKED_CHECKER"
@@ -998,8 +1039,8 @@ SYMLINKED_CHECKER_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "repository-owned checker symlink cannot launder external authority" \
-  "$SYMLINKED_CHECKER_DENY" '"decision":"deny"'
+assert_pretool_deny "repository-owned checker symlink cannot launder external authority" \
+  "$SYMLINKED_CHECKER_DENY"
 
 ALTERNATE_CHECKER="$WORK/alternate-checker"
 cp -R "$MISSING" "$ALTERNATE_CHECKER"
@@ -1013,8 +1054,8 @@ ALTERNATE_CHECKER_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"src/demo/app.py"}}
 EOF
 )"
-assert_contains "noncanonical project checker is skipped in favor of immutable authority" \
-  "$ALTERNATE_CHECKER_DENY" '"decision":"deny"'
+assert_pretool_deny "noncanonical project checker is skipped in favor of immutable authority" \
+  "$ALTERNATE_CHECKER_DENY"
 
 # A confirmed checker-runtime change remains implementable, but only while an
 # immutable checker outside the writable project authorizes the exact planned
@@ -1068,16 +1109,16 @@ OUTSIDE_WRITE_DENY="$(
 {"tool_name":"Edit","tool_input":{"file_path":"$WORK/outside.py"}}
 EOF
 )"
-assert_contains "write target outside the repository is denied" \
-  "$OUTSIDE_WRITE_DENY" '"decision":"deny"'
+assert_pretool_deny "write target outside the repository is denied" \
+  "$OUTSIDE_WRITE_DENY"
 
 AGENT_DENY="$(
   CLAUDE_PROJECT_DIR="$HOOK_REPO" "$PRETOOL_SCOPE" <<'EOF'
 {"tool_name":"Agent","tool_input":{"subagent_type":"backend-developer"}}
 EOF
 )"
-assert_contains "Agent implementation dispatch runs the scope preflight" \
-  "$AGENT_DENY" '"decision":"deny"'
+assert_pretool_deny "Agent implementation dispatch runs the scope preflight" \
+  "$AGENT_DENY"
 
 # PLUM-10 owns migration of the old JSON shape. Its presence must not
 # unexpectedly activate PLUM-12's stricter runtime contract.

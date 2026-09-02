@@ -4,10 +4,10 @@
 #
 # The Claude Code harness invokes this with a JSON tool-dispatch payload on stdin
 # (e.g. {"tool_name":"Task","tool_input":{"subagent_type":"planner",...}}) and
-# reads a JSON decision from stdout. When the active start-state is VISION_MISSING
-# AND the dispatched tool is a planning/coding action, this DENIES the dispatch so
-# the harness blocks it — a runtime backstop behind the orchestrator's Phase-0
-# gate. Everything else passes through untouched.
+# reads a JSON permission decision from stdout. When the active start-state is
+# VISION_MISSING AND the dispatched tool is a planning/coding action, this DENIES
+# the dispatch so the harness blocks it — a runtime backstop behind the
+# orchestrator's Phase-0 gate. Everything else passes through untouched.
 #
 # Robustness contract: this hook must NEVER crash a session. On ANY internal error
 # (missing jq, malformed stdin, classifier failure, unreadable files) it fails
@@ -112,8 +112,12 @@ vision_missing() {
 }
 
 if vision_missing; then
-  # DENY: a planning/coding dispatch under VISION_MISSING.
-  printf '%s\n' '{"decision":"deny","reason":"Plumbline start gate: VISION_MISSING — confirmed Product Vision required before planning/coding. Run Vision Extraction and request explicit user confirmation."}'
+  # DENY: a planning/coding dispatch under VISION_MISSING. The denial must travel
+  # in hookSpecificOutput.permissionDecision: the top-level "decision" member is
+  # the legacy approve|block enum, and Claude Code (2.1.252) rejects
+  # {"decision":"deny"} at its hook-output validator — the dispatch then proceeds,
+  # i.e. the gate fails OPEN.
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Plumbline start gate: VISION_MISSING — confirmed Product Vision required before planning/coding. Run Vision Extraction and request explicit user confirmation."}}'
   exit 0
 fi
 
